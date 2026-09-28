@@ -20,8 +20,8 @@
     <p class="text-center text-slate-500 text-sm mb-6">سجّل دخولك للمتابعة</p>
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-semibold mb-1 text-slate-700">اسم المستخدم</label>
-        <input id="loginUser" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <label class="block text-sm font-semibold mb-1 text-slate-700">اسم المستخدم أو الإيميل</label>
+        <input id="loginUser" type="text" placeholder="مثال: admin أو user@example.com" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
       </div>
       <div>
         <label class="block text-sm font-semibold mb-1 text-slate-700">كلمة السر</label>
@@ -66,7 +66,7 @@ import {
   query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-/* ============ إعدادات Firebase الحقيقية ============ */
+/* ============ إعدادات Firebase ============ */
 const firebaseConfig = {
   apiKey: "AIzaSyAZTWVHsdv0U3XSEFyZG9RtVNJJwiTxPBA",
   authDomain: "email-system-51538.firebaseapp.com",
@@ -75,21 +75,22 @@ const firebaseConfig = {
   messagingSenderId: "520124834460",
   appId: "1:520124834460:web:98114c58001ddd2be3c359"
 };
-/* ==================================================== */
+/* =========================================== */
 
+// الدومين الافتراضي لأي اسم مستخدم قصير
 const EMAIL_DOMAIN = "algharbawy.com";
 
-const app = initializeApp(firebaseConfig);
+const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
-const db = getFirestore(app);
+const db   = getFirestore(app);
 
 let currentUser = null;
 
-const $ = (s) => document.querySelector(s);
+const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 const show = (el) => el.classList.remove('hidden');
 const hide = (el) => el.classList.add('hidden');
-const esc = (s='') => s.toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const esc  = (s='') => s.toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 /* ---------- Login ---------- */
 $('#loginBtn').onclick = async () => {
@@ -99,19 +100,22 @@ $('#loginBtn').onclick = async () => {
   hide(err);
   if (!u || !p) { err.textContent = 'املأ البيانات'; show(err); return; }
 
+  // لو المستخدم كتب إيميل كامل (فيه @) → استخدمه زي ما هو
+  // لو كتب اسم مستخدم بس → ضيف عليه الدومين الافتراضي
+  const email = u.includes('@') ? u : `${u}@${EMAIL_DOMAIN}`;
+
   $('#loginBtn').textContent = 'جاري الدخول...';
   $('#loginBtn').disabled = true;
 
   try {
-    await signInWithEmailAndPassword(auth, `${u}@${EMAIL_DOMAIN}`, p);
-    // لو وصلنا هنا، الـ onAuthStateChanged هيتولى الباقي
+    await signInWithEmailAndPassword(auth, email, p);
   } catch (e) {
-    console.error('AUTH ERROR:', e.code, e.message);
+    console.error('AUTH ERROR:', e.code, e.message, 'Email tried:', email);
     const messages = {
       'auth/user-not-found': 'المستخدم غير موجود',
       'auth/wrong-password': 'كلمة السر غلط',
       'auth/invalid-credential': 'بيانات الدخول غير صحيحة',
-      'auth/invalid-email': 'اسم المستخدم غير صحيح',
+      'auth/invalid-email': 'الإيميل غير صحيح',
       'auth/unauthorized-domain': 'الدومين غير مسموح في Firebase',
       'auth/too-many-requests': 'محاولات كتير — استنى شوية',
       'auth/network-request-failed': 'مشكلة في الاتصال بالإنترنت',
@@ -221,7 +225,7 @@ async function users() {
       <h3 class="font-bold mb-4">مستخدم جديد</h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <input id="nuName" placeholder="الاسم" class="border rounded-lg px-3 py-2" />
-        <input id="nuUser" placeholder="اسم المستخدم (إنجليزي)" class="border rounded-lg px-3 py-2" />
+        <input id="nuUser" placeholder="اسم المستخدم (إنجليزي، بدون @)" class="border rounded-lg px-3 py-2" />
         <input id="nuPass" type="password" placeholder="كلمة السر" class="border rounded-lg px-3 py-2" />
         <select id="nuRole" class="border rounded-lg px-3 py-2">
           <option value="user">user</option>
