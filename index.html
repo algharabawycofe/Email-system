@@ -9,7 +9,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   * { font-family: 'Cairo', 'Segoe UI', sans-serif; }
-  .hidden { display: none !important; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -21,11 +20,24 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .modal-overlay { animation: modalIn 0.2s ease-out; }
   @keyframes modalIn { from { opacity: 0; } to { opacity: 1; } }
-  #sidebar { transition: margin-right 0.25s ease, width 0.25s ease; }
+  #sidebar { transition: margin-right 0.25s ease; }
   #sidebar.collapsed { margin-right: -16rem; }
+
+  /* Inbox responsive */
+  .inbox-reading { display: none; }
   @media (min-width: 768px) {
-    #sidebar.collapsed { margin-right: -16rem; }
+    .inbox-reading { display: flex; }
+    .inbox-list { display: flex; }
   }
+  @media (max-width: 767px) {
+    .inbox-list { display: flex; }
+    .inbox-list.mobile-hidden { display: none; }
+    .inbox-reading.mobile-show { display: flex; }
+  }
+
+  /* Notification pulse */
+  .pulse { animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
 </style>
 </head>
 <body class="bg-[#f3f2f1] min-h-screen">
@@ -66,9 +78,7 @@
 
 <!-- ============ APP ============ -->
 <div id="app" class="hidden min-h-screen flex flex-col">
-  <!-- Header -->
-  <header class="h-14 bg-white border-b border-slate-200 flex items-center px-3 md:px-4 gap-2 md:gap-3 sticky top-0 z-30">
-    <!-- Toggle Sidebar Button -->
+  <header class="h-14 bg-white border-b border-slate-200 flex items-center px-3 md:px-4 gap-2 md:gap-3 sticky top-0 z-40">
     <button id="toggleSidebar" class="p-2 rounded-lg hover:bg-slate-100 transition text-slate-600" title="إظهار/إخفاء القائمة">
       <i data-lucide="menu" class="w-5 h-5"></i>
     </button>
@@ -87,9 +97,22 @@
 
     <div class="flex-1 sm:flex-none"></div>
 
-    <button class="relative p-2 rounded-lg hover:bg-slate-100 transition" title="الإشعارات">
-      <i data-lucide="bell" class="w-5 h-5 text-slate-600"></i>
-    </button>
+    <!-- Notification Bell -->
+    <div class="relative">
+      <button id="notifBtn" class="relative p-2 rounded-lg hover:bg-slate-100 transition" title="الإشعارات">
+        <i data-lucide="bell" class="w-5 h-5 text-slate-600"></i>
+        <span id="notifBadge" class="hidden absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1"></span>
+      </button>
+
+      <!-- Notification Dropdown -->
+      <div id="notifDropdown" style="display:none" class="absolute left-0 mt-2 w-80 md:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50">
+        <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+          <div class="font-bold text-slate-800">الإشعارات</div>
+          <button onclick="markAllRead()" class="text-xs text-[#0078D4] hover:underline font-medium">تحديد الكل كمقروء</button>
+        </div>
+        <div id="notifList" class="max-h-96 overflow-y-auto"></div>
+      </div>
+    </div>
 
     <div class="flex items-center gap-2 md:gap-3 pl-2 md:pl-3 border-r border-slate-200">
       <div class="text-left hidden md:block">
@@ -104,7 +127,6 @@
   </header>
 
   <div class="flex flex-1 overflow-hidden relative">
-    <!-- Sidebar -->
     <aside id="sidebar" class="w-64 bg-white border-l border-slate-200 flex flex-col overflow-y-auto flex-shrink-0">
       <div class="p-3">
         <button onclick="openCompose()" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 flex items-center justify-center gap-2 transition shadow-sm">
@@ -134,11 +156,10 @@
         </button>
       </nav>
       <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">
-        Mail System v1.2
+        Mail System v1.3
       </div>
     </aside>
 
-    <!-- Mobile bottom nav -->
     <nav id="mobileNav" style="display:none" class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex z-30">
       <button data-page="dashboard" class="mnav-btn flex-1 flex flex-col items-center py-2.5 text-slate-500 text-xs gap-1">
         <i data-lucide="home" class="w-5 h-5"></i><span>الرئيسية</span>
@@ -167,7 +188,7 @@
 </div>
 
 <!-- ============ COMPOSE MODAL ============ -->
-<div id="composeModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center p-0 md:p-4 modal-overlay">
+<div id="composeModal" style="display:none" class="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center p-0 md:p-4 modal-overlay">
   <div class="bg-white w-full md:max-w-2xl md:rounded-xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
     <div class="flex items-center justify-between px-5 py-3 bg-[#0078D4] text-white md:rounded-t-xl rounded-t-2xl">
       <div class="flex items-center gap-2">
@@ -178,9 +199,8 @@
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
-
     <div class="flex-1 overflow-y-auto p-5 space-y-4">
-      <div id="broadcastBox" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-3">
+      <div id="broadcastBox" style="display:none" class="bg-amber-50 border border-amber-200 rounded-lg p-3">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()" class="w-5 h-5 accent-amber-600 cursor-pointer" />
           <div class="flex-1">
@@ -192,7 +212,6 @@
           </div>
         </label>
       </div>
-
       <div id="toBox">
         <label class="block text-xs font-semibold text-slate-500 mb-1">إلى</label>
         <select id="cTo" class="w-full border-b border-slate-300 focus:border-[#0078D4] py-2 text-sm focus:outline-none bg-transparent"></select>
@@ -206,7 +225,6 @@
       </div>
       <p id="cStatus" class="text-sm hidden"></p>
     </div>
-
     <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-between bg-slate-50 md:rounded-b-xl">
       <button id="sendBtn" onclick="sendMessage()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg px-5 py-2 flex items-center gap-2 transition shadow-sm">
         <i data-lucide="send" class="w-4 h-4"></i>
@@ -217,6 +235,9 @@
   </div>
 </div>
 
+<!-- ============ TOAST ============ -->
+<div id="toastContainer" class="fixed top-20 left-4 z-[100] space-y-2"></div>
+
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
@@ -224,7 +245,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
-  query, where, serverTimestamp
+  query, where, serverTimestamp, onSnapshot, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -244,11 +265,14 @@ const db   = getFirestore(app);
 let currentUser = null;
 let allUsersCache = [];
 let sidebarCollapsed = false;
+let unsubMessages = null;
+let unreadMessages = [];
+let lastUnreadCount = 0;
 
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
-const show = (el) => el.classList.remove('hidden');
-const hide = (el) => el.classList.add('hidden');
+const show = (el) => { if (el) el.classList.remove('hidden'); };
+const hide = (el) => { if (el) el.classList.add('hidden'); };
 const esc  = (s='') => s.toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const initials = (name='') => name.trim().split(/\s+/).slice(0,2).map(w => w[0]||'').join('').toUpperCase() || '?';
 const icons = () => window.lucide && window.lucide.createIcons();
@@ -272,16 +296,152 @@ const fullDate = (ts) => {
 const isOwner = () => currentUser?.role === 'owner';
 const isAdmin = () => currentUser?.role === 'admin' || isOwner();
 
+/* ---------- Toast Notifications ---------- */
+function showToast(title, body, onClick) {
+  const container = $('#toastContainer');
+  const toast = document.createElement('div');
+  toast.className = 'bg-white rounded-xl shadow-2xl border-r-4 border-[#0078D4] p-4 min-w-[300px] max-w-sm cursor-pointer fade-in';
+  toast.innerHTML = `
+    <div class="flex items-start gap-3">
+      <div class="w-10 h-10 rounded-full bg-[#e5f0fa] flex items-center justify-center flex-shrink-0">
+        <i data-lucide="mail" class="w-5 h-5 text-[#0078D4]"></i>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="font-bold text-sm text-slate-800 truncate">${esc(title)}</div>
+        <div class="text-xs text-slate-600 mt-0.5 truncate">${esc(body)}</div>
+      </div>
+      <button class="p-1 hover:bg-slate-100 rounded flex-shrink-0">
+        <i data-lucide="x" class="w-4 h-4 text-slate-400"></i>
+      </button>
+    </div>
+  `;
+  toast.querySelector('button').onclick = (e) => { e.stopPropagation(); toast.remove(); };
+  if (onClick) toast.onclick = () => { onClick(); toast.remove(); };
+  container.appendChild(toast);
+  icons();
+  setTimeout(() => toast.remove(), 6000);
+}
+
+/* ---------- Browser Notification ---------- */
+function requestBrowserNotifPermission() {
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission();
+  }
+}
+function showBrowserNotif(title, body, onClick) {
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const n = new Notification(title, { body, icon: 'https://www.gstatic.com/images/branding/product/1x/gmail_2020q4_48dp.png' });
+    if (onClick) n.onclick = () => { window.focus(); onClick(); };
+  }
+}
+
+/* ---------- Real-time Messages Listener ---------- */
+function startMessagesListener() {
+  if (unsubMessages) unsubMessages();
+  const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
+  unsubMessages = onSnapshot(q, (snap) => {
+    const all = [];
+    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
+    all.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+    
+    unreadMessages = all.filter(m => !m.read);
+    updateNotificationUI();
+    
+    // Detect new messages
+    if (lastUnreadCount > 0 && unreadMessages.length > lastUnreadCount) {
+      const newMsg = unreadMessages[0];
+      if (newMsg && newMsg.fromUserId !== currentUser.uid) {
+        showToast(`رسالة جديدة من ${newMsg.fromUserName}`, newMsg.subject, () => {
+          navigate('inbox');
+          setTimeout(() => selectMsg(newMsg.id), 300);
+        });
+        showBrowserNotif(`رسالة جديدة من ${newMsg.fromUserName}`, newMsg.subject, () => {
+          navigate('inbox');
+          setTimeout(() => selectMsg(newMsg.id), 300);
+        });
+      }
+    }
+    lastUnreadCount = unreadMessages.length;
+  });
+}
+
+function updateNotificationUI() {
+  const count = unreadMessages.length;
+  const el = $('#inboxCount');
+  const elM = $('#inboxCountM');
+  const notifBadge = $('#notifBadge');
+  
+  if (count > 0) {
+    if (el) { el.textContent = count; show(el); }
+    if (elM) { elM.textContent = count; show(elM); }
+    if (notifBadge) {
+      notifBadge.textContent = count > 9 ? '9+' : count;
+      notifBadge.classList.remove('hidden');
+      notifBadge.classList.add('pulse');
+    }
+  } else {
+    if (el) hide(el);
+    if (elM) hide(elM);
+    if (notifBadge) {
+      notifBadge.classList.add('hidden');
+      notifBadge.classList.remove('pulse');
+    }
+  }
+  renderNotifDropdown();
+}
+
+function renderNotifDropdown() {
+  const list = $('#notifList');
+  if (!list) return;
+  if (unreadMessages.length === 0) {
+    list.innerHTML = `<div class="text-center py-12 text-slate-400 text-sm">
+      <i data-lucide="bell-off" class="w-10 h-10 mx-auto mb-2 opacity-40"></i>
+      <p>لا إشعارات جديدة</p>
+    </div>`;
+    icons();
+    return;
+  }
+  list.innerHTML = unreadMessages.slice(0, 10).map(m => `
+    <div onclick="openNotifMsg('${m.id}')" class="px-4 py-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition flex items-start gap-3">
+      <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(m.fromUserName)}</div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center justify-between gap-2">
+          <span class="font-semibold text-sm text-slate-800 truncate">${esc(m.fromUserName)}</span>
+          <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(m.createdAt)}</span>
+        </div>
+        <div class="text-sm text-slate-700 truncate">${esc(m.subject)}</div>
+        <div class="text-xs text-slate-400 truncate mt-0.5">${esc((m.body||'').slice(0,60))}</div>
+      </div>
+    </div>
+  `).join('');
+  icons();
+}
+
+window.openNotifMsg = (id) => {
+  hideNotifDropdown();
+  navigate('inbox');
+  setTimeout(() => selectMsg(id), 300);
+};
+
+window.markAllRead = async () => {
+  if (unreadMessages.length === 0) return;
+  const batch = writeBatch(db);
+  unreadMessages.forEach(m => {
+    batch.update(doc(db, 'messages', m.id), { read: true });
+  });
+  await batch.commit();
+  hideNotifDropdown();
+};
+
+function showNotifDropdown() { $('#notifDropdown').style.display = 'block'; }
+function hideNotifDropdown() { $('#notifDropdown').style.display = 'none'; }
+
 /* ---------- Sidebar Toggle ---------- */
 function toggleSidebar() {
   const sidebar = $('#sidebar');
   sidebarCollapsed = !sidebarCollapsed;
-  if (sidebarCollapsed) {
-    sidebar.classList.add('collapsed');
-  } else {
-    sidebar.classList.remove('collapsed');
-  }
-  // save pref
+  if (sidebarCollapsed) sidebar.classList.add('collapsed');
+  else sidebar.classList.remove('collapsed');
   try { localStorage.setItem('sidebarCollapsed', sidebarCollapsed ? '1' : '0'); } catch(e){}
 }
 
@@ -290,7 +450,6 @@ function initSidebar() {
   const mobileNav = $('#mobileNav');
   const main = $('#mainContent');
 
-  // استرجاع الحالة المحفوظة
   try {
     const saved = localStorage.getItem('sidebarCollapsed');
     if (saved === '1') { sidebarCollapsed = true; sidebar.classList.add('collapsed'); }
@@ -298,12 +457,10 @@ function initSidebar() {
 
   const update = () => {
     if (window.innerWidth < 768) {
-      // موبايل: اخفي sidebar واظهر mobile nav
       sidebar.style.display = 'none';
       mobileNav.style.display = 'flex';
       main.classList.add('pb-16');
     } else {
-      // ديسكتوب: اظهر sidebar واخفي mobile nav
       sidebar.style.display = 'flex';
       mobileNav.style.display = 'none';
       main.classList.remove('pb-16');
@@ -363,11 +520,21 @@ $('#loginBtn').onclick = async () => {
 $('#loginPass').addEventListener('keypress', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
 $('#logoutBtn').onclick = () => signOut(auth);
 $('#toggleSidebar').onclick = toggleSidebar;
+$('#notifBtn').onclick = (e) => {
+  e.stopPropagation();
+  const dd = $('#notifDropdown');
+  if (dd.style.display === 'block') hideNotifDropdown();
+  else showNotifDropdown();
+};
+document.addEventListener('click', e => {
+  if (!e.target.closest('#notifBtn') && !e.target.closest('#notifDropdown')) hideNotifDropdown();
+});
 
 /* ---------- Auth State ---------- */
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     currentUser = null;
+    if (unsubMessages) { unsubMessages(); unsubMessages = null; }
     show($('#loginScreen'));
     hide($('#app'));
     return;
@@ -388,32 +555,22 @@ onAuthStateChanged(auth, async (user) => {
     else el.classList.add('hidden');
   });
 
-  if (isOwner()) show($('#broadcastBox'));
-
   await loadUsersCache();
-  updateInboxCount();
 
   hide($('#loginScreen'));
   show($('#app'));
   icons();
   initSidebar();
   navigate('dashboard');
+
+  // ابدأ الإشعارات الحية
+  startMessagesListener();
+  requestBrowserNotifPermission();
 });
 
 async function loadUsersCache() {
   const snap = await getDocs(collection(db, 'users'));
   allUsersCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-}
-
-async function updateInboxCount() {
-  const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid), where('read', '==', false));
-  const snap = await getDocs(q);
-  const el = $('#inboxCount');
-  const elM = $('#inboxCountM');
-  if (snap.size > 0) {
-    el.textContent = snap.size; show(el);
-    elM.textContent = snap.size; show(elM);
-  } else { hide(el); hide(elM); }
 }
 
 /* ---------- Navigation ---------- */
@@ -445,14 +602,13 @@ $('#mobileNav').addEventListener('click', e => {
 async function dashboard() {
   const admin = isAdmin();
   if (admin) {
-    const [usersSnap, deptSnap, msgSnap] = await Promise.all([
+    const [usersSnap, deptSnap] = await Promise.all([
       getDocs(collection(db, 'users')),
-      getDocs(collection(db, 'departments')),
-      getDocs(collection(db, 'messages'))
+      getDocs(collection(db, 'departments'))
     ]);
     const total = usersSnap.size;
     const active = usersSnap.docs.filter(d => d.data().isActive !== false).length;
-    const unread = msgSnap.docs.filter(d => d.data().toUserId === currentUser.uid && !d.data().read).length;
+    const unread = unreadMessages.length;
 
     $('#pageContent').innerHTML = `
       <div class="p-4 md:p-8 max-w-7xl mx-auto fade-in">
@@ -478,9 +634,9 @@ async function dashboard() {
       </div>
     `;
   } else {
-    const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
-    const snap = await getDocs(q);
-    const unread = snap.docs.filter(d => !d.data().read).length;
+    const unread = unreadMessages.length;
+    const total = unreadMessages.length + inboxList.length; // fake total
+    const allMsgsSnap = await getDocs(query(collection(db,'messages'), where('toUserId','==',currentUser.uid)));
     $('#pageContent').innerHTML = `
       <div class="p-4 md:p-8 max-w-5xl mx-auto fade-in">
         <div class="mb-6 md:mb-8">
@@ -488,7 +644,7 @@ async function dashboard() {
           <p class="text-slate-500 mt-1 text-sm">${new Date().toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
         </div>
         <div class="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
-          ${statCard('inbox', 'رسائل الوارد', snap.size, 'bg-blue-50', 'text-blue-600', "navigate('inbox')")}
+          ${statCard('inbox', 'رسائل الوارد', allMsgsSnap.size, 'bg-blue-50', 'text-blue-600', "navigate('inbox')")}
           ${statCard('mail', 'غير مقروءة', unread, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-5 md:p-6">
@@ -525,12 +681,7 @@ function quickAction(icon, label, action) {
 async function users() {
   await loadUsersCache();
   const rows = allUsersCache.map(u => {
-    const roleColors = {
-      owner: 'bg-amber-100 text-amber-800',
-      admin: 'bg-red-50 text-red-700',
-      manager: 'bg-purple-50 text-purple-700',
-      user: 'bg-slate-100 text-slate-700'
-    };
+    const roleColors = { owner: 'bg-amber-100 text-amber-800', admin: 'bg-red-50 text-red-700', manager: 'bg-purple-50 text-purple-700', user: 'bg-slate-100 text-slate-700' };
     const roleLabels = { owner: 'صاحب الشركة', admin: 'أدمن', manager: 'مدير', user: 'مستخدم' };
     const uColor = roleColors[u.role] || roleColors.user;
     const uLabel = roleLabels[u.role] || u.role;
@@ -648,7 +799,6 @@ window.createNewUser = async () => {
   if (!name || !user || !pass) { err.className='text-sm mt-3 text-red-600'; err.textContent='املأ كل البيانات'; show(err); return; }
   if (!/^[a-z0-9_.]+$/.test(user)) { err.className='text-sm mt-3 text-red-600'; err.textContent='اسم المستخدم بحروف إنجليزية وأرقام فقط'; show(err); return; }
   if (pass.length < 6) { err.className='text-sm mt-3 text-red-600'; err.textContent='كلمة السر 6 حروف على الأقل'; show(err); return; }
-
   err.className = 'text-sm mt-3 text-blue-600'; err.textContent = 'جاري الإنشاء...'; show(err);
   try {
     const email = `${user}@${EMAIL_DOMAIN}`;
@@ -773,15 +923,14 @@ window.openCompose = async () => {
 
   if (isOwner()) {
     $('#broadcastCount').textContent = others.length;
-    show($('#broadcastBox'));
+    $('#broadcastBox').style.display = 'block';
   }
-
-  show($('#composeModal'));
+  $('#composeModal').style.display = 'flex';
   icons();
   setTimeout(() => $('#cTo').focus(), 100);
 };
 
-window.closeCompose = () => hide($('#composeModal'));
+window.closeCompose = () => { $('#composeModal').style.display = 'none'; };
 
 window.toggleBroadcast = () => {
   const checked = $('#cBroadcast').checked;
@@ -818,10 +967,8 @@ window.sendMessage = async () => {
           fromUserId: currentUser.uid,
           fromUserName: currentUser.name,
           fromUserUsername: currentUser.username,
-          toUserId: u.id,
-          toUserName: u.name,
-          read: false,
-          isBroadcast: true,
+          toUserId: u.id, toUserName: u.name,
+          read: false, isBroadcast: true,
           createdAt: serverTimestamp()
         });
         sent++;
@@ -847,7 +994,7 @@ window.sendMessage = async () => {
       status.textContent = '✅ تم الإرسال!';
       show(status);
     }
-    setTimeout(() => { closeCompose(); updateInboxCount(); }, 1000);
+    setTimeout(() => { closeCompose(); }, 1000);
   } catch (e) {
     status.className = 'text-sm text-red-600';
     status.textContent = e.message;
@@ -894,8 +1041,8 @@ function renderInbox() {
 
   $('#pageContent').innerHTML = `
     <div id="inboxContainer" class="h-full flex fade-in">
-      <div id="inboxList" class="w-full md:w-96 border-l border-slate-200 bg-white flex flex-col">
-        <div class="p-4 border-b border-slate-200 bg-white z-10">
+      <div id="inboxList" class="inbox-list w-full md:w-96 border-l border-slate-200 bg-white flex-col">
+        <div class="p-4 border-b border-slate-200 bg-white z-10 flex-shrink-0">
           <h2 class="font-bold text-slate-800">صندوق الوارد</h2>
           <p class="text-xs text-slate-500 mt-0.5">${inboxList.length} رسالة · ${inboxList.filter(m => !m.read).length} غير مقروءة</p>
         </div>
@@ -903,7 +1050,7 @@ function renderInbox() {
           ${listHtml || '<div class="text-center py-12 text-slate-400 text-sm">لا رسائل</div>'}
         </div>
       </div>
-      <div id="inboxReading" class="hidden md:flex flex-1 bg-white overflow-y-auto flex-col">
+      <div id="inboxReading" class="inbox-reading flex-1 bg-white overflow-y-auto flex-col">
         <div id="readingContent" class="flex-1"></div>
       </div>
     </div>
@@ -986,22 +1133,30 @@ function renderReading() {
 
 window.selectMsg = (id) => {
   selectedMsgId = id;
-  const m = inboxList.find(x => x.id === id);
   renderInbox();
+  // على الموبايل: اخفي القائمة واظهر الرسالة
   if (window.innerWidth < 768) {
-    $('#inboxList').classList.add('hidden');
-    $('#inboxReading').classList.remove('hidden');
-    $('#inboxReading').classList.add('flex');
+    const list = $('#inboxList');
+    const reading = $('#inboxReading');
+    if (list) list.classList.add('mobile-hidden');
+    if (reading) {
+      reading.classList.remove('mobile-hidden');
+      reading.classList.add('mobile-show');
+    }
   }
+  const m = inboxList.find(x => x.id === id);
   if (m && !m.read) {
     setTimeout(() => markRead(id, true), 500);
   }
 };
 
 window.backToList = () => {
-  $('#inboxList').classList.remove('hidden');
-  $('#inboxReading').classList.add('hidden');
-  $('#inboxReading').classList.remove('flex');
+  const list = $('#inboxList');
+  const reading = $('#inboxReading');
+  if (list) list.classList.remove('mobile-hidden');
+  if (reading) reading.classList.remove('mobile-show');
+  selectedMsgId = null;
+  renderInbox();
 };
 
 window.markRead = async (id, read = true) => {
@@ -1009,13 +1164,13 @@ window.markRead = async (id, read = true) => {
   const m = inboxList.find(x => x.id === id);
   if (m) m.read = read;
   renderInbox();
-  if (selectedMsgId) {
-    if (window.innerWidth < 768) {
-      $('#inboxList').classList.add('hidden');
-      $('#inboxReading').classList.remove('hidden');
-    }
+  // على الموبايل: اقفل القائمة وارجع للرسالة
+  if (selectedMsgId && window.innerWidth < 768) {
+    const list = $('#inboxList');
+    const reading = $('#inboxReading');
+    if (list) list.classList.add('mobile-hidden');
+    if (reading) reading.classList.add('mobile-show');
   }
-  updateInboxCount();
 };
 
 window.deleteMsg = async (id) => {
@@ -1024,8 +1179,6 @@ window.deleteMsg = async (id) => {
   inboxList = inboxList.filter(m => m.id !== id);
   selectedMsgId = null;
   backToList();
-  renderInbox();
-  updateInboxCount();
 };
 
 window.replyTo = async (userId, subject) => {
@@ -1050,14 +1203,10 @@ async function sent() {
     if (m.isBroadcast && m.createdAt?.seconds) {
       const key = `${m.subject}_${m.createdAt.seconds}_${m.body?.slice(0,20)}`;
       if (!grouped[key]) {
-        grouped[key] = { ...m, count: 1, isGroup: true };
+        grouped[key] = { ...m, count: 1 };
         unique.push(grouped[key]);
-      } else {
-        grouped[key].count++;
-      }
-    } else {
-      unique.push({ ...m, count: 1 });
-    }
+      } else grouped[key].count++;
+    } else unique.push({ ...m, count: 1 });
   });
 
   const rows = unique.map(m => `
