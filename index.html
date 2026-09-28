@@ -42,9 +42,9 @@
     </div>
     <nav class="flex-1 p-3 space-y-1" id="nav">
       <button data-page="dashboard" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">🏠 الرئيسية</button>
-      <button data-page="users" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">👥 المستخدمين</button>
-      <button data-page="departments" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">🏢 الأقسام</button>
-      <button data-page="messages" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">✉️ الرسائل</button>
+      <button data-page="users" data-admin-only class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">👥 المستخدمين</button>
+      <button data-page="departments" data-admin-only class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">🏢 الأقسام</button>
+      <button data-page="messages" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">✉️ إرسال رسالة</button>
       <button data-page="inbox" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">📥 صندوق الوارد</button>
     </nav>
     <div class="p-3 border-t border-slate-200">
@@ -57,7 +57,7 @@
 </div>
 
 <script type="module">
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
   getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
@@ -77,7 +77,6 @@ const firebaseConfig = {
 };
 /* =========================================== */
 
-// الدومين الافتراضي لأي اسم مستخدم قصير
 const EMAIL_DOMAIN = "algharbawy.com";
 
 const app  = initializeApp(firebaseConfig);
@@ -92,6 +91,24 @@ const show = (el) => el.classList.remove('hidden');
 const hide = (el) => el.classList.add('hidden');
 const esc  = (s='') => s.toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+/* ============================================================
+   إنشاء مستخدم بدون طرد الأدمن — باستخدام Secondary App
+   ============================================================ */
+async function createAuthUser(email, password) {
+  const secondaryApp = initializeApp(firebaseConfig, 'Secondary-' + Date.now());
+  const secondaryAuth = getAuth(secondaryApp);
+  try {
+    const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
+    const uid = cred.user.uid;
+    await signOut(secondaryAuth);
+    await deleteApp(secondaryApp);
+    return uid;
+  } catch (e) {
+    await deleteApp(secondaryApp);
+    throw e;
+  }
+}
+
 /* ---------- Login ---------- */
 $('#loginBtn').onclick = async () => {
   const u = $('#loginUser').value.trim().toLowerCase();
@@ -100,8 +117,6 @@ $('#loginBtn').onclick = async () => {
   hide(err);
   if (!u || !p) { err.textContent = 'املأ البيانات'; show(err); return; }
 
-  // لو المستخدم كتب إيميل كامل (فيه @) → استخدمه زي ما هو
-  // لو كتب اسم مستخدم بس → ضيف عليه الدومين الافتراضي
   const email = u.includes('@') ? u : `${u}@${EMAIL_DOMAIN}`;
 
   $('#loginBtn').textContent = 'جاري الدخول...';
@@ -118,8 +133,7 @@ $('#loginBtn').onclick = async () => {
       'auth/invalid-email': 'الإيميل غير صحيح',
       'auth/unauthorized-domain': 'الدومين غير مسموح في Firebase',
       'auth/too-many-requests': 'محاولات كتير — استنى شوية',
-      'auth/network-request-failed': 'مشكلة في الاتصال بالإنترنت',
-      'auth/invalid-api-key': 'إعدادات Firebase غلط'
+      'auth/network-request-failed': 'مشكلة في الاتصال بالإنترنت'
     };
     err.textContent = messages[e.code] || `خطأ: ${e.code}`;
     show(err);
@@ -156,6 +170,14 @@ onAuthStateChanged(auth, async (user) => {
     return;
   }
   $('#userLabel').textContent = `${currentUser.name} — ${currentUser.role}`;
+
+  // إخفاء صفحات الإدارة عن المستخدمين العاديين
+  const isAdmin = currentUser.role === 'admin';
+  $$('[data-admin-only]').forEach(el => {
+    if (isAdmin) el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  });
+
   hide($('#loginScreen'));
   show($('#app'));
   navigate('dashboard');
@@ -176,18 +198,34 @@ $('#nav').addEventListener('click', (e) => {
 
 /* ---------- Dashboard ---------- */
 async function dashboard() {
-  const [usersSnap, deptSnap] = await Promise.all([
-    getDocs(collection(db, 'users')),
-    getDocs(collection(db, 'departments'))
-  ]);
-  const total = usersSnap.size;
-  const active = usersSnap.docs.filter(d => d.data().isActive !== false).length;
+  const isAdmin = currentUser.role === 'admin';
+  let stats;
+  if (isAdmin) {
+    const [usersSnap, deptSnap] = await Promise.all([
+      getDocs(collection(db, 'users')),
+      getDocs(collection(db, 'departments'))
+    ]);
+    stats = { total: usersSnap.size, active: usersSnap.docs.filter(d => d.data().isActive !== false).length, depts: deptSnap.size };
+  } else {
+    const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
+    const snap = await getDocs(q);
+    const unread = snap.docs.filter(d => !d.data().read).length;
+    stats = { inbox: snap.size, unread };
+  }
+
   $('#pageContent').innerHTML = `
-    <h1 class="text-2xl font-bold mb-6">الرئيسية</h1>
+    <h1 class="text-2xl font-bold mb-2">أهلاً ${esc(currentUser.name)} 👋</h1>
+    <p class="text-slate-500 mb-6">${isAdmin ? 'لوحة تحكم الأدمن' : 'لوحة المستخدم'}</p>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      ${card('👥','إجمالي المستخدمين', total)}
-      ${card('✅','نشط', active)}
-      ${card('🏢','الأقسام', deptSnap.size)}
+      ${isAdmin ? `
+        ${card('👥','إجمالي المستخدمين', stats.total)}
+        ${card('✅','نشط', stats.active)}
+        ${card('🏢','الأقسام', stats.depts)}
+      ` : `
+        ${card('📥','رسائل الوارد', stats.inbox)}
+        ${card('🔵','غير مقروءة', stats.unread)}
+        ${card('✉️','إرسال رسالة', '—')}
+      `}
     </div>
   `;
 }
@@ -199,7 +237,7 @@ function card(icon, label, value) {
   </div>`;
 }
 
-/* ---------- Users ---------- */
+/* ---------- Users (Admin only) ---------- */
 async function users() {
   const snap = await getDocs(collection(db, 'users'));
   const rows = snap.docs.map(d => {
@@ -210,7 +248,8 @@ async function users() {
       <td class="px-4 py-3"><span class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs">${esc(u.role || 'user')}</span></td>
       <td class="px-4 py-3">${u.isActive === false ? '❌' : '✅'}</td>
       <td class="px-4 py-3 text-left">
-        <button onclick="toggleUser('${d.id}', ${u.isActive === false})" class="text-sm text-blue-600 hover:underline mr-2">${u.isActive === false ? 'تفعيل' : 'تعطيل'}</button>
+        <button onclick="editUser('${d.id}')" class="text-sm text-emerald-600 hover:underline ml-2">تعديل</button>
+        <button onclick="toggleUser('${d.id}', ${u.isActive === false})" class="text-sm text-blue-600 hover:underline ml-2">${u.isActive === false ? 'تفعيل' : 'تعطيل'}</button>
         <button onclick="deleteUserDoc('${d.id}')" class="text-sm text-red-600 hover:underline">حذف</button>
       </td>
     </tr>`;
@@ -221,24 +260,47 @@ async function users() {
       <h1 class="text-2xl font-bold">المستخدمين</h1>
       <button onclick="openAddUser()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ إضافة مستخدم</button>
     </div>
+
     <div id="addUserForm" class="hidden bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
       <h3 class="font-bold mb-4">مستخدم جديد</h3>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <input id="nuName" placeholder="الاسم" class="border rounded-lg px-3 py-2" />
-        <input id="nuUser" placeholder="اسم المستخدم (إنجليزي، بدون @)" class="border rounded-lg px-3 py-2" />
-        <input id="nuPass" type="password" placeholder="كلمة السر" class="border rounded-lg px-3 py-2" />
+        <input id="nuName" placeholder="الاسم الكامل" class="border rounded-lg px-3 py-2" />
+        <input id="nuUser" placeholder="اسم المستخدم (إنجليزي بدون @)" class="border rounded-lg px-3 py-2" />
+        <input id="nuPass" type="text" placeholder="كلمة السر (6 حروف على الأقل)" class="border rounded-lg px-3 py-2" />
         <select id="nuRole" class="border rounded-lg px-3 py-2">
-          <option value="user">user</option>
-          <option value="manager">manager</option>
-          <option value="admin">admin</option>
+          <option value="user">مستخدم عادي</option>
+          <option value="manager">مدير</option>
+          <option value="admin">أدمن</option>
         </select>
       </div>
+      <p class="text-xs text-slate-500 mt-2">الإيميل هيتولّد تلقائيًا: <span class="font-mono">username@algharbawy.com</span></p>
       <p id="nuErr" class="text-red-600 text-sm mt-3 hidden"></p>
       <div class="mt-4 flex gap-2">
         <button onclick="createNewUser()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">حفظ</button>
         <button onclick="closeAddUser()" class="bg-slate-200 px-4 py-2 rounded-lg text-sm">إلغاء</button>
       </div>
     </div>
+
+    <div id="editUserForm" class="hidden bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
+      <h3 class="font-bold mb-4">تعديل مستخدم</h3>
+      <input type="hidden" id="euId" />
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <input id="euName" placeholder="الاسم" class="border rounded-lg px-3 py-2" />
+        <input id="euUser" placeholder="اسم المستخدم" class="border rounded-lg px-3 py-2" disabled />
+        <select id="euRole" class="border rounded-lg px-3 py-2">
+          <option value="user">مستخدم عادي</option>
+          <option value="manager">مدير</option>
+          <option value="admin">أدمن</option>
+        </select>
+        <input id="euPass" type="text" placeholder="كلمة سر جديدة (اتركها فارغة لو مش عايز تغييرها)" class="border rounded-lg px-3 py-2" />
+      </div>
+      <p id="euErr" class="text-red-600 text-sm mt-3 hidden"></p>
+      <div class="mt-4 flex gap-2">
+        <button onclick="saveEditUser()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">حفظ التعديلات</button>
+        <button onclick="closeEditUser()" class="bg-slate-200 px-4 py-2 rounded-lg text-sm">إلغاء</button>
+      </div>
+    </div>
+
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
       <table class="w-full text-right">
         <thead class="bg-slate-50 text-slate-600 text-sm">
@@ -255,7 +317,7 @@ async function users() {
     </div>
   `;
 }
-window.openAddUser = () => show($('#addUserForm'));
+window.openAddUser = () => { show($('#addUserForm')); hide($('#editUserForm')); };
 window.closeAddUser = () => hide($('#addUserForm'));
 
 window.createNewUser = async () => {
@@ -267,30 +329,83 @@ window.createNewUser = async () => {
   hide(err);
   if (!name || !user || !pass) { err.textContent='املأ كل البيانات'; show(err); return; }
   if (!/^[a-z0-9_.]+$/.test(user)) { err.textContent='اسم المستخدم بحروف إنجليزية وأرقام فقط'; show(err); return; }
+  if (pass.length < 6) { err.textContent='كلمة السر 6 حروف على الأقل'; show(err); return; }
+
+  $('#nuErr').textContent = 'جاري الإنشاء...'; show(err); err.className = 'text-blue-600 text-sm mt-3';
+
   try {
-    const cred = await createUserWithEmailAndPassword(auth, `${user}@${EMAIL_DOMAIN}`, pass);
-    await setDoc(doc(db, 'users', cred.user.uid), {
-      name, username: user, role, isActive: true, createdAt: serverTimestamp()
+    const email = `${user}@${EMAIL_DOMAIN}`;
+    const uid = await createAuthUser(email, pass);
+    await setDoc(doc(db, 'users', uid), {
+      name, username: user, email, role, isActive: true, createdAt: serverTimestamp()
     });
-    alert('تم إنشاء المستخدم ✅ — سجّل دخول تاني بالأدمن');
-    await signOut(auth);
+    err.className = 'text-green-600 text-sm mt-3';
+    err.textContent = `✅ تم إنشاء ${user} بنجاح!`;
+    $('#nuName').value = ''; $('#nuUser').value = ''; $('#nuPass').value = '';
+    setTimeout(() => { hide($('#addUserForm')); users(); }, 1500);
   } catch (e) {
     console.error('CREATE USER ERROR:', e.code, e.message);
+    err.className = 'text-red-600 text-sm mt-3';
+    err.textContent = e.code === 'auth/email-already-in-use' ? 'اسم المستخدم ده مستخدم قبل كده' : e.message;
+    show(err);
+  }
+};
+
+window.editUser = async (uid) => {
+  const snap = await getDoc(doc(db, 'users', uid));
+  const u = snap.data();
+  $('#euId').value = uid;
+  $('#euName').value = u.name || '';
+  $('#euUser').value = u.username || '';
+  $('#euRole').value = u.role || 'user';
+  $('#euPass').value = '';
+  show($('#editUserForm'));
+  hide($('#addUserForm'));
+  $('#editUserForm').scrollIntoView({ behavior: 'smooth' });
+};
+
+window.closeEditUser = () => hide($('#editUserForm'));
+
+window.saveEditUser = async () => {
+  const uid = $('#euId').value;
+  const name = $('#euName').value.trim();
+  const role = $('#euRole').value;
+  const newPass = $('#euPass').value;
+  const err = $('#euErr');
+  hide(err);
+
+  if (!name) { err.textContent = 'اكتب الاسم'; show(err); return; }
+
+  try {
+    await updateDoc(doc(db, 'users', uid), { name, role });
+    if (newPass) {
+      if (newPass.length < 6) { err.textContent = 'كلمة السر 6 حروف على الأقل'; show(err); return; }
+      // ملاحظة: تغيير باسورد مستخدم آخر محتاج Admin SDK (Cloud Functions)
+      err.className = 'text-orange-600 text-sm mt-3';
+      err.textContent = '⚠️ تغيير الباسورد محتاج Cloud Function — اسم المستخدم والدور اتحدّثوا بس';
+      show(err);
+      setTimeout(() => { hide($('#editUserForm')); users(); }, 2500);
+      return;
+    }
+    hide($('#editUserForm'));
+    users();
+  } catch (e) {
     err.textContent = e.message;
     show(err);
   }
 };
+
 window.toggleUser = async (uid, activate) => {
   await updateDoc(doc(db, 'users', uid), { isActive: activate });
   users();
 };
 window.deleteUserDoc = async (uid) => {
-  if (!confirm('متأكد من الحذف؟ (هيتحذف من Firestore فقط)')) return;
+  if (!confirm('متأكد من الحذف؟ (هيتحذف من Firestore بس، من Authentication يدوي)')) return;
   await deleteDoc(doc(db, 'users', uid));
   users();
 };
 
-/* ---------- Departments ---------- */
+/* ---------- Departments (Admin only) ---------- */
 async function departments() {
   const snap = await getDocs(collection(db, 'departments'));
   const rows = snap.docs.map(d => {
@@ -343,8 +458,12 @@ window.deleteDept = async (id) => {
 /* ---------- Messages ---------- */
 async function messages() {
   const usersSnap = await getDocs(collection(db, 'users'));
-  const userOpts = usersSnap.docs.map(d => `<option value="${d.id}">${esc(d.data().name)}</option>`).join('');
-  const msgSnap = await getDocs(collection(db, 'messages'));
+  const userOpts = usersSnap.docs
+    .filter(d => d.id !== currentUser.uid)  // استثني نفسك
+    .map(d => `<option value="${d.id}">${esc(d.data().name)} (${esc(d.data().username)})</option>`).join('');
+
+  const q1 = query(collection(db, 'messages'), where('fromUserId', '==', currentUser.uid));
+  const msgSnap = await getDocs(q1);
   const sent = msgSnap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
   const sentRows = sent.map(m => `
@@ -374,6 +493,7 @@ async function messages() {
           <textarea id="mBody" rows="4" class="w-full border rounded-lg px-3 py-2"></textarea>
         </div>
         <button onclick="sendMessage()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">إرسال</button>
+        <p id="mStatus" class="text-sm hidden"></p>
       </div>
     </div>
     <h2 class="font-bold mb-3">الرسائل المُرسلة</h2>
@@ -395,19 +515,27 @@ window.sendMessage = async () => {
   const toUserId = $('#mTo').value;
   const subject = $('#mSubject').value.trim();
   const body = $('#mBody').value.trim();
+  const status = $('#mStatus');
+  status.classList.add('hidden');
+
   if (!toUserId || !subject) return alert('اختر مستخدم واكتب الموضوع');
   const toUserDoc = await getDoc(doc(db, 'users', toUserId));
   const toUserName = toUserDoc.data()?.name || '';
+
   await addDoc(collection(db, 'messages'), {
     subject, body,
     fromUserId: currentUser.uid,
     fromUserName: currentUser.name,
+    fromUserUsername: currentUser.username,
     toUserId, toUserName,
     read: false,
     createdAt: serverTimestamp()
   });
-  alert('تم الإرسال ✅');
-  messages();
+  status.textContent = '✅ تم الإرسال!';
+  status.className = 'text-sm text-green-600 mt-2';
+  status.classList.remove('hidden');
+  $('#mSubject').value = ''; $('#mBody').value = '';
+  setTimeout(() => messages(), 1000);
 };
 
 /* ---------- Inbox ---------- */
@@ -429,7 +557,7 @@ async function inbox() {
     </div>`).join('');
 
   $('#pageContent').innerHTML = `
-    <h1 class="text-2xl font-bold mb-6">صندوق الوارد</h1>
+    <h1 class="text-2xl font-bold mb-6">صندوق الوارد <span class="text-sm font-normal text-slate-400">(${list.length})</span></h1>
     <div class="space-y-3">
       ${rows || '<p class="text-slate-400 text-center p-6">لا رسائل</p>'}
     </div>
