@@ -23,7 +23,6 @@
   #sidebar { transition: margin-right 0.25s ease; }
   #sidebar.collapsed { margin-right: -16rem; }
 
-  /* Inbox responsive */
   .inbox-reading { display: none; }
   @media (min-width: 768px) {
     .inbox-reading { display: flex; }
@@ -31,11 +30,10 @@
   }
   @media (max-width: 767px) {
     .inbox-list { display: flex; }
-    .inbox-list.mobile-hidden { display: none; }
-    .inbox-reading.mobile-show { display: flex; }
+    .inbox-list.mobile-hidden { display: none !important; }
+    .inbox-reading.mobile-show { display: flex !important; }
   }
 
-  /* Notification pulse */
   .pulse { animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
 </style>
@@ -104,7 +102,6 @@
         <span id="notifBadge" class="hidden absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1"></span>
       </button>
 
-      <!-- Notification Dropdown -->
       <div id="notifDropdown" style="display:none" class="absolute left-0 mt-2 w-80 md:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50">
         <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
           <div class="font-bold text-slate-800">الإشعارات</div>
@@ -156,7 +153,7 @@
         </button>
       </nav>
       <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">
-        Mail System v1.3
+        Mail System v1.4
       </div>
     </aside>
 
@@ -199,7 +196,7 @@
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
-    <div class="flex-1 overflow-y-auto p-5 space-y-4">
+    <div class="flex-1 overflow-y-auto p-5 space-y-4" id="composeBody">
       <div id="broadcastBox" style="display:none" class="bg-amber-50 border border-amber-200 rounded-lg p-3">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()" class="w-5 h-5 accent-amber-600 cursor-pointer" />
@@ -223,6 +220,7 @@
       <div>
         <textarea id="cBody" rows="8" placeholder="اكتب رسالتك هنا..." class="w-full border border-slate-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent resize-none"></textarea>
       </div>
+      <input type="hidden" id="cThreadId" />
       <p id="cStatus" class="text-sm hidden"></p>
     </div>
     <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-between bg-slate-50 md:rounded-b-xl">
@@ -268,6 +266,9 @@ let sidebarCollapsed = false;
 let unsubMessages = null;
 let unreadMessages = [];
 let lastUnreadCount = 0;
+let selectedThreadId = null;
+let threadsCache = [];
+window._currentThreadLastMsgId = null;
 
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -296,7 +297,7 @@ const fullDate = (ts) => {
 const isOwner = () => currentUser?.role === 'owner';
 const isAdmin = () => currentUser?.role === 'admin' || isOwner();
 
-/* ---------- Toast Notifications ---------- */
+/* ---------- Toast ---------- */
 function showToast(title, body, onClick) {
   const container = $('#toastContainer');
   const toast = document.createElement('div');
@@ -322,20 +323,7 @@ function showToast(title, body, onClick) {
   setTimeout(() => toast.remove(), 6000);
 }
 
-/* ---------- Browser Notification ---------- */
-function requestBrowserNotifPermission() {
-  if ('Notification' in window && Notification.permission === 'default') {
-    Notification.requestPermission();
-  }
-}
-function showBrowserNotif(title, body, onClick) {
-  if ('Notification' in window && Notification.permission === 'granted') {
-    const n = new Notification(title, { body, icon: 'https://www.gstatic.com/images/branding/product/1x/gmail_2020q4_48dp.png' });
-    if (onClick) n.onclick = () => { window.focus(); onClick(); };
-  }
-}
-
-/* ---------- Real-time Messages Listener ---------- */
+/* ---------- Real-time Listener ---------- */
 function startMessagesListener() {
   if (unsubMessages) unsubMessages();
   const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
@@ -343,25 +331,22 @@ function startMessagesListener() {
     const all = [];
     snap.forEach(d => all.push({ id: d.id, ...d.data() }));
     all.sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-    
     unreadMessages = all.filter(m => !m.read);
     updateNotificationUI();
-    
-    // Detect new messages
+
     if (lastUnreadCount > 0 && unreadMessages.length > lastUnreadCount) {
       const newMsg = unreadMessages[0];
       if (newMsg && newMsg.fromUserId !== currentUser.uid) {
         showToast(`رسالة جديدة من ${newMsg.fromUserName}`, newMsg.subject, () => {
           navigate('inbox');
-          setTimeout(() => selectMsg(newMsg.id), 300);
-        });
-        showBrowserNotif(`رسالة جديدة من ${newMsg.fromUserName}`, newMsg.subject, () => {
-          navigate('inbox');
-          setTimeout(() => selectMsg(newMsg.id), 300);
+          setTimeout(() => openThread(newMsg.threadId || newMsg.id), 300);
         });
       }
     }
     lastUnreadCount = unreadMessages.length;
+
+    // لو إحنا في صفحة الوارد → حدّثها فورًا
+    if (document.getElementById('inboxContainer')) inbox();
   });
 }
 
@@ -370,7 +355,6 @@ function updateNotificationUI() {
   const el = $('#inboxCount');
   const elM = $('#inboxCountM');
   const notifBadge = $('#notifBadge');
-  
   if (count > 0) {
     if (el) { el.textContent = count; show(el); }
     if (elM) { elM.textContent = count; show(elM); }
@@ -382,10 +366,7 @@ function updateNotificationUI() {
   } else {
     if (el) hide(el);
     if (elM) hide(elM);
-    if (notifBadge) {
-      notifBadge.classList.add('hidden');
-      notifBadge.classList.remove('pulse');
-    }
+    if (notifBadge) { notifBadge.classList.add('hidden'); notifBadge.classList.remove('pulse'); }
   }
   renderNotifDropdown();
 }
@@ -402,7 +383,7 @@ function renderNotifDropdown() {
     return;
   }
   list.innerHTML = unreadMessages.slice(0, 10).map(m => `
-    <div onclick="openNotifMsg('${m.id}')" class="px-4 py-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition flex items-start gap-3">
+    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" class="px-4 py-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition flex items-start gap-3">
       <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(m.fromUserName)}</div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
@@ -417,18 +398,16 @@ function renderNotifDropdown() {
   icons();
 }
 
-window.openNotifMsg = (id) => {
+window.openNotifMsg = (msgId, threadId) => {
   hideNotifDropdown();
   navigate('inbox');
-  setTimeout(() => selectMsg(id), 300);
+  setTimeout(() => openThread(threadId), 400);
 };
 
 window.markAllRead = async () => {
   if (unreadMessages.length === 0) return;
   const batch = writeBatch(db);
-  unreadMessages.forEach(m => {
-    batch.update(doc(db, 'messages', m.id), { read: true });
-  });
+  unreadMessages.forEach(m => batch.update(doc(db, 'messages', m.id), { read: true }));
   await batch.commit();
   hideNotifDropdown();
 };
@@ -436,7 +415,7 @@ window.markAllRead = async () => {
 function showNotifDropdown() { $('#notifDropdown').style.display = 'block'; }
 function hideNotifDropdown() { $('#notifDropdown').style.display = 'none'; }
 
-/* ---------- Sidebar Toggle ---------- */
+/* ---------- Sidebar ---------- */
 function toggleSidebar() {
   const sidebar = $('#sidebar');
   sidebarCollapsed = !sidebarCollapsed;
@@ -449,12 +428,10 @@ function initSidebar() {
   const sidebar = $('#sidebar');
   const mobileNav = $('#mobileNav');
   const main = $('#mainContent');
-
   try {
     const saved = localStorage.getItem('sidebarCollapsed');
     if (saved === '1') { sidebarCollapsed = true; sidebar.classList.add('collapsed'); }
   } catch(e){}
-
   const update = () => {
     if (window.innerWidth < 768) {
       sidebar.style.display = 'none';
@@ -556,16 +533,12 @@ onAuthStateChanged(auth, async (user) => {
   });
 
   await loadUsersCache();
-
   hide($('#loginScreen'));
   show($('#app'));
   icons();
   initSidebar();
   navigate('dashboard');
-
-  // ابدأ الإشعارات الحية
   startMessagesListener();
-  requestBrowserNotifPermission();
 });
 
 async function loadUsersCache() {
@@ -609,7 +582,6 @@ async function dashboard() {
     const total = usersSnap.size;
     const active = usersSnap.docs.filter(d => d.data().isActive !== false).length;
     const unread = unreadMessages.length;
-
     $('#pageContent').innerHTML = `
       <div class="p-4 md:p-8 max-w-7xl mx-auto fade-in">
         <div class="mb-6 md:mb-8">
@@ -634,9 +606,7 @@ async function dashboard() {
       </div>
     `;
   } else {
-    const unread = unreadMessages.length;
-    const total = unreadMessages.length + inboxList.length; // fake total
-    const allMsgsSnap = await getDocs(query(collection(db,'messages'), where('toUserId','==',currentUser.uid)));
+    const snap = await getDocs(query(collection(db,'messages'), where('toUserId','==',currentUser.uid)));
     $('#pageContent').innerHTML = `
       <div class="p-4 md:p-8 max-w-5xl mx-auto fade-in">
         <div class="mb-6 md:mb-8">
@@ -644,8 +614,8 @@ async function dashboard() {
           <p class="text-slate-500 mt-1 text-sm">${new Date().toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
         </div>
         <div class="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
-          ${statCard('inbox', 'رسائل الوارد', allMsgsSnap.size, 'bg-blue-50', 'text-blue-600', "navigate('inbox')")}
-          ${statCard('mail', 'غير مقروءة', unread, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
+          ${statCard('inbox', 'رسائل الوارد', snap.size, 'bg-blue-50', 'text-blue-600', "navigate('inbox')")}
+          ${statCard('mail', 'غير مقروءة', unreadMessages.length, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-5 md:p-6">
           <h2 class="font-bold text-lg mb-4 text-slate-800">إجراءات سريعة</h2>
@@ -917,6 +887,7 @@ window.openCompose = async () => {
   ).join('');
   $('#cSubject').value = '';
   $('#cBody').value = '';
+  $('#cThreadId').value = '';
   $('#cBroadcast').checked = false;
   $('#toBox').classList.remove('hidden');
   hide($('#cStatus'));
@@ -947,6 +918,7 @@ window.sendMessage = async () => {
   const toUserId = $('#cTo').value;
   const subject = $('#cSubject').value.trim();
   const body = $('#cBody').value.trim();
+  const replyToThread = $('#cThreadId')?.value || null;
   const status = $('#cStatus');
   const sendBtn = $('#sendBtn');
   hide(status);
@@ -955,45 +927,48 @@ window.sendMessage = async () => {
   if (!subject) { status.className='text-sm text-red-600'; status.textContent='اكتب الموضوع'; show(status); return; }
 
   sendBtn.disabled = true;
-  sendBtn.querySelector('span').textContent = broadcast ? 'جاري الإرسال للجميع...' : 'جاري الإرسال...';
+  sendBtn.querySelector('span').textContent = 'جاري الإرسال...';
 
   try {
     if (broadcast) {
       const recipients = allUsersCache.filter(u => u.id !== currentUser.uid && u.isActive !== false);
       let sent = 0;
       for (const u of recipients) {
-        await addDoc(collection(db, 'messages'), {
+        const newDoc = await addDoc(collection(db, 'messages'), {
           subject, body,
           fromUserId: currentUser.uid,
           fromUserName: currentUser.name,
           fromUserUsername: currentUser.username,
           toUserId: u.id, toUserName: u.name,
           read: false, isBroadcast: true,
+          threadId: null,
           createdAt: serverTimestamp()
         });
+        await updateDoc(newDoc, { threadId: newDoc.id });
         sent++;
-        status.className = 'text-sm text-blue-600';
-        status.textContent = `جاري الإرسال... ${sent}/${recipients.length}`;
-        show(status);
       }
       status.className = 'text-sm text-green-600';
       status.textContent = `✅ تم إرسال الرسالة إلى ${recipients.length} مستخدم!`;
-      show(status);
     } else {
       const toUser = allUsersCache.find(u => u.id === toUserId);
-      await addDoc(collection(db, 'messages'), {
+      const newDoc = await addDoc(collection(db, 'messages'), {
         subject, body,
         fromUserId: currentUser.uid,
         fromUserName: currentUser.name,
         fromUserUsername: currentUser.username,
         toUserId, toUserName: toUser?.name || '',
         read: false,
+        threadId: replyToThread || null,
+        parentId: replyToThread ? (window._currentThreadLastMsgId || null) : null,
         createdAt: serverTimestamp()
       });
+      if (!replyToThread) {
+        await updateDoc(newDoc, { threadId: newDoc.id });
+      }
       status.className = 'text-sm text-green-600';
       status.textContent = '✅ تم الإرسال!';
-      show(status);
     }
+    show(status);
     setTimeout(() => { closeCompose(); }, 1000);
   } catch (e) {
     status.className = 'text-sm text-red-600';
@@ -1005,46 +980,75 @@ window.sendMessage = async () => {
   }
 };
 
-/* ---------- Inbox ---------- */
-let selectedMsgId = null;
-let inboxList = [];
-
+/* ---------- Inbox (Threads) ---------- */
 async function inbox() {
-  const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
-  const snap = await getDocs(q);
-  inboxList = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-    .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-  selectedMsgId = null;
-  renderInbox();
+  const q1 = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
+  const q2 = query(collection(db, 'messages'), where('fromUserId', '==', currentUser.uid));
+  const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+
+  const all = new Map();
+  [...snap1.docs, ...snap2.docs].forEach(d => {
+    all.set(d.id, { id: d.id, ...d.data() });
+  });
+
+  const threadsMap = {};
+  all.forEach(m => {
+    const tid = m.threadId || m.id;
+    if (!threadsMap[tid]) {
+      threadsMap[tid] = { threadId: tid, messages: [], subject: m.subject, firstAt: Infinity };
+    }
+    threadsMap[tid].messages.push(m);
+    if (m.createdAt?.seconds && m.createdAt.seconds < threadsMap[tid].firstAt) {
+      threadsMap[tid].subject = m.subject;
+      threadsMap[tid].firstAt = m.createdAt.seconds;
+    }
+  });
+
+  threadsCache = Object.values(threadsMap).map(t => {
+    t.messages.sort((a,b) => (a.createdAt?.seconds||0) - (b.createdAt?.seconds||0));
+    const mine = t.messages.filter(m => m.toUserId === currentUser.uid);
+    t.unread = mine.filter(m => !m.read).length;
+    t.lastMsg = t.messages[t.messages.length - 1];
+    t.lastAt = t.lastMsg.createdAt?.seconds || 0;
+    return t;
+  }).sort((a,b) => b.lastAt - a.lastAt);
+
+  renderThreadList();
 }
 
-function renderInbox() {
-  const listHtml = inboxList.map(m => `
-    <div onclick="selectMsg('${m.id}')" class="msg-item ${m.id === selectedMsgId ? 'active' : ''} px-4 py-3 border-b border-slate-100">
-      <div class="flex items-start gap-3">
-        <div class="relative">
-          <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(m.fromUserName)}</div>
-          ${m.isBroadcast ? '<div class="absolute -bottom-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center"><i data-lucide="megaphone" class="w-2.5 h-2.5 text-white"></i></div>' : ''}
-        </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between gap-2">
-            <span class="text-sm text-slate-800 truncate ${!m.read ? 'font-bold' : 'font-medium'}">${esc(m.fromUserName || '')}</span>
-            <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(m.createdAt)}</span>
+function renderThreadList() {
+  const listHtml = threadsCache.map(t => {
+    const last = t.lastMsg;
+    const isFromMe = last.fromUserId === currentUser.uid;
+    return `
+      <div onclick="openThread('${t.threadId}')" class="msg-item ${t.threadId === selectedThreadId ? 'active' : ''} px-4 py-3 border-b border-slate-100">
+        <div class="flex items-start gap-3">
+          <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(last.fromUserName)}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-sm text-slate-800 truncate ${t.unread ? 'font-bold' : 'font-medium'}">${esc(last.fromUserName)}</span>
+              <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(last.createdAt)}</span>
+            </div>
+            <div class="text-sm text-slate-700 truncate ${t.unread ? 'font-semibold' : ''}">${esc(t.subject)}</div>
+            <div class="text-xs text-slate-400 truncate mt-0.5">
+              ${isFromMe ? '<span class="text-[#0078D4] font-medium">أنت: </span>' : ''}${esc((last.body || '').slice(0, 55))}
+            </div>
+            <div class="flex items-center gap-2 mt-1">
+              ${t.messages.length > 1 ? `<span class="text-xs text-slate-400 flex items-center gap-1">💬 ${t.messages.length}</span>` : ''}
+              ${t.unread ? `<span class="text-xs bg-red-500 text-white rounded-full px-1.5 py-0.5">${t.unread}</span>` : ''}
+            </div>
           </div>
-          <div class="text-sm text-slate-700 truncate ${!m.read ? 'font-semibold' : ''}">${esc(m.subject)}</div>
-          <div class="text-xs text-slate-400 truncate mt-0.5">${esc((m.body || '').slice(0, 60))}</div>
-          ${m.isBroadcast ? '<div class="text-xs text-amber-600 font-medium mt-0.5">📢 إعلان عام</div>' : ''}
         </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   $('#pageContent').innerHTML = `
     <div id="inboxContainer" class="h-full flex fade-in">
       <div id="inboxList" class="inbox-list w-full md:w-96 border-l border-slate-200 bg-white flex-col">
         <div class="p-4 border-b border-slate-200 bg-white z-10 flex-shrink-0">
           <h2 class="font-bold text-slate-800">صندوق الوارد</h2>
-          <p class="text-xs text-slate-500 mt-0.5">${inboxList.length} رسالة · ${inboxList.filter(m => !m.read).length} غير مقروءة</p>
+          <p class="text-xs text-slate-500 mt-0.5">${threadsCache.length} محادثة</p>
         </div>
         <div class="flex-1 overflow-y-auto">
           ${listHtml || '<div class="text-center py-12 text-slate-400 text-sm">لا رسائل</div>'}
@@ -1055,75 +1059,91 @@ function renderInbox() {
       </div>
     </div>
   `;
-  renderReading();
+  renderThreadReading();
   icons();
 }
 
-function renderReading() {
-  const selected = inboxList.find(m => m.id === selectedMsgId);
+window.openThread = (threadId) => {
+  selectedThreadId = threadId;
+  renderThreadList();
+  if (window.innerWidth < 768) {
+    $('#inboxList')?.classList.add('mobile-hidden');
+    $('#inboxReading')?.classList.add('mobile-show');
+  }
+  const t = threadsCache.find(x => x.threadId === threadId);
+  if (t) {
+    t.messages.filter(m => m.toUserId === currentUser.uid && !m.read).forEach(m => {
+      updateDoc(doc(db, 'messages', m.id), { read: true });
+      m.read = true;
+    });
+    setTimeout(updateNotificationUI, 300);
+  }
+};
+
+function renderThreadReading() {
+  const t = threadsCache.find(x => x.threadId === selectedThreadId);
   const content = $('#readingContent');
   if (!content) return;
 
-  if (!selected) {
+  if (!t) {
     content.innerHTML = `
       <div class="flex flex-col items-center justify-center h-full text-slate-400 p-8 min-h-[400px]">
         <i data-lucide="mail-open" class="w-16 h-16 mb-4 opacity-40"></i>
-        <p class="text-sm">اختر رسالة لعرضها</p>
+        <p class="text-sm">اختر محادثة لعرضها</p>
       </div>`;
     icons();
     return;
   }
 
+  window._currentThreadLastMsgId = t.lastMsg.id;
+
+  const messagesHtml = t.messages.map((m, idx) => {
+    const isMe = m.fromUserId === currentUser.uid;
+    const isFirst = idx === 0;
+    return `
+      <div class="mb-4 ${isMe ? 'flex justify-start' : 'flex justify-end'}">
+        <div class="max-w-[85%] ${isMe ? 'bg-[#e5f0fa] border-[#0078D4]' : 'bg-slate-100 border-slate-200'} border rounded-2xl p-4">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="w-7 h-7 rounded-full ${isMe ? 'bg-[#0078D4]' : 'bg-slate-500'} text-white flex items-center justify-center font-bold text-[10px]">${initials(m.fromUserName)}</div>
+            <span class="font-semibold text-xs text-slate-700">${isMe ? 'أنت' : esc(m.fromUserName)}</span>
+            <span class="text-[10px] text-slate-400">${m.createdAt ? new Date(m.createdAt.seconds*1000).toLocaleString('ar-EG', {hour:'2-digit', minute:'2-digit'}) : ''}</span>
+          </div>
+          ${isFirst ? `<div class="text-sm font-bold text-slate-800 mb-2 pb-2 border-b border-slate-300/50">${esc(m.subject)}</div>` : ''}
+          <div class="text-sm text-slate-700 whitespace-pre-line leading-relaxed">${esc(m.body || '')}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  const lastMsg = t.lastMsg;
+  const replyToUserId = lastMsg.fromUserId === currentUser.uid ? lastMsg.toUserId : lastMsg.fromUserId;
+  const replyToName = lastMsg.fromUserId === currentUser.uid ? lastMsg.toUserName : lastMsg.fromUserName;
+
   content.innerHTML = `
-    <div class="p-4 md:p-8 fade-in">
+    <div class="p-4 md:p-8 fade-in flex flex-col h-full">
       <button onclick="backToList()" class="md:hidden mb-4 flex items-center gap-2 text-[#0078D4] font-medium text-sm">
         <i data-lucide="arrow-right" class="w-4 h-4"></i>
         <span>رجوع للقائمة</span>
       </button>
 
-      <div class="flex items-start justify-between gap-4 mb-6">
+      <div class="flex items-start justify-between gap-4 mb-4 pb-4 border-b border-slate-200">
         <div class="flex-1 min-w-0">
-          <h1 class="text-xl md:text-2xl font-bold text-slate-800 mb-2 break-words">${esc(selected.subject)}</h1>
-          ${selected.isBroadcast ? '<span class="inline-flex items-center gap-1 text-xs bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full font-semibold"><i data-lucide="megaphone" class="w-3 h-3"></i>إعلان عام</span>' : ''}
+          <h1 class="text-lg md:text-xl font-bold text-slate-800 mb-1 break-words">${esc(t.subject)}</h1>
+          <p class="text-xs text-slate-500">${t.messages.length} رسالة</p>
         </div>
-        <div class="flex items-center gap-1 flex-shrink-0">
-          ${!selected.read ? `<button onclick="markRead('${selected.id}', true)" class="p-2 rounded-lg hover:bg-blue-50 text-blue-600 transition" title="تحديد كمقروء"><i data-lucide="mail-open" class="w-4 h-4"></i></button>` : ''}
-          ${selected.read ? `<button onclick="markRead('${selected.id}', false)" class="p-2 rounded-lg hover:bg-blue-50 text-blue-600 transition" title="تحديد كغير مقروء"><i data-lucide="mail" class="w-4 h-4"></i></button>` : ''}
-          <button onclick="deleteMsg('${selected.id}')" class="p-2 rounded-lg hover:bg-red-50 text-red-600 transition" title="حذف"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-        </div>
-      </div>
-
-      <div class="bg-slate-50 rounded-xl p-4 mb-6 border border-slate-200">
-        <div class="flex items-start gap-3">
-          <div class="w-12 h-12 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-base flex-shrink-0">${initials(selected.fromUserName)}</div>
-          <div class="flex-1 min-w-0">
-            <div class="flex flex-wrap items-baseline gap-2">
-              <span class="font-bold text-slate-800">${esc(selected.fromUserName)}</span>
-              ${selected.fromUserUsername ? `<span class="text-xs font-mono text-slate-400">@${esc(selected.fromUserUsername)}</span>` : ''}
-            </div>
-            <div class="text-xs text-slate-500 mt-1 flex flex-wrap items-center gap-2">
-              <span class="flex items-center gap-1"><i data-lucide="calendar" class="w-3 h-3"></i>${fullDate(selected.createdAt)}</span>
-            </div>
-            <div class="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
-              <i data-lucide="user" class="w-3 h-3"></i>
-              <span>إلى: ${esc(currentUser.name)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="bg-white border border-slate-200 rounded-xl p-5 md:p-6 mb-6">
-        <div class="text-slate-700 whitespace-pre-line leading-loose text-base">${esc(selected.body || '')}</div>
-      </div>
-
-      <div class="flex flex-wrap gap-2 pt-4 border-t border-slate-200">
-        <button onclick="replyTo('${selected.fromUserId}', '${esc(selected.subject).replace(/'/g,"\\'")}')" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm">
-          <i data-lucide="reply" class="w-4 h-4"></i>
-          <span>رد</span>
-        </button>
-        <button onclick="deleteMsg('${selected.id}')" class="bg-white hover:bg-red-50 text-red-600 border border-red-200 px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition">
+        <button onclick="deleteThread('${t.threadId}')" class="p-2 rounded-lg hover:bg-red-50 text-red-600 transition flex-shrink-0" title="حذف المحادثة">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
-          <span>حذف</span>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto mb-4">
+        ${messagesHtml}
+      </div>
+
+      <div class="pt-4 border-t border-slate-200">
+        <button onclick="replyToThread('${replyToUserId}', '${esc(replyToName).replace(/'/g,"\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g,"\\'")}')" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition shadow-sm">
+          <i data-lucide="reply" class="w-4 h-4"></i>
+          <span>رد على ${esc(replyToName)}</span>
         </button>
       </div>
     </div>
@@ -1131,63 +1151,33 @@ function renderReading() {
   icons();
 }
 
-window.selectMsg = (id) => {
-  selectedMsgId = id;
-  renderInbox();
-  // على الموبايل: اخفي القائمة واظهر الرسالة
-  if (window.innerWidth < 768) {
-    const list = $('#inboxList');
-    const reading = $('#inboxReading');
-    if (list) list.classList.add('mobile-hidden');
-    if (reading) {
-      reading.classList.remove('mobile-hidden');
-      reading.classList.add('mobile-show');
-    }
-  }
-  const m = inboxList.find(x => x.id === id);
-  if (m && !m.read) {
-    setTimeout(() => markRead(id, true), 500);
-  }
-};
-
-window.backToList = () => {
-  const list = $('#inboxList');
-  const reading = $('#inboxReading');
-  if (list) list.classList.remove('mobile-hidden');
-  if (reading) reading.classList.remove('mobile-show');
-  selectedMsgId = null;
-  renderInbox();
-};
-
-window.markRead = async (id, read = true) => {
-  await updateDoc(doc(db, 'messages', id), { read });
-  const m = inboxList.find(x => x.id === id);
-  if (m) m.read = read;
-  renderInbox();
-  // على الموبايل: اقفل القائمة وارجع للرسالة
-  if (selectedMsgId && window.innerWidth < 768) {
-    const list = $('#inboxList');
-    const reading = $('#inboxReading');
-    if (list) list.classList.add('mobile-hidden');
-    if (reading) reading.classList.add('mobile-show');
-  }
-};
-
-window.deleteMsg = async (id) => {
-  if (!confirm('حذف الرسالة؟')) return;
-  await deleteDoc(doc(db, 'messages', id));
-  inboxList = inboxList.filter(m => m.id !== id);
-  selectedMsgId = null;
-  backToList();
-};
-
-window.replyTo = async (userId, subject) => {
+window.replyToThread = async (userId, userName, threadId, subject) => {
   await openCompose();
   $('#cTo').value = userId;
   $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
+  $('#cThreadId').value = threadId;
   $('#cBroadcast').checked = false;
   $('#toBox').classList.remove('hidden');
   setTimeout(() => $('#cBody').focus(), 150);
+};
+
+window.deleteThread = async (threadId) => {
+  if (!confirm('حذف كل الرسائل في المحادثة؟')) return;
+  const t = threadsCache.find(x => x.threadId === threadId);
+  if (!t) return;
+  for (const m of t.messages) {
+    await deleteDoc(doc(db, 'messages', m.id));
+  }
+  threadsCache = threadsCache.filter(x => x.threadId !== threadId);
+  selectedThreadId = null;
+  renderThreadList();
+};
+
+window.backToList = () => {
+  $('#inboxList')?.classList.remove('mobile-hidden');
+  $('#inboxReading')?.classList.remove('mobile-show');
+  selectedThreadId = null;
+  renderThreadList();
 };
 
 /* ---------- Sent ---------- */
@@ -1202,10 +1192,8 @@ async function sent() {
   list.forEach(m => {
     if (m.isBroadcast && m.createdAt?.seconds) {
       const key = `${m.subject}_${m.createdAt.seconds}_${m.body?.slice(0,20)}`;
-      if (!grouped[key]) {
-        grouped[key] = { ...m, count: 1 };
-        unique.push(grouped[key]);
-      } else grouped[key].count++;
+      if (!grouped[key]) { grouped[key] = { ...m, count: 1 }; unique.push(grouped[key]); }
+      else grouped[key].count++;
     } else unique.push({ ...m, count: 1 });
   });
 
