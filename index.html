@@ -3,57 +3,182 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>لوحة الإدارة</title>
+<title>Mail System</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  body { font-family: 'Cairo', sans-serif; }
+  * { font-family: 'Cairo', 'Segoe UI', sans-serif; }
   .hidden { display: none !important; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  .msg-item { transition: all 0.15s ease; }
+  .msg-item:hover { background: #f3f4f6; }
+  .msg-item.active { background: #e5f0fa; border-right: 3px solid #0078D4; }
+  .fade-in { animation: fadeIn 0.2s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+  .modal-overlay { animation: modalIn 0.2s ease-out; }
+  @keyframes modalIn { from { opacity: 0; } to { opacity: 1; } }
 </style>
 </head>
-<body class="bg-slate-100 min-h-screen">
+<body class="bg-[#f3f2f1] min-h-screen">
 
-<!-- شاشة الدخول -->
-<div id="loginScreen" class="min-h-screen flex items-center justify-center p-4">
-  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
-    <h1 class="text-2xl font-bold text-center mb-2 text-slate-800">لوحة الإدارة</h1>
-    <p class="text-center text-slate-500 text-sm mb-6">سجّل دخولك للمتابعة</p>
+<!-- ============ LOGIN ============ -->
+<div id="loginScreen" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#0078D4] via-[#106EBE] to-[#0a4a8a]">
+  <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
+    <div class="flex justify-center mb-6">
+      <div class="w-16 h-16 rounded-2xl bg-[#0078D4] flex items-center justify-center shadow-lg">
+        <i data-lucide="mail" class="w-8 h-8 text-white"></i>
+      </div>
+    </div>
+    <h1 class="text-2xl font-bold text-center mb-1 text-slate-800">Mail System</h1>
+    <p class="text-center text-slate-500 text-sm mb-8">سجّل دخولك للمتابعة</p>
+
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-semibold mb-1 text-slate-700">اسم المستخدم أو الإيميل</label>
-        <input id="loginUser" type="text" placeholder="مثال: admin أو user@example.com" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <label class="block text-sm font-semibold mb-1.5 text-slate-700">اسم المستخدم أو الإيميل</label>
+        <div class="relative">
+          <i data-lucide="user" class="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-slate-400"></i>
+          <input id="loginUser" type="text" placeholder="admin أو user@example.com" class="w-full border border-slate-300 rounded-lg pr-10 pl-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition" />
+        </div>
       </div>
       <div>
-        <label class="block text-sm font-semibold mb-1 text-slate-700">كلمة السر</label>
-        <input id="loginPass" type="password" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <label class="block text-sm font-semibold mb-1.5 text-slate-700">كلمة السر</label>
+        <div class="relative">
+          <i data-lucide="lock" class="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-slate-400"></i>
+          <input id="loginPass" type="password" placeholder="••••••" class="w-full border border-slate-300 rounded-lg pr-10 pl-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent transition" />
+        </div>
       </div>
-      <p id="loginError" class="text-red-600 text-sm hidden"></p>
-      <button id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg py-2.5 transition">دخول</button>
+      <p id="loginError" class="text-red-600 text-sm hidden bg-red-50 p-2 rounded border border-red-200"></p>
+      <button id="loginBtn" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 transition flex items-center justify-center gap-2">
+        <i data-lucide="log-in" class="w-4 h-4"></i>
+        <span>دخول</span>
+      </button>
     </div>
   </div>
 </div>
 
-<!-- التطبيق -->
-<div id="app" class="hidden min-h-screen flex">
-  <aside class="w-64 bg-white border-l border-slate-200 flex flex-col">
-    <div class="p-4 border-b border-slate-200">
-      <h2 class="font-bold text-lg text-slate-800">لوحة الإدارة</h2>
-      <p id="userLabel" class="text-xs text-slate-500 mt-1"></p>
+<!-- ============ APP ============ -->
+<div id="app" class="hidden min-h-screen flex flex-col">
+
+  <!-- Header -->
+  <header class="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-4 sticky top-0 z-30">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center">
+        <i data-lucide="mail" class="w-4 h-4 text-white"></i>
+      </div>
+      <span class="font-bold text-slate-800 hidden md:inline">Mail System</span>
     </div>
-    <nav class="flex-1 p-3 space-y-1" id="nav">
-      <button data-page="dashboard" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">🏠 الرئيسية</button>
-      <button data-page="users" data-admin-only class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">👥 المستخدمين</button>
-      <button data-page="departments" data-admin-only class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">🏢 الأقسام</button>
-      <button data-page="messages" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">✉️ إرسال رسالة</button>
-      <button data-page="inbox" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">📥 صندوق الوارد</button>
-    </nav>
-    <div class="p-3 border-t border-slate-200">
-      <button id="logoutBtn" class="w-full text-right px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 font-medium">🚪 خروج</button>
+
+    <div class="flex-1 max-w-2xl relative">
+      <i data-lucide="search" class="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-slate-400"></i>
+      <input id="globalSearch" type="text" placeholder="ابحث..." class="w-full bg-slate-100 hover:bg-slate-50 focus:bg-white border border-transparent focus:border-[#0078D4] rounded-lg pr-10 pl-4 py-2 text-sm focus:outline-none transition" />
     </div>
-  </aside>
-  <main class="flex-1 p-6 overflow-y-auto">
-    <div id="pageContent"></div>
-  </main>
+
+    <button class="relative p-2 rounded-lg hover:bg-slate-100 transition" title="الإشعارات">
+      <i data-lucide="bell" class="w-5 h-5 text-slate-600"></i>
+      <span id="notifDot" class="hidden absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+    </button>
+
+    <div class="flex items-center gap-3 pl-3 border-r border-slate-200">
+      <div class="text-left hidden md:block">
+        <div id="userName" class="text-sm font-semibold text-slate-800 leading-tight"></div>
+        <div id="userRole" class="text-xs text-slate-500"></div>
+      </div>
+      <div id="userAvatar" class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-sm cursor-pointer hover:opacity-90 transition"></div>
+      <button id="logoutBtn" class="p-2 rounded-lg hover:bg-red-50 transition text-slate-500 hover:text-red-600" title="خروج">
+        <i data-lucide="log-out" class="w-5 h-5"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Body -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-l border-slate-200 flex flex-col overflow-y-auto">
+      <div class="p-3">
+        <button onclick="openCompose()" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 flex items-center justify-center gap-2 transition shadow-sm">
+          <i data-lucide="pencil" class="w-4 h-4"></i>
+          <span>رسالة جديدة</span>
+        </button>
+      </div>
+
+      <nav class="flex-1 px-2 space-y-0.5" id="nav">
+        <button data-page="dashboard" class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+          <i data-lucide="home" class="w-4 h-4"></i><span>الرئيسية</span>
+        </button>
+        <button data-page="inbox" class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+          <i data-lucide="inbox" class="w-4 h-4"></i><span>صندوق الوارد</span>
+          <span id="inboxCount" class="mr-auto text-xs bg-[#0078D4] text-white rounded-full px-2 py-0.5 hidden">0</span>
+        </button>
+        <button data-page="sent" class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+          <i data-lucide="send" class="w-4 h-4"></i><span>المُرسلة</span>
+        </button>
+
+        <div class="pt-3 pb-1 px-3" data-admin-only>
+          <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">الإدارة</div>
+        </div>
+        <button data-page="users" data-admin-only class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+          <i data-lucide="users" class="w-4 h-4"></i><span>المستخدمين</span>
+        </button>
+        <button data-page="departments" data-admin-only class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+          <i data-lucide="building-2" class="w-4 h-4"></i><span>الأقسام</span>
+        </button>
+      </nav>
+
+      <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">
+        Mail System v1.0
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 overflow-hidden bg-[#faf9f8]">
+      <div id="pageContent" class="h-full overflow-y-auto"></div>
+    </main>
+  </div>
+</div>
+
+<!-- ============ COMPOSE MODAL ============ -->
+<div id="composeModal" class="hidden fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center p-0 md:p-4 modal-overlay">
+  <div class="bg-white w-full md:max-w-2xl md:rounded-xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
+    <div class="flex items-center justify-between px-5 py-3 bg-[#0078D4] text-white md:rounded-t-xl rounded-t-2xl">
+      <div class="flex items-center gap-2">
+        <i data-lucide="pencil" class="w-4 h-4"></i>
+        <span class="font-semibold">رسالة جديدة</span>
+      </div>
+      <button onclick="closeCompose()" class="p-1 rounded hover:bg-white/20 transition">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <div class="flex-1 overflow-y-auto p-5 space-y-4">
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1">إلى</label>
+        <select id="cTo" class="w-full border-b border-slate-300 focus:border-[#0078D4] py-2 text-sm focus:outline-none bg-transparent"></select>
+      </div>
+      <div>
+        <label class="block text-xs font-semibold text-slate-500 mb-1">الموضوع</label>
+        <input id="cSubject" placeholder="اكتب موضوع الرسالة..." class="w-full border-b border-slate-300 focus:border-[#0078D4] py-2 text-sm focus:outline-none bg-transparent" />
+      </div>
+      <div>
+        <textarea id="cBody" rows="8" placeholder="اكتب رسالتك هنا..." class="w-full border border-slate-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent resize-none"></textarea>
+      </div>
+      <p id="cStatus" class="text-sm hidden"></p>
+    </div>
+
+    <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-between bg-slate-50 md:rounded-b-xl">
+      <button onclick="sendMessage()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg px-5 py-2 flex items-center gap-2 transition shadow-sm">
+        <i data-lucide="send" class="w-4 h-4"></i>
+        <span>إرسال</span>
+      </button>
+      <button onclick="closeCompose()" class="text-slate-500 hover:text-slate-700 px-3 py-2 text-sm font-medium transition">
+        إلغاء
+      </button>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -66,7 +191,6 @@ import {
   query, where, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-/* ============ إعدادات Firebase ============ */
 const firebaseConfig = {
   apiKey: "AIzaSyAZTWVHsdv0U3XSEFyZG9RtVNJJwiTxPBA",
   authDomain: "email-system-51538.firebaseapp.com",
@@ -75,27 +199,36 @@ const firebaseConfig = {
   messagingSenderId: "520124834460",
   appId: "1:520124834460:web:98114c58001ddd2be3c359"
 };
-/* =========================================== */
 
 const EMAIL_DOMAIN = "algharbawy.com";
-
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
 
 let currentUser = null;
+let allUsersCache = [];
 
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
 const show = (el) => el.classList.remove('hidden');
 const hide = (el) => el.classList.add('hidden');
 const esc  = (s='') => s.toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const initials = (name='') => name.trim().split(/\s+/).slice(0,2).map(w => w[0]||'').join('').toUpperCase();
+const icons = () => window.lucide && window.lucide.createIcons();
+const timeAgo = (ts) => {
+  if (!ts || !ts.seconds) return '';
+  const d = new Date(ts.seconds * 1000);
+  const diff = (Date.now() - d.getTime()) / 1000;
+  if (diff < 60) return 'الآن';
+  if (diff < 3600) return `منذ ${Math.floor(diff/60)} د`;
+  if (diff < 86400) return `منذ ${Math.floor(diff/3600)} س`;
+  if (diff < 604800) return `منذ ${Math.floor(diff/86400)} ي`;
+  return d.toLocaleDateString('ar-EG');
+};
 
-/* ============================================================
-   إنشاء مستخدم بدون طرد الأدمن — باستخدام Secondary App
-   ============================================================ */
+/* ---------- Create Auth User بدون طرد الأدمن ---------- */
 async function createAuthUser(email, password) {
-  const secondaryApp = initializeApp(firebaseConfig, 'Secondary-' + Date.now());
+  const secondaryApp = initializeApp(firebaseConfig, 'Sec-' + Date.now());
   const secondaryAuth = getAuth(secondaryApp);
   try {
     const cred = await createUserWithEmailAndPassword(secondaryAuth, email, password);
@@ -118,14 +251,14 @@ $('#loginBtn').onclick = async () => {
   if (!u || !p) { err.textContent = 'املأ البيانات'; show(err); return; }
 
   const email = u.includes('@') ? u : `${u}@${EMAIL_DOMAIN}`;
-
-  $('#loginBtn').textContent = 'جاري الدخول...';
-  $('#loginBtn').disabled = true;
+  const btn = $('#loginBtn');
+  btn.disabled = true;
+  btn.querySelector('span').textContent = 'جاري الدخول...';
 
   try {
     await signInWithEmailAndPassword(auth, email, p);
   } catch (e) {
-    console.error('AUTH ERROR:', e.code, e.message, 'Email tried:', email);
+    console.error('AUTH ERROR:', e.code, e.message, email);
     const messages = {
       'auth/user-not-found': 'المستخدم غير موجود',
       'auth/wrong-password': 'كلمة السر غلط',
@@ -138,18 +271,15 @@ $('#loginBtn').onclick = async () => {
     err.textContent = messages[e.code] || `خطأ: ${e.code}`;
     show(err);
   } finally {
-    $('#loginBtn').textContent = 'دخول';
-    $('#loginBtn').disabled = false;
+    btn.disabled = false;
+    btn.querySelector('span').textContent = 'دخول';
   }
 };
 
-$('#loginPass').addEventListener('keypress', (e) => {
-  if (e.key === 'Enter') $('#loginBtn').click();
-});
-
+$('#loginPass').addEventListener('keypress', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
 $('#logoutBtn').onclick = () => signOut(auth);
 
-/* ---------- Auth state ---------- */
+/* ---------- Auth State ---------- */
 onAuthStateChanged(auth, async (user) => {
   if (!user) {
     currentUser = null;
@@ -159,7 +289,7 @@ onAuthStateChanged(auth, async (user) => {
   }
   const snap = await getDoc(doc(db, 'users', user.uid));
   if (!snap.exists()) {
-    alert('لا يوجد ملف مستخدم في Firestore — راجع الإعداد');
+    alert('لا يوجد ملف مستخدم في Firestore');
     await signOut(auth);
     return;
   }
@@ -169,29 +299,52 @@ onAuthStateChanged(auth, async (user) => {
     await signOut(auth);
     return;
   }
-  $('#userLabel').textContent = `${currentUser.name} — ${currentUser.role}`;
 
-  // إخفاء صفحات الإدارة عن المستخدمين العاديين
+  $('#userName').textContent = currentUser.name;
+  $('#userRole').textContent = currentUser.role === 'admin' ? 'مدير النظام' : currentUser.role === 'manager' ? 'مدير' : 'مستخدم';
+  $('#userAvatar').textContent = initials(currentUser.name);
+
   const isAdmin = currentUser.role === 'admin';
   $$('[data-admin-only]').forEach(el => {
     if (isAdmin) el.classList.remove('hidden');
     else el.classList.add('hidden');
   });
 
+  await loadUsersCache();
+  updateInboxCount();
+
   hide($('#loginScreen'));
   show($('#app'));
+  icons();
   navigate('dashboard');
 });
+
+async function loadUsersCache() {
+  const snap = await getDocs(collection(db, 'users'));
+  allUsersCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+async function updateInboxCount() {
+  const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid), where('read', '==', false));
+  const snap = await getDocs(q);
+  const el = $('#inboxCount');
+  if (snap.size > 0) { el.textContent = snap.size; show(el); }
+  else hide(el);
+}
 
 /* ---------- Navigation ---------- */
 function navigate(page) {
   $$('.nav-btn').forEach(b => {
-    if (b.dataset.page === page) b.classList.add('bg-blue-50','text-blue-700');
-    else b.classList.remove('bg-blue-50','text-blue-700');
+    const active = b.dataset.page === page;
+    b.classList.toggle('bg-[#e5f0fa]', active);
+    b.classList.toggle('text-[#0078D4]', active);
+    b.classList.toggle('font-semibold', active);
   });
-  ({ dashboard, users, departments, messages, inbox })[page]?.();
+  ({ dashboard, users, departments, inbox, sent })[page]?.();
+  icons();
 }
-$('#nav').addEventListener('click', (e) => {
+
+$('#nav').addEventListener('click', e => {
   const btn = e.target.closest('.nav-btn');
   if (btn) navigate(btn.dataset.page);
 });
@@ -199,124 +352,192 @@ $('#nav').addEventListener('click', (e) => {
 /* ---------- Dashboard ---------- */
 async function dashboard() {
   const isAdmin = currentUser.role === 'admin';
-  let stats;
   if (isAdmin) {
-    const [usersSnap, deptSnap] = await Promise.all([
+    const [usersSnap, deptSnap, msgSnap] = await Promise.all([
       getDocs(collection(db, 'users')),
-      getDocs(collection(db, 'departments'))
+      getDocs(collection(db, 'departments')),
+      getDocs(collection(db, 'messages'))
     ]);
-    stats = { total: usersSnap.size, active: usersSnap.docs.filter(d => d.data().isActive !== false).length, depts: deptSnap.size };
+    const total = usersSnap.size;
+    const active = usersSnap.docs.filter(d => d.data().isActive !== false).length;
+    const unread = msgSnap.docs.filter(d => d.data().toUserId === currentUser.uid && !d.data().read).length;
+
+    $('#pageContent').innerHTML = `
+      <div class="p-6 md:p-8 max-w-7xl mx-auto fade-in">
+        <div class="mb-8">
+          <h1 class="text-3xl font-bold text-slate-800">أهلاً ${esc(currentUser.name)} 👋</h1>
+          <p class="text-slate-500 mt-1">${new Date().toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+          ${statCard('users', 'إجمالي المستخدمين', total, 'bg-blue-50', 'text-blue-600')}
+          ${statCard('user-check', 'نشط', active, 'bg-green-50', 'text-green-600')}
+          ${statCard('building-2', 'الأقسام', deptSnap.size, 'bg-purple-50', 'text-purple-600')}
+          ${statCard('mail', 'غير مقروء', unread, 'bg-orange-50', 'text-orange-600')}
+        </div>
+
+        <div class="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 class="font-bold text-lg mb-4 text-slate-800">إجراءات سريعة</h2>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            ${quickAction('pencil', 'رسالة جديدة', 'openCompose()')}
+            ${quickAction('users', 'إدارة المستخدمين', "navigate('users')")}
+            ${quickAction('building-2', 'الأقسام', "navigate('departments')")}
+            ${quickAction('inbox', 'الوارد', "navigate('inbox')")}
+          </div>
+        </div>
+      </div>
+    `;
   } else {
     const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
     const snap = await getDocs(q);
     const unread = snap.docs.filter(d => !d.data().read).length;
-    stats = { inbox: snap.size, unread };
-  }
 
-  $('#pageContent').innerHTML = `
-    <h1 class="text-2xl font-bold mb-2">أهلاً ${esc(currentUser.name)} 👋</h1>
-    <p class="text-slate-500 mb-6">${isAdmin ? 'لوحة تحكم الأدمن' : 'لوحة المستخدم'}</p>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      ${isAdmin ? `
-        ${card('👥','إجمالي المستخدمين', stats.total)}
-        ${card('✅','نشط', stats.active)}
-        ${card('🏢','الأقسام', stats.depts)}
-      ` : `
-        ${card('📥','رسائل الوارد', stats.inbox)}
-        ${card('🔵','غير مقروءة', stats.unread)}
-        ${card('✉️','إرسال رسالة', '—')}
-      `}
-    </div>
-  `;
+    $('#pageContent').innerHTML = `
+      <div class="p-6 md:p-8 max-w-5xl mx-auto fade-in">
+        <div class="mb-8">
+          <h1 class="text-3xl font-bold text-slate-800">أهلاً ${esc(currentUser.name)} 👋</h1>
+          <p class="text-slate-500 mt-1">${new Date().toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+          ${statCard('inbox', 'رسائل الوارد', snap.size, 'bg-blue-50', 'text-blue-600')}
+          ${statCard('mail', 'غير مقروءة', unread, 'bg-orange-50', 'text-orange-600')}
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-6">
+          <h2 class="font-bold text-lg mb-4 text-slate-800">إجراءات سريعة</h2>
+          <div class="grid grid-cols-2 gap-3">
+            ${quickAction('pencil', 'رسالة جديدة', 'openCompose()')}
+            ${quickAction('inbox', 'صندوق الوارد', "navigate('inbox')")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  icons();
 }
-function card(icon, label, value) {
-  return `<div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
-    <div class="text-3xl mb-2">${icon}</div>
-    <div class="text-slate-500 text-sm">${label}</div>
-    <div class="text-3xl font-bold mt-1">${value}</div>
+
+function statCard(icon, label, value, bg, fg) {
+  return `<div class="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md transition">
+    <div class="w-11 h-11 rounded-xl ${bg} ${fg} flex items-center justify-center mb-3">
+      <i data-lucide="${icon}" class="w-5 h-5"></i>
+    </div>
+    <div class="text-sm text-slate-500">${label}</div>
+    <div class="text-3xl font-bold text-slate-800 mt-1">${value}</div>
   </div>`;
 }
 
-/* ---------- Users (Admin only) ---------- */
+function quickAction(icon, label, action) {
+  return `<button onclick="${action}" class="flex flex-col items-center gap-2 p-4 bg-slate-50 hover:bg-[#e5f0fa] rounded-xl border border-slate-200 hover:border-[#0078D4] transition group">
+    <i data-lucide="${icon}" class="w-6 h-6 text-slate-500 group-hover:text-[#0078D4]"></i>
+    <span class="text-xs font-medium text-slate-700 group-hover:text-[#0078D4]">${label}</span>
+  </button>`;
+}
+
+/* ---------- Users (Admin) ---------- */
 async function users() {
-  const snap = await getDocs(collection(db, 'users'));
-  const rows = snap.docs.map(d => {
-    const u = d.data();
-    return `<tr class="border-b border-slate-100">
-      <td class="px-4 py-3">${esc(u.name || '')}</td>
-      <td class="px-4 py-3 font-mono text-sm">${esc(u.username || '')}</td>
-      <td class="px-4 py-3"><span class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs">${esc(u.role || 'user')}</span></td>
-      <td class="px-4 py-3">${u.isActive === false ? '❌' : '✅'}</td>
+  await loadUsersCache();
+  const rows = allUsersCache.map(u => {
+    const uColor = u.role === 'admin' ? 'bg-red-50 text-red-700' : u.role === 'manager' ? 'bg-purple-50 text-purple-700' : 'bg-slate-100 text-slate-700';
+    const uLabel = u.role === 'admin' ? 'أدمن' : u.role === 'manager' ? 'مدير' : 'مستخدم';
+    return `<tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+      <td class="px-4 py-3">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-full bg-[#0070c0] text-white flex items-center justify-center font-bold text-xs">${initials(u.name)}</div>
+          <div>
+            <div class="font-medium text-slate-800">${esc(u.name)}</div>
+            <div class="text-xs text-slate-400 font-mono">${esc(u.email || '')}</div>
+          </div>
+        </div>
+      </td>
+      <td class="px-4 py-3 font-mono text-sm text-slate-600">${esc(u.username)}</td>
+      <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${uColor}">${uLabel}</span></td>
+      <td class="px-4 py-3">
+        ${u.isActive === false
+          ? `<span class="flex items-center gap-1 text-xs text-red-600"><span class="w-2 h-2 rounded-full bg-red-500"></span>معطّل</span>`
+          : `<span class="flex items-center gap-1 text-xs text-green-600"><span class="w-2 h-2 rounded-full bg-green-500"></span>نشط</span>`}
+      </td>
       <td class="px-4 py-3 text-left">
-        <button onclick="editUser('${d.id}')" class="text-sm text-emerald-600 hover:underline ml-2">تعديل</button>
-        <button onclick="toggleUser('${d.id}', ${u.isActive === false})" class="text-sm text-blue-600 hover:underline ml-2">${u.isActive === false ? 'تفعيل' : 'تعطيل'}</button>
-        <button onclick="deleteUserDoc('${d.id}')" class="text-sm text-red-600 hover:underline">حذف</button>
+        <div class="flex items-center justify-end gap-1">
+          <button onclick="editUser('${u.id}')" class="p-1.5 rounded hover:bg-blue-50 text-blue-600 transition" title="تعديل"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+          <button onclick="toggleUser('${u.id}', ${u.isActive === false})" class="p-1.5 rounded hover:bg-amber-50 text-amber-600 transition" title="${u.isActive === false ? 'تفعيل' : 'تعطيل'}">
+            <i data-lucide="${u.isActive === false ? 'user-check' : 'user-x'}" class="w-4 h-4"></i>
+          </button>
+          <button onclick="deleteUserDoc('${u.id}')" class="p-1.5 rounded hover:bg-red-50 text-red-600 transition" title="حذف"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        </div>
       </td>
     </tr>`;
   }).join('');
 
   $('#pageContent').innerHTML = `
-    <div class="flex justify-between items-center mb-6">
-      <h1 class="text-2xl font-bold">المستخدمين</h1>
-      <button onclick="openAddUser()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ إضافة مستخدم</button>
-    </div>
+    <div class="p-6 md:p-8 max-w-7xl mx-auto fade-in">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-2xl font-bold text-slate-800">المستخدمين</h1>
+          <p class="text-slate-500 text-sm mt-1">${allUsersCache.length} مستخدم</p>
+        </div>
+        <button onclick="openAddUser()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm">
+          <i data-lucide="user-plus" class="w-4 h-4"></i>
+          <span>إضافة مستخدم</span>
+        </button>
+      </div>
 
-    <div id="addUserForm" class="hidden bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
-      <h3 class="font-bold mb-4">مستخدم جديد</h3>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <input id="nuName" placeholder="الاسم الكامل" class="border rounded-lg px-3 py-2" />
-        <input id="nuUser" placeholder="اسم المستخدم (إنجليزي بدون @)" class="border rounded-lg px-3 py-2" />
-        <input id="nuPass" type="text" placeholder="كلمة السر (6 حروف على الأقل)" class="border rounded-lg px-3 py-2" />
-        <select id="nuRole" class="border rounded-lg px-3 py-2">
-          <option value="user">مستخدم عادي</option>
-          <option value="manager">مدير</option>
-          <option value="admin">أدمن</option>
-        </select>
+      <div id="addUserForm" class="hidden bg-white rounded-2xl border border-slate-200 p-6 mb-6 fade-in">
+        <h3 class="font-bold mb-4 text-slate-800">مستخدم جديد</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input id="nuName" placeholder="الاسم الكامل" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent" />
+          <input id="nuUser" placeholder="اسم المستخدم (إنجليزي)" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent" />
+          <input id="nuPass" type="text" placeholder="كلمة السر (6+ حروف)" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent" />
+          <select id="nuRole" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent">
+            <option value="user">مستخدم عادي</option>
+            <option value="manager">مدير</option>
+            <option value="admin">أدمن</option>
+          </select>
+        </div>
+        <p class="text-xs text-slate-500 mt-2">الإيميل: <span class="font-mono">username@${EMAIL_DOMAIN}</span></p>
+        <p id="nuErr" class="text-sm mt-3 hidden"></p>
+        <div class="mt-4 flex gap-2">
+          <button onclick="createNewUser()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded-lg text-sm font-semibold transition">حفظ</button>
+          <button onclick="closeAddUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">إلغاء</button>
+        </div>
       </div>
-      <p class="text-xs text-slate-500 mt-2">الإيميل هيتولّد تلقائيًا: <span class="font-mono">username@algharbawy.com</span></p>
-      <p id="nuErr" class="text-red-600 text-sm mt-3 hidden"></p>
-      <div class="mt-4 flex gap-2">
-        <button onclick="createNewUser()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">حفظ</button>
-        <button onclick="closeAddUser()" class="bg-slate-200 px-4 py-2 rounded-lg text-sm">إلغاء</button>
-      </div>
-    </div>
 
-    <div id="editUserForm" class="hidden bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
-      <h3 class="font-bold mb-4">تعديل مستخدم</h3>
-      <input type="hidden" id="euId" />
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <input id="euName" placeholder="الاسم" class="border rounded-lg px-3 py-2" />
-        <input id="euUser" placeholder="اسم المستخدم" class="border rounded-lg px-3 py-2" disabled />
-        <select id="euRole" class="border rounded-lg px-3 py-2">
-          <option value="user">مستخدم عادي</option>
-          <option value="manager">مدير</option>
-          <option value="admin">أدمن</option>
-        </select>
-        <input id="euPass" type="text" placeholder="كلمة سر جديدة (اتركها فارغة لو مش عايز تغييرها)" class="border rounded-lg px-3 py-2" />
+      <div id="editUserForm" class="hidden bg-white rounded-2xl border border-slate-200 p-6 mb-6 fade-in">
+        <h3 class="font-bold mb-4 text-slate-800">تعديل مستخدم</h3>
+        <input type="hidden" id="euId" />
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input id="euName" placeholder="الاسم" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <input id="euUser" placeholder="اسم المستخدم" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-slate-50 text-slate-500" disabled />
+          <select id="euRole" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+            <option value="user">مستخدم عادي</option>
+            <option value="manager">مدير</option>
+            <option value="admin">أدمن</option>
+          </select>
+        </div>
+        <p id="euErr" class="text-sm mt-3 hidden"></p>
+        <div class="mt-4 flex gap-2">
+          <button onclick="saveEditUser()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">حفظ</button>
+          <button onclick="closeEditUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">إلغاء</button>
+        </div>
       </div>
-      <p id="euErr" class="text-red-600 text-sm mt-3 hidden"></p>
-      <div class="mt-4 flex gap-2">
-        <button onclick="saveEditUser()" class="bg-emerald-600 text-white px-4 py-2 rounded-lg text-sm">حفظ التعديلات</button>
-        <button onclick="closeEditUser()" class="bg-slate-200 px-4 py-2 rounded-lg text-sm">إلغاء</button>
-      </div>
-    </div>
 
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-      <table class="w-full text-right">
-        <thead class="bg-slate-50 text-slate-600 text-sm">
-          <tr>
-            <th class="px-4 py-3">الاسم</th>
-            <th class="px-4 py-3">اسم المستخدم</th>
-            <th class="px-4 py-3">الدور</th>
-            <th class="px-4 py-3">الحالة</th>
-            <th class="px-4 py-3">إجراءات</th>
-          </tr>
-        </thead>
-        <tbody>${rows || '<tr><td colspan="5" class="text-center p-6 text-slate-400">لا يوجد مستخدمين</td></tr>'}</tbody>
-      </table>
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        <table class="w-full text-right">
+          <thead class="bg-slate-50 border-b border-slate-200">
+            <tr class="text-slate-500 text-xs font-semibold uppercase tracking-wider">
+              <th class="px-4 py-3 text-right">المستخدم</th>
+              <th class="px-4 py-3 text-right">اسم المستخدم</th>
+              <th class="px-4 py-3 text-right">الدور</th>
+              <th class="px-4 py-3 text-right">الحالة</th>
+              <th class="px-4 py-3 text-left">إجراءات</th>
+            </tr>
+          </thead>
+          <tbody>${rows || '<tr><td colspan="5" class="text-center py-12 text-slate-400">لا يوجد مستخدمين</td></tr>'}</tbody>
+        </table>
+      </div>
     </div>
   `;
+  icons();
 }
+
 window.openAddUser = () => { show($('#addUserForm')); hide($('#editUserForm')); };
 window.closeAddUser = () => hide($('#addUserForm'));
 
@@ -327,11 +548,14 @@ window.createNewUser = async () => {
   const role = $('#nuRole').value;
   const err = $('#nuErr');
   hide(err);
-  if (!name || !user || !pass) { err.textContent='املأ كل البيانات'; show(err); return; }
-  if (!/^[a-z0-9_.]+$/.test(user)) { err.textContent='اسم المستخدم بحروف إنجليزية وأرقام فقط'; show(err); return; }
-  if (pass.length < 6) { err.textContent='كلمة السر 6 حروف على الأقل'; show(err); return; }
 
-  $('#nuErr').textContent = 'جاري الإنشاء...'; show(err); err.className = 'text-blue-600 text-sm mt-3';
+  if (!name || !user || !pass) { err.className='text-sm mt-3 text-red-600'; err.textContent='املأ كل البيانات'; show(err); return; }
+  if (!/^[a-z0-9_.]+$/.test(user)) { err.className='text-sm mt-3 text-red-600'; err.textContent='اسم المستخدم بحروف إنجليزية وأرقام فقط'; show(err); return; }
+  if (pass.length < 6) { err.className='text-sm mt-3 text-red-600'; err.textContent='كلمة السر 6 حروف على الأقل'; show(err); return; }
+
+  err.className = 'text-sm mt-3 text-blue-600';
+  err.textContent = 'جاري الإنشاء...';
+  show(err);
 
   try {
     const email = `${user}@${EMAIL_DOMAIN}`;
@@ -339,13 +563,13 @@ window.createNewUser = async () => {
     await setDoc(doc(db, 'users', uid), {
       name, username: user, email, role, isActive: true, createdAt: serverTimestamp()
     });
-    err.className = 'text-green-600 text-sm mt-3';
+    err.className = 'text-sm mt-3 text-green-600';
     err.textContent = `✅ تم إنشاء ${user} بنجاح!`;
     $('#nuName').value = ''; $('#nuUser').value = ''; $('#nuPass').value = '';
-    setTimeout(() => { hide($('#addUserForm')); users(); }, 1500);
+    setTimeout(() => { hide($('#addUserForm')); users(); }, 1200);
   } catch (e) {
     console.error('CREATE USER ERROR:', e.code, e.message);
-    err.className = 'text-red-600 text-sm mt-3';
+    err.className = 'text-sm mt-3 text-red-600';
     err.textContent = e.code === 'auth/email-already-in-use' ? 'اسم المستخدم ده مستخدم قبل كده' : e.message;
     show(err);
   }
@@ -358,10 +582,9 @@ window.editUser = async (uid) => {
   $('#euName').value = u.name || '';
   $('#euUser').value = u.username || '';
   $('#euRole').value = u.role || 'user';
-  $('#euPass').value = '';
   show($('#editUserForm'));
   hide($('#addUserForm'));
-  $('#editUserForm').scrollIntoView({ behavior: 'smooth' });
+  $('#editUserForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 
 window.closeEditUser = () => hide($('#editUserForm'));
@@ -370,26 +593,15 @@ window.saveEditUser = async () => {
   const uid = $('#euId').value;
   const name = $('#euName').value.trim();
   const role = $('#euRole').value;
-  const newPass = $('#euPass').value;
   const err = $('#euErr');
   hide(err);
-
-  if (!name) { err.textContent = 'اكتب الاسم'; show(err); return; }
-
+  if (!name) { err.className='text-sm mt-3 text-red-600'; err.textContent='اكتب الاسم'; show(err); return; }
   try {
     await updateDoc(doc(db, 'users', uid), { name, role });
-    if (newPass) {
-      if (newPass.length < 6) { err.textContent = 'كلمة السر 6 حروف على الأقل'; show(err); return; }
-      // ملاحظة: تغيير باسورد مستخدم آخر محتاج Admin SDK (Cloud Functions)
-      err.className = 'text-orange-600 text-sm mt-3';
-      err.textContent = '⚠️ تغيير الباسورد محتاج Cloud Function — اسم المستخدم والدور اتحدّثوا بس';
-      show(err);
-      setTimeout(() => { hide($('#editUserForm')); users(); }, 2500);
-      return;
-    }
     hide($('#editUserForm'));
     users();
   } catch (e) {
+    err.className = 'text-sm mt-3 text-red-600';
     err.textContent = e.message;
     show(err);
   }
@@ -399,49 +611,59 @@ window.toggleUser = async (uid, activate) => {
   await updateDoc(doc(db, 'users', uid), { isActive: activate });
   users();
 };
+
 window.deleteUserDoc = async (uid) => {
-  if (!confirm('متأكد من الحذف؟ (هيتحذف من Firestore بس، من Authentication يدوي)')) return;
+  if (!confirm('متأكد من الحذف؟')) return;
   await deleteDoc(doc(db, 'users', uid));
   users();
 };
 
-/* ---------- Departments (Admin only) ---------- */
+/* ---------- Departments ---------- */
 async function departments() {
   const snap = await getDocs(collection(db, 'departments'));
-  const rows = snap.docs.map(d => {
-    const x = d.data();
-    return `<tr class="border-b border-slate-100">
-      <td class="px-4 py-3">${esc(x.name)}</td>
-      <td class="px-4 py-3 text-sm text-slate-500">${esc(x.description || '')}</td>
-      <td class="px-4 py-3 text-left">
-        <button onclick="deleteDept('${d.id}')" class="text-sm text-red-600 hover:underline">حذف</button>
-      </td>
-    </tr>`;
-  }).join('');
+  const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const cards = list.map(d => `
+    <div class="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md transition group">
+      <div class="flex items-start justify-between mb-3">
+        <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+          <i data-lucide="building-2" class="w-5 h-5"></i>
+        </div>
+        <button onclick="deleteDept('${d.id}')" class="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-50 text-red-600 transition">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div class="font-bold text-slate-800">${esc(d.name)}</div>
+      <div class="text-sm text-slate-500 mt-1">${esc(d.description || 'بدون وصف')}</div>
+    </div>
+  `).join('');
 
   $('#pageContent').innerHTML = `
-    <h1 class="text-2xl font-bold mb-6">الأقسام</h1>
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <input id="dName" placeholder="اسم القسم" class="border rounded-lg px-3 py-2" />
-        <input id="dDesc" placeholder="وصف (اختياري)" class="border rounded-lg px-3 py-2" />
-        <button onclick="addDept()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-semibold">إضافة</button>
+    <div class="p-6 md:p-8 max-w-7xl mx-auto fade-in">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold text-slate-800">الأقسام</h1>
+        <p class="text-slate-500 text-sm mt-1">${list.length} قسم</p>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <input id="dName" placeholder="اسم القسم" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <input id="dDesc" placeholder="وصف (اختياري)" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <button onclick="addDept()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white rounded-lg px-4 py-2.5 text-sm font-semibold transition flex items-center justify-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>
+            <span>إضافة قسم</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        ${cards || '<div class="col-span-full text-center py-12 text-slate-400">لا يوجد أقسام بعد</div>'}
       </div>
     </div>
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-      <table class="w-full text-right">
-        <thead class="bg-slate-50 text-slate-600 text-sm">
-          <tr>
-            <th class="px-4 py-3">الاسم</th>
-            <th class="px-4 py-3">الوصف</th>
-            <th class="px-4 py-3">إجراءات</th>
-          </tr>
-        </thead>
-        <tbody>${rows || '<tr><td colspan="3" class="text-center p-6 text-slate-400">لا يوجد أقسام</td></tr>'}</tbody>
-      </table>
-    </div>
   `;
+  icons();
 }
+
 window.addDept = async () => {
   const name = $('#dName').value.trim();
   const description = $('#dDesc').value.trim();
@@ -455,118 +677,200 @@ window.deleteDept = async (id) => {
   departments();
 };
 
-/* ---------- Messages ---------- */
-async function messages() {
-  const usersSnap = await getDocs(collection(db, 'users'));
-  const userOpts = usersSnap.docs
-    .filter(d => d.id !== currentUser.uid)  // استثني نفسك
-    .map(d => `<option value="${d.id}">${esc(d.data().name)} (${esc(d.data().username)})</option>`).join('');
-
-  const q1 = query(collection(db, 'messages'), where('fromUserId', '==', currentUser.uid));
-  const msgSnap = await getDocs(q1);
-  const sent = msgSnap.docs.map(d => ({ id: d.id, ...d.data() }))
-    .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-  const sentRows = sent.map(m => `
-    <tr class="border-b border-slate-100">
-      <td class="px-4 py-3">${esc(m.subject)}</td>
-      <td class="px-4 py-3 text-sm text-slate-500">${esc(m.toUserName || '')}</td>
-      <td class="px-4 py-3 text-sm text-slate-500">${m.createdAt ? new Date(m.createdAt.seconds*1000).toLocaleString('ar-EG') : ''}</td>
-    </tr>`).join('');
-
-  $('#pageContent').innerHTML = `
-    <h1 class="text-2xl font-bold mb-6">إرسال رسالة</h1>
-    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
-      <div class="space-y-4">
-        <div>
-          <label class="block text-sm font-semibold mb-1">إلى</label>
-          <select id="mTo" class="w-full border rounded-lg px-3 py-2">
-            <option value="">— اختر المستخدم —</option>
-            ${userOpts}
-          </select>
-        </div>
-        <div>
-          <label class="block text-sm font-semibold mb-1">الموضوع</label>
-          <input id="mSubject" class="w-full border rounded-lg px-3 py-2" />
-        </div>
-        <div>
-          <label class="block text-sm font-semibold mb-1">النص</label>
-          <textarea id="mBody" rows="4" class="w-full border rounded-lg px-3 py-2"></textarea>
-        </div>
-        <button onclick="sendMessage()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">إرسال</button>
-        <p id="mStatus" class="text-sm hidden"></p>
-      </div>
-    </div>
-    <h2 class="font-bold mb-3">الرسائل المُرسلة</h2>
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-      <table class="w-full text-right">
-        <thead class="bg-slate-50 text-slate-600 text-sm">
-          <tr>
-            <th class="px-4 py-3">الموضوع</th>
-            <th class="px-4 py-3">إلى</th>
-            <th class="px-4 py-3">التاريخ</th>
-          </tr>
-        </thead>
-        <tbody>${sentRows || '<tr><td colspan="3" class="text-center p-6 text-slate-400">لا رسائل</td></tr>'}</tbody>
-      </table>
-    </div>
-  `;
-}
-window.sendMessage = async () => {
-  const toUserId = $('#mTo').value;
-  const subject = $('#mSubject').value.trim();
-  const body = $('#mBody').value.trim();
-  const status = $('#mStatus');
-  status.classList.add('hidden');
-
-  if (!toUserId || !subject) return alert('اختر مستخدم واكتب الموضوع');
-  const toUserDoc = await getDoc(doc(db, 'users', toUserId));
-  const toUserName = toUserDoc.data()?.name || '';
-
-  await addDoc(collection(db, 'messages'), {
-    subject, body,
-    fromUserId: currentUser.uid,
-    fromUserName: currentUser.name,
-    fromUserUsername: currentUser.username,
-    toUserId, toUserName,
-    read: false,
-    createdAt: serverTimestamp()
-  });
-  status.textContent = '✅ تم الإرسال!';
-  status.className = 'text-sm text-green-600 mt-2';
-  status.classList.remove('hidden');
-  $('#mSubject').value = ''; $('#mBody').value = '';
-  setTimeout(() => messages(), 1000);
+/* ---------- Compose Modal ---------- */
+window.openCompose = async () => {
+  await loadUsersCache();
+  const others = allUsersCache.filter(u => u.id !== currentUser.uid && u.isActive !== false);
+  $('#cTo').innerHTML = `<option value="">— اختر المستلم —</option>` + others.map(u =>
+    `<option value="${u.id}">${esc(u.name)} (${esc(u.username)})</option>`
+  ).join('');
+  $('#cSubject').value = '';
+  $('#cBody').value = '';
+  hide($('#cStatus'));
+  show($('#composeModal'));
+  icons();
+  setTimeout(() => $('#cTo').focus(), 100);
 };
 
-/* ---------- Inbox ---------- */
+window.closeCompose = () => hide($('#composeModal'));
+
+$('#composeModal').addEventListener('click', e => {
+  if (e.target.id === 'composeModal') closeCompose();
+});
+
+window.sendMessage = async () => {
+  const toUserId = $('#cTo').value;
+  const subject = $('#cSubject').value.trim();
+  const body = $('#cBody').value.trim();
+  const status = $('#cStatus');
+  hide(status);
+
+  if (!toUserId) { status.className='text-sm text-red-600'; status.textContent='اختر المستلم'; show(status); return; }
+  if (!subject) { status.className='text-sm text-red-600'; status.textContent='اكتب الموضوع'; show(status); return; }
+
+  const toUser = allUsersCache.find(u => u.id === toUserId);
+  try {
+    await addDoc(collection(db, 'messages'), {
+      subject, body,
+      fromUserId: currentUser.uid,
+      fromUserName: currentUser.name,
+      fromUserUsername: currentUser.username,
+      toUserId, toUserName: toUser?.name || '',
+      read: false,
+      createdAt: serverTimestamp()
+    });
+    status.className = 'text-sm text-green-600';
+    status.textContent = '✅ تم الإرسال!';
+    show(status);
+    setTimeout(() => { closeCompose(); updateInboxCount(); }, 800);
+  } catch (e) {
+    status.className = 'text-sm text-red-600';
+    status.textContent = e.message;
+    show(status);
+  }
+};
+
+/* ---------- Inbox (Outlook-style) ---------- */
+let selectedMsgId = null;
+let inboxList = [];
+
 async function inbox() {
-  const q1 = query(collection(db, 'messages'), where('toUserId','==', currentUser.uid));
-  const snap = await getDocs(q1);
-  const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+  const q = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
+  const snap = await getDocs(q);
+  inboxList = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
-  const rows = list.map(m => `
-    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 ${m.read ? '' : 'border-r-4 border-r-blue-500'}">
-      <div class="flex justify-between items-start">
-        <div>
-          <h3 class="font-bold">${esc(m.subject)}</h3>
-          <p class="text-xs text-slate-500 mt-1">من: ${esc(m.fromUserName || '')} — ${m.createdAt ? new Date(m.createdAt.seconds*1000).toLocaleString('ar-EG') : ''}</p>
+
+  selectedMsgId = inboxList[0]?.id || null;
+  renderInbox();
+}
+
+function renderInbox() {
+  const listHtml = inboxList.map(m => `
+    <div onclick="selectMsg('${m.id}')" class="msg-item ${m.id === selectedMsgId ? 'active' : ''} cursor-pointer px-4 py-3 border-b border-slate-100">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(m.fromUserName)}</div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-semibold text-sm text-slate-800 truncate ${!m.read ? '' : 'font-medium'}">${esc(m.fromUserName || '')}</span>
+            <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(m.createdAt)}</span>
+          </div>
+          <div class="text-sm text-slate-700 truncate ${!m.read ? 'font-semibold' : ''}">${esc(m.subject)}</div>
+          <div class="text-xs text-slate-400 truncate mt-0.5">${esc((m.body || '').slice(0, 60))}</div>
+          ${!m.read ? '<span class="inline-block w-2 h-2 bg-[#0078D4] rounded-full mt-1"></span>' : ''}
         </div>
-        ${!m.read ? `<button onclick="markRead('${m.id}')" class="text-xs text-blue-600 hover:underline">تحديد كمقروء</button>` : ''}
       </div>
-      <p class="text-slate-700 mt-3 whitespace-pre-line">${esc(m.body || '')}</p>
-    </div>`).join('');
+    </div>
+  `).join('');
+
+  const selected = inboxList.find(m => m.id === selectedMsgId);
+  const readingHtml = selected ? `
+    <div class="p-6 md:p-8">
+      <div class="mb-6 pb-6 border-b border-slate-200">
+        <h1 class="text-2xl font-bold text-slate-800 mb-3">${esc(selected.subject)}</h1>
+        <div class="flex items-center gap-3">
+          <div class="w-11 h-11 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold">${initials(selected.fromUserName)}</div>
+          <div>
+            <div class="font-semibold text-slate-800">${esc(selected.fromUserName)}</div>
+            <div class="text-xs text-slate-500">${selected.createdAt ? new Date(selected.createdAt.seconds*1000).toLocaleString('ar-EG') : ''}</div>
+          </div>
+          ${!selected.read ? `<button onclick="markRead('${selected.id}')" class="mr-auto text-xs bg-[#e5f0fa] text-[#0078D4] px-3 py-1.5 rounded-lg hover:bg-[#cce4f6] transition font-medium">تحديد كمقروء</button>` : ''}
+        </div>
+      </div>
+      <div class="text-slate-700 whitespace-pre-line leading-relaxed">${esc(selected.body || '')}</div>
+      <div class="mt-8 pt-6 border-t border-slate-200">
+        <button onclick="replyTo('${selected.fromUserId}', '${esc(selected.subject).replace(/'/g,"\\'")}')" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition">
+          <i data-lucide="reply" class="w-4 h-4"></i>
+          <span>رد</span>
+        </button>
+      </div>
+    </div>
+  ` : `<div class="flex flex-col items-center justify-center h-full text-slate-400 p-8">
+    <i data-lucide="mail-open" class="w-16 h-16 mb-4 opacity-40"></i>
+    <p class="text-sm">اختر رسالة لعرضها</p>
+  </div>`;
 
   $('#pageContent').innerHTML = `
-    <h1 class="text-2xl font-bold mb-6">صندوق الوارد <span class="text-sm font-normal text-slate-400">(${list.length})</span></h1>
-    <div class="space-y-3">
-      ${rows || '<p class="text-slate-400 text-center p-6">لا رسائل</p>'}
+    <div class="h-full flex fade-in">
+      <!-- List -->
+      <div class="w-full md:w-96 border-l border-slate-200 bg-white flex flex-col">
+        <div class="p-4 border-b border-slate-200 sticky top-0 bg-white z-10">
+          <h2 class="font-bold text-slate-800">صندوق الوارد</h2>
+          <p class="text-xs text-slate-500 mt-0.5">${inboxList.length} رسالة · ${inboxList.filter(m => !m.read).length} غير مقروءة</p>
+        </div>
+        <div class="flex-1 overflow-y-auto">
+          ${listHtml || '<div class="text-center py-12 text-slate-400 text-sm">لا رسائل</div>'}
+        </div>
+      </div>
+      <!-- Reading pane -->
+      <div class="hidden md:block flex-1 bg-white overflow-y-auto">
+        ${readingHtml}
+      </div>
     </div>
   `;
+  icons();
 }
+
+window.selectMsg = (id) => {
+  selectedMsgId = id;
+  renderInbox();
+};
+
 window.markRead = async (id) => {
   await updateDoc(doc(db, 'messages', id), { read: true });
-  inbox();
+  const m = inboxList.find(x => x.id === id);
+  if (m) m.read = true;
+  renderInbox();
+  updateInboxCount();
 };
+
+window.replyTo = async (userId, subject) => {
+  await openCompose();
+  $('#cTo').value = userId;
+  $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
+};
+
+/* ---------- Sent ---------- */
+async function sent() {
+  const q = query(collection(db, 'messages'), where('fromUserId', '==', currentUser.uid));
+  const snap = await getDocs(q);
+  const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+
+  const rows = list.map(m => `
+    <div class="px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition">
+      <div class="flex items-start gap-3">
+        <div class="w-9 h-9 rounded-full bg-green-100 text-green-700 flex items-center justify-center flex-shrink-0">
+          <i data-lucide="send" class="w-4 h-4"></i>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-semibold text-sm text-slate-800">إلى: ${esc(m.toUserName || '')}</span>
+            <span class="text-xs text-slate-400">${timeAgo(m.createdAt)}</span>
+          </div>
+          <div class="text-sm text-slate-700 truncate">${esc(m.subject)}</div>
+          <div class="text-xs text-slate-400 truncate mt-0.5">${esc((m.body || '').slice(0, 80))}</div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  $('#pageContent').innerHTML = `
+    <div class="p-6 md:p-8 max-w-4xl mx-auto fade-in">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold text-slate-800">الرسائل المُرسلة</h1>
+        <p class="text-slate-500 text-sm mt-1">${list.length} رسالة</p>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+        ${rows || '<div class="text-center py-12 text-slate-400">لا رسائل مُرسلة</div>'}
+      </div>
+    </div>
+  `;
+  icons();
+}
+
+/* ---------- Init icons ---------- */
+icons();
+window.addEventListener('load', icons);
 </script>
 </body>
 </html>
