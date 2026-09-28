@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>لوحة الإدارة</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Cairo', sans-serif; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+<!-- ============ شاشة الدخول ============ -->
+<div id="loginScreen" class="min-h-screen flex items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+    <h1 class="text-2xl font-bold text-center mb-2 text-slate-800">لوحة الإدارة</h1>
+    <p class="text-center text-slate-500 text-sm mb-6">سجّل دخولك للمتابعة</p>
+
+    <div class="space-y-4">
+      <div>
+        <label class="block text-sm font-semibold mb-1 text-slate-700">اسم المستخدم</label>
+        <input id="loginUser" type="text" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      </div>
+      <div>
+        <label class="block text-sm font-semibold mb-1 text-slate-700">كلمة السر</label>
+        <input id="loginPass" type="password" class="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+      </div>
+      <p id="loginError" class="text-red-600 text-sm hidden"></p>
+      <button id="loginBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg py-2.5 transition">
+        دخول
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ التطبيق ============ -->
+<div id="app" class="hidden min-h-screen flex">
+
+  <!-- Sidebar -->
+  <aside class="w-64 bg-white border-l border-slate-200 flex flex-col">
+    <div class="p-4 border-b border-slate-200">
+      <h2 class="font-bold text-lg text-slate-800">لوحة الإدارة</h2>
+      <p id="userLabel" class="text-xs text-slate-500 mt-1"></p>
+    </div>
+    <nav class="flex-1 p-3 space-y-1" id="nav">
+      <button data-page="dashboard" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">🏠 الرئيسية</button>
+      <button data-page="users"     class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">👥 المستخدمين</button>
+      <button data-page="departments" class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">🏢 الأقسام</button>
+      <button data-page="messages"  class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">✉️ الرسائل</button>
+      <button data-page="inbox"     class="nav-btn w-full text-right px-3 py-2 rounded-lg hover:bg-slate-100 font-medium">📥 صندوق الوارد</button>
+    </nav>
+    <div class="p-3 border-t border-slate-200">
+      <button id="logoutBtn" class="w-full text-right px-3 py-2 rounded-lg hover:bg-red-50 text-red-600 font-medium">🚪 خروج</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 p-6 overflow-y-auto">
+    <div id="pageContent"></div>
+  </main>
+</div>
+
+<!-- ============ Firebase ============ -->
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, createUserWithEmailAndPassword
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {
+  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
+  query, where, serverTimestamp, orderBy
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+/* ==================== 1) املأ الإعدادات دي ==================== */
+const firebaseConfig = {
+  apiKey:            "ضع هنا",
+  authDomain:        "ضع هنا",
+  projectId:         "ضع هنا",
+  storageBucket:     "ضع هنا",
+  messagingSenderId: "ضع هنا",
+  appId:             "ضع هنا"
+};
+const EMAIL_DOMAIN = "admin.local"; // المستخدم يدخل "ahmed" → يتحول لـ ahmed@admin.local
+
+/* ============================================================== */
+
+const app  = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db   = getFirestore(app);
+
+let currentUser = null;   // { uid, username, name, role, ... }
+
+/* ---------- Helpers ---------- */
+const $  = (s) => document.querySelector(s);
+const $$ = (s) => document.querySelectorAll(s);
+const show = (el) => el.classList.remove('hidden');
+const hide = (el) => el.classList.add('hidden');
+const esc  = (s='') => s.toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ---------- Login ---------- */
+$('#loginBtn').onclick = async () => {
+  const u = $('#loginUser').value.trim().toLowerCase();
+  const p = $('#loginPass').value;
+  const err = $('#loginError');
+  hide(err);
+  if (!u || !p) { err.textContent = 'املأ البيانات'; show(err); return; }
+  try {
+    await signInWithEmailAndPassword(auth, `${u}@${EMAIL_DOMAIN}`, p);
+  } catch (e) {
+    err.textContent = 'بيانات الدخول غلط';
+    show(err);
+  }
+};
+
+$('#logoutBtn').onclick = () => signOut(auth);
+
+/* ---------- Auth state ---------- */
+onAuthStateChanged(auth, async (user) => {
+  if (!user) {
+    currentUser = null;
+    show($('#loginScreen'));
+    hide($('#app'));
+    return;
+  }
+  // نجيب بيانات المستخدم من Firestore
+  const snap = await getDoc(doc(db, 'users', user.uid));
+  if (!snap.exists()) {
+    alert('لا يوجد ملف مستخدم في Firestore — راجع الإعداد');
+    await signOut(auth);
+    return;
+  }
+  currentUser = { uid: user.uid, ...snap.data() };
+  if (currentUser.isActive === false) {
+    alert('الحساب معطّل');
+    await signOut(auth);
+    return;
+  }
+  $('#userLabel').textContent = `${currentUser.name} — ${currentUser.role}`;
+  hide($('#loginScreen'));
+  show($('#app'));
+  navigate('dashboard');
+});
+
+/* ---------- Navigation ---------- */
+function navigate(page) {
+  $$('.nav-btn').forEach(b => {
+    if (b.dataset.page === page) b.classList.add('bg-blue-50','text-blue-700');
+    else b.classList.remove('bg-blue-50','text-blue-700');
+  });
+  const routes = { dashboard, users, departments, messages, inbox };
+  routes[page]?.();
+}
+$('#nav').addEventListener('click', (e) => {
+  const btn = e.target.closest('.nav-btn');
+  if (btn) navigate(btn.dataset.page);
+});
+
+/* ---------- Page: Dashboard ---------- */
+async function dashboard() {
+  const [usersSnap, deptSnap] = await Promise.all([
+    getDocs(collection(db, 'users')),
+    getDocs(collection(db, 'departments'))
+  ]);
+  const total  = usersSnap.size;
+  const active = usersSnap.docs.filter(d => d.data().isActive !== false).length;
+
+  $('#pageContent').innerHTML = `
+    <h1 class="text-2xl font-bold mb-6">الرئيسية</h1>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      ${card('👥','إجمالي المستخدمين', total)}
+      ${card('✅','نشط', active)}
+      ${card('🏢','الأقسام', deptSnap.size)}
+    </div>
+  `;
+}
+function card(icon, label, value) {
+  return `<div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100">
+    <div class="text-3xl mb-2">${icon}</div>
+    <div class="text-slate-500 text-sm">${label}</div>
+    <div class="text-3xl font-bold mt-1">${value}</div>
+  </div>`;
+}
+
+/* ---------- Page: Users ---------- */
+async function users() {
+  const snap = await getDocs(collection(db, 'users'));
+  const rows = snap.docs.map(d => {
+    const u = d.data();
+    return `<tr class="border-b border-slate-100">
+      <td class="px-4 py-3">${esc(u.name || '')}</td>
+      <td class="px-4 py-3 font-mono text-sm">${esc(u.username || '')}</td>
+      <td class="px-4 py-3"><span class="px-2 py-1 rounded bg-blue-50 text-blue-700 text-xs">${esc(u.role || 'user')}</span></td>
+      <td class="px-4 py-3">${u.isActive === false ? '❌' : '✅'}</td>
+      <td class="px-4 py-3 text-left">
+        <button onclick="toggleUser('${d.id}', ${u.isActive === false})" class="text-sm text-blue-600 hover:underline mr-2">
+          ${u.isActive === false ? 'تفعيل' : 'تعطيل'}
+        </button>
+        <button onclick="deleteUserDoc('${d.id}')" class="text-sm text-red-600 hover:underline">حذف</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  $('#pageContent').innerHTML = `
+    <div class="flex justify-between items-center mb-6">
+      <h1 class="text-2xl font-bold">المستخدمين</h1>
+      <button onclick="openAddUser()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-semibold">+ إضافة مستخدم</button>
+    </div>
+    <div id="addUserForm" class="hidden bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
+      <h3 class="font-bold mb-4">مستخدم جديد</h3>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <input id="nuName"  placeholder="الاسم" class="border rounded-lg px-3 py-2" />
+        <input id="nuUser"  placeholder="اسم المستخدم (بالإنجليزية)" class="border rounded-lg px-3 py-2" />
+        <input id="nuPass"  type="password" placeholder="كلمة السر" class="border rounded-lg px-3 py-2" />
+        <select id="nuRole" class="border rounded-lg px-3 py-2">
+          <option value="user">user</option>
+          <option value="manager">manager</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <p id="nuErr" class="text-red-600 text-sm mt-3 hidden"></p>
+      <div class="mt-4 flex gap-2">
+        <button onclick="createNewUser()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm">حفظ</button>
+        <button onclick="closeAddUser()" class="bg-slate-200 px-4 py-2 rounded-lg text-sm">إلغاء</button>
+      </div>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <table class="w-full text-right">
+        <thead class="bg-slate-50 text-slate-600 text-sm">
+          <tr>
+            <th class="px-4 py-3">الاسم</th>
+            <th class="px-4 py-3">اسم المستخدم</th>
+            <th class="px-4 py-3">الدور</th>
+            <th class="px-4 py-3">الحالة</th>
+            <th class="px-4 py-3">إجراءات</th>
+          </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="5" class="text-center p-6 text-slate-400">لا يوجد مستخدمين</td></tr>'}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+window.openAddUser  = () => show($('#addUserForm'));
+window.closeAddUser = () => hide($('#addUserForm'));
+
+window.createNewUser = async () => {
+  const name = $('#nuName').value.trim();
+  const user = $('#nuUser').value.trim().toLowerCase();
+  const pass = $('#nuPass').value;
+  const role = $('#nuRole').value;
+  const err  = $('#nuErr');
+  hide(err);
+
+  if (!name || !user || !pass) { err.textContent='املأ كل البيانات'; show(err); return; }
+  if (!/^[a-z0-9_.]+$/.test(user)) { err.textContent='اسم المستخدم بحروف إنجليزية وأرقام فقط'; show(err); return; }
+
+  try {
+    // 1) إنشاء Auth user
+    const cred = await createUserWithEmailAndPassword(auth, `${user}@${EMAIL_DOMAIN}`, pass);
+    // 2) حفظ بياناته في Firestore
+    await setDoc(doc(db, 'users', cred.user.uid), {
+      name, username: user, role, isActive: true, createdAt: serverTimestamp()
+    });
+    // 3) رجّع الأدمن الحالي (لأن createUser بيعمل login للمستخدم الجديد)
+    alert('تم إنشاء المستخدم ✅ — هتحتاج تسجّل دخول تاني بالأدمن');
+    await signOut(auth);
+  } catch (e) {
+    err.textContent = e.message;
+    show(err);
+  }
+};
+
+window.toggleUser = async (uid, activate) => {
+  await updateDoc(doc(db, 'users', uid), { isActive: activate });
+  users();
+};
+
+window.deleteUserDoc = async (uid) => {
+  if (!confirm('متأكد من حذف المستخدم؟ (هيتحذف من Firestore فقط، مش من Authentication)')) return;
+  await deleteDoc(doc(db, 'users', uid));
+  users();
+};
+
+/* ---------- Page: Departments ---------- */
+async function departments() {
+  const snap = await getDocs(collection(db, 'departments'));
+  const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+  const rows = list.map(d => `
+    <tr class="border-b border-slate-100">
+      <td class="px-4 py-3">${esc(d.name)}</td>
+      <td class="px-4 py-3 text-sm text-slate-500">${esc(d.description || '')}</td>
+      <td class="px-4 py-3 text-left">
+        <button onclick="deleteDept('${d.id}')" class="text-sm text-red-600 hover:underline">حذف</button>
+      </td>
+    </tr>
+  `).join('');
+
+  $('#pageContent').innerHTML = `
+    <h1 class="text-2xl font-bold mb-6">الأقسام</h1>
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <input id="dName" placeholder="اسم القسم" class="border rounded-lg px-3 py-2" />
+        <input id="dDesc" placeholder="وصف (اختياري)" class="border rounded-lg px-3 py-2" />
+        <button onclick="addDept()" class="bg-blue-600 text-white rounded-lg px-4 py-2 text-sm font-semibold">إضافة</button>
+      </div>
+    </div>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <table class="w-full text-right">
+        <thead class="bg-slate-50 text-slate-600 text-sm">
+          <tr>
+            <th class="px-4 py-3">الاسم</th>
+            <th class="px-4 py-3">الوصف</th>
+            <th class="px-4 py-3">إجراءات</th>
+          </tr>
+        </thead>
+        <tbody>${rows || '<tr><td colspan="3" class="text-center p-6 text-slate-400">لا يوجد أقسام</td></tr>'}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+window.addDept = async () => {
+  const name = $('#dName').value.trim();
+  const description = $('#dDesc').value.trim();
+  if (!name) return alert('اكتب اسم القسم');
+  await addDoc(collection(db, 'departments'), { name, description, createdAt: serverTimestamp() });
+  departments();
+};
+
+window.deleteDept = async (id) => {
+  if (!confirm('حذف القسم؟')) return;
+  await deleteDoc(doc(db, 'departments', id));
+  departments();
+};
+
+/* ---------- Page: Messages (send) ---------- */
+async function messages() {
+  const usersSnap = await getDocs(collection(db, 'users'));
+  const userOpts = usersSnap.docs.map(d => `<option value="${d.id}">${esc(d.data().name)}</option>`).join('');
+
+  const msgSnap = await getDocs(collection(db, 'messages'));
+  const sent = msgSnap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+
+  const sentRows = sent.map(m => `
+    <tr class="border-b border-slate-100">
+      <td class="px-4 py-3">${esc(m.subject)}</td>
+      <td class="px-4 py-3 text-sm text-slate-500">${esc(m.toUserName || m.toUserId || '')}</td>
+      <td class="px-4 py-3 text-sm text-slate-500">${m.createdAt ? new Date(m.createdAt.seconds*1000).toLocaleString('ar-EG') : ''}</td>
+    </tr>
+  `).join('');
+
+  $('#pageContent').innerHTML = `
+    <h1 class="text-2xl font-bold mb-6">إرسال رسالة</h1>
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 mb-6">
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-semibold mb-1">إلى</label>
+          <select id="mTo" class="w-full border rounded-lg px-3 py-2">
+            <option value="">— اختر المستخدم —</option>
+            ${userOpts}
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">الموضوع</label>
+          <input id="mSubject" class="w-full border rounded-lg px-3 py-2" />
+        </div>
+        <div>
+          <label class="block text-sm font-semibold mb-1">النص</label>
+          <textarea id="mBody" rows="4" class="w-full border rounded-lg px-3 py-2"></textarea>
+        </div>
+        <button onclick="sendMessage()" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">إرسال</button>
+      </div>
+    </div>
+
+    <h2 class="font-bold mb-3">الرسائل المُرسلة</h2>
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+      <table class="w-full text-right">
+        <thead class="bg-slate-50 text-slate-600 text-sm">
+          <tr>
+            <th class="px-4 py-3">الموضوع</th>
+            <th class="px-4 py-3">إلى</th>
+            <th class="px-4 py-3">التاريخ</th>
+          </tr>
+        </thead>
+        <tbody>${sentRows || '<tr><td colspan="3" class="text-center p-6 text-slate-400">لا رسائل</td></tr>'}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+window.sendMessage = async () => {
+  const toUserId = $('#mTo').value;
+  const subject  = $('#mSubject').value.trim();
+  const body     = $('#mBody').value.trim();
+  if (!toUserId || !subject) return alert('اختر مستخدم واكتب الموضوع');
+
+  const toUserDoc = await getDoc(doc(db, 'users', toUserId));
+  const toUserName = toUserDoc.data()?.name || '';
+
+  await addDoc(collection(db, 'messages'), {
+    subject, body,
+    fromUserId: currentUser.uid,
+    fromUserName: currentUser.name,
+    toUserId, toUserName,
+    read: false,
+    createdAt: serverTimestamp()
+  });
+  alert('تم الإرسال ✅');
+  messages();
+};
+
+/* ---------- Page: Inbox ---------- */
+async function inbox() {
+  const q1 = query(collection(db, 'messages'), where('toUserId','==', currentUser.uid));
+  const snap = await getDocs(q1);
+  const list = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
+
+  const rows = list.map(m => `
+    <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 ${m.read ? '' : 'border-r-4 border-r-blue-500'}">
+      <div class="flex justify-between items-start">
+        <div>
+          <h3 class="font-bold">${esc(m.subject)}</h3>
+          <p class="text-xs text-slate-500 mt-1">من: ${esc(m.fromUserName || '')} — ${m.createdAt ? new Date(m.createdAt.seconds*1000).toLocaleString('ar-EG') : ''}</p>
+        </div>
+        ${!m.read ? `<button onclick="markRead('${m.id}')" class="text-xs text-blue-600 hover:underline">تحديد كمقروء</button>` : ''}
+      </div>
+      <p class="text-slate-700 mt-3 whitespace-pre-line">${esc(m.body || '')}</p>
+    </div>
+  `).join('');
+
+  $('#pageContent').innerHTML = `
+    <h1 class="text-2xl font-bold mb-6">صندوق الوارد</h1>
+    <div class="space-y-3">
+      ${rows || '<p class="text-slate-400 text-center p-6">لا رسائل</p>'}
+    </div>
+  `;
+}
+
+window.markRead = async (id) => {
+  await updateDoc(doc(db, 'messages', id), { read: true });
+  inbox();
+};
+</script>
+</body>
+</html>
