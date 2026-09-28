@@ -144,7 +144,7 @@
           <i data-lucide="building-2" class="w-4 h-4"></i><span>الأقسام</span>
         </button>
       </nav>
-      <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">Mail System v3.0</div>
+      <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">Mail System v3.1</div>
     </aside>
 
     <nav id="mobileNav" style="display:none" class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex z-30">
@@ -237,6 +237,11 @@
 
 <div id="toastContainer" class="fixed top-16 left-4 z-[100] space-y-2"></div>
 
+<!-- صوت الإشعار -->
+<audio id="notifSound" preload="auto">
+  <source src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_5fba7e4a30.mp3?filename=message-notification-106287.mp3" type="audio/mpeg">
+</audio>
+
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
@@ -300,8 +305,44 @@ const timeAgo = (ts) => {
 const isOwner = () => currentUser?.role === 'owner';
 const isAdmin = () => currentUser?.role === 'admin' || isOwner();
 
+/* ---------- Sound ---------- */
+function playNotifSound() {
+  try {
+    const audio = document.getElementById('notifSound');
+    if (!audio) return;
+    audio.currentTime = 0;
+    audio.volume = 0.6;
+    audio.play().catch(e => console.warn('Sound blocked:', e));
+  } catch (e) {
+    console.warn('Sound error:', e);
+  }
+}
+
+// فتح الصوت بعد أول تفاعل من المستخدم
+document.addEventListener('click', function unlockAudio() {
+  const audio = document.getElementById('notifSound');
+  if (audio) {
+    audio.play().then(() => {
+      audio.pause();
+      audio.currentTime = 0;
+    }).catch(() => {});
+  }
+  document.removeEventListener('click', unlockAudio);
+}, { once: true });
+
+// استقبل رسائل من Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'PLAY_SOUND') {
+      console.log('🔊 SW asked to play sound');
+      playNotifSound();
+    }
+  });
+}
+
 /* ---------- Toast ---------- */
 function showToast(title, body, onClick) {
+  playNotifSound();
   const container = $('#toastContainer');
   const toast = document.createElement('div');
   toast.className = 'bg-white rounded shadow-2xl border-r-4 border-[#0078D4] p-3 min-w-[280px] max-w-sm cursor-pointer fade-in';
@@ -361,6 +402,7 @@ if (messaging) {
     console.log('📬 Foreground message:', payload);
     const { title, body } = payload.notification || {};
     const data = payload.data || {};
+    playNotifSound();
     showToast(title || 'رسالة جديدة', body || '', () => {
       navigate('inbox');
       if (data.threadId) setTimeout(() => openThread(data.threadId), 300);
@@ -998,7 +1040,7 @@ window.sendMessage = async () => {
           toUserId: u.id, toUserName: u.name,
           read: false, isBroadcast: true,
           threadId: msgRef.id,
-          notified: false,   // ← للأشعار
+          notified: false,
           createdAt: serverTimestamp()
         });
         sent++;
@@ -1019,7 +1061,7 @@ window.sendMessage = async () => {
         read: false,
         threadId: replyToThread || msgRef.id,
         parentId: replyToThread ? (window._currentThreadLastMsgId || null) : null,
-        notified: false,   // ← للأشعار
+        notified: false,
         createdAt: serverTimestamp()
       });
       status.className = 'text-xs text-green-600';
