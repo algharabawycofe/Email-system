@@ -43,7 +43,6 @@
 </head>
 <body class="bg-[#f3f2f1] min-h-screen">
 
-<!-- LOGIN -->
 <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-[#0078D4] via-[#106EBE] to-[#0a4a8a]">
   <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
     <div class="flex justify-center mb-6">
@@ -77,7 +76,6 @@
   </div>
 </div>
 
-<!-- APP -->
 <div id="app" class="hidden min-h-screen flex flex-col">
   <header class="h-12 bg-[#0078D4] flex items-center px-2 md:px-3 gap-2 sticky top-0 z-40">
     <button id="toggleSidebar" class="p-2 rounded hover:bg-white/15 transition text-white" title="إظهار/إخفاء القائمة">
@@ -146,7 +144,7 @@
           <i data-lucide="building-2" class="w-4 h-4"></i><span>الأقسام</span>
         </button>
       </nav>
-      <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">Mail System v2.1</div>
+      <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">Mail System v3.0</div>
     </aside>
 
     <nav id="mobileNav" style="display:none" class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex z-30">
@@ -176,7 +174,6 @@
   </div>
 </div>
 
-<!-- COMPOSE -->
 <div id="composeModal" style="display:none" class="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center p-0 md:p-4 modal-overlay">
   <div class="bg-white w-full md:max-w-3xl md:rounded-lg rounded-t-lg shadow-2xl flex flex-col max-h-[92vh]">
     <div class="flex items-center justify-between px-4 py-2.5 bg-[#0078D4] text-white md:rounded-t-lg rounded-t-lg">
@@ -249,6 +246,9 @@ import {
   getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   query, where, serverTimestamp, onSnapshot, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getMessaging, getToken, onMessage
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAZTWVHsdv0U3XSEFyZG9RtVNJJwiTxPBA",
@@ -260,9 +260,14 @@ const firebaseConfig = {
 };
 
 const EMAIL_DOMAIN = "algharbawy.com";
+const VAPID_KEY = "BBua7yXB4zAM7TpSFCbmw8reNoFDOCk-iI1lukpyaVWQ8jhIL-0SxxCFGJZDJZkw-1EyLhgthiLM7Qo6AlFfpWI";
+const SW_PATH = "/Email-system/firebase-messaging-sw.js";
+
 const app  = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db   = getFirestore(app);
+let messaging = null;
+try { messaging = getMessaging(app); } catch(e) { console.warn('FCM not supported', e); }
 
 let currentUser = null;
 let allUsersCache = [];
@@ -319,6 +324,48 @@ function showToast(title, body, onClick) {
   container.appendChild(toast);
   icons();
   setTimeout(() => toast.remove(), 6000);
+}
+
+/* ---------- FCM ---------- */
+async function registerFCMToken() {
+  try {
+    if (!messaging) { console.log('FCM not available'); return; }
+    if (!('Notification' in window)) { console.log('Notifications not supported'); return; }
+
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { console.log('🚫 Notification permission:', perm); return; }
+
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    console.log('✅ SW registered');
+
+    const token = await getToken(messaging, {
+      vapidKey: VAPID_KEY,
+      serviceWorkerRegistration: reg
+    });
+
+    if (!token) { console.log('❌ No FCM token'); return; }
+
+    await setDoc(doc(db, 'users', currentUser.uid, 'fcmTokens', token), {
+      token,
+      createdAt: serverTimestamp(),
+      userAgent: navigator.userAgent
+    });
+    console.log('✅ FCM Token saved:', token.slice(0, 25) + '...');
+  } catch (e) {
+    console.error('❌ FCM error:', e);
+  }
+}
+
+if (messaging) {
+  onMessage(messaging, (payload) => {
+    console.log('📬 Foreground message:', payload);
+    const { title, body } = payload.notification || {};
+    const data = payload.data || {};
+    showToast(title || 'رسالة جديدة', body || '', () => {
+      navigate('inbox');
+      if (data.threadId) setTimeout(() => openThread(data.threadId), 300);
+    });
+  });
 }
 
 /* ---------- Real-time Listener ---------- */
@@ -538,6 +585,9 @@ onAuthStateChanged(auth, async (user) => {
   initSidebar();
   navigate('dashboard');
   startMessagesListener();
+
+  // سجّل FCM بعد ثانية
+  setTimeout(registerFCMToken, 1500);
 });
 
 async function loadUsersCache() {
@@ -939,7 +989,6 @@ window.sendMessage = async () => {
       const recipients = allUsersCache.filter(u => u.id !== currentUser.uid && u.isActive !== false);
       let sent = 0;
       for (const u of recipients) {
-        // ✅ إنشاء الـ ref الأول، واستخدام الـ id كـ threadId في نفس الـ setDoc
         const msgRef = doc(collection(db, 'messages'));
         await setDoc(msgRef, {
           subject, body,
@@ -948,7 +997,8 @@ window.sendMessage = async () => {
           fromUserUsername: currentUser.username,
           toUserId: u.id, toUserName: u.name,
           read: false, isBroadcast: true,
-          threadId: msgRef.id,   // ← الـ id من الأول، مش محتاج update
+          threadId: msgRef.id,
+          notified: false,   // ← للأشعار
           createdAt: serverTimestamp()
         });
         sent++;
@@ -967,8 +1017,9 @@ window.sendMessage = async () => {
         fromUserUsername: currentUser.username,
         toUserId, toUserName: toUser?.name || '',
         read: false,
-        threadId: replyToThread || msgRef.id,   // ← رد على thread موجود، أو thread جديد
+        threadId: replyToThread || msgRef.id,
         parentId: replyToThread ? (window._currentThreadLastMsgId || null) : null,
+        notified: false,   // ← للأشعار
         createdAt: serverTimestamp()
       });
       status.className = 'text-xs text-green-600';
