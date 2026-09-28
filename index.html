@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Mail System</title>
+<title>Mail System - Outlook Style</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -13,16 +13,31 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
   ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-  .msg-item { transition: all 0.15s ease; cursor: pointer; }
-  .msg-item:hover { background: #f3f4f6; }
-  .msg-item.active { background: #e5f0fa; border-right: 3px solid #0078D4; }
-  .fade-in { animation: fadeIn 0.2s ease-in; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
-  .modal-overlay { animation: modalIn 0.2s ease-out; }
-  @keyframes modalIn { from { opacity: 0; } to { opacity: 1; } }
-  #sidebar { transition: margin-right 0.25s ease; }
+  .fade-in { animation: fadeIn 0.15s ease-in; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* Sidebar */
+  #sidebar { transition: margin-right 0.2s ease; }
   #sidebar.collapsed { margin-right: -16rem; }
 
+  /* Message List Items (Outlook-like) */
+  .msg-item {
+    transition: background 0.1s;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f5f9;
+    position: relative;
+  }
+  .msg-item:hover { background: #f3f4f6; }
+  .msg-item.active { background: #cfe4fa; }
+  .msg-item.active::before {
+    content: '';
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: #0078D4;
+  }
+
+  /* Reading pane */
   .inbox-reading { display: none; }
   @media (min-width: 768px) {
     .inbox-reading { display: flex; }
@@ -34,8 +49,30 @@
     .inbox-reading.mobile-show { display: flex !important; }
   }
 
+  /* Email card */
+  .email-card { transition: box-shadow 0.15s; }
+  .email-card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+  /* Compose Modal */
+  .modal-overlay { animation: modalIn 0.15s ease-out; }
+  @keyframes modalIn { from { opacity: 0; } to { opacity: 1; } }
+
+  /* Notification badge */
   .pulse { animation: pulse 1.5s infinite; }
   @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+
+  /* Ribbon buttons */
+  .ribbon-btn {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 6px 10px; border-radius: 4px; cursor: pointer;
+    transition: background 0.1s; gap: 3px;
+    font-size: 11px;
+    color: #374151;
+    min-width: 55px;
+  }
+  .ribbon-btn:hover { background: #f3f4f6; }
+  .ribbon-btn i { width: 18px; height: 18px; color: #4b5563; }
+  .ribbon-btn.primary i { color: #0078D4; }
 </style>
 </head>
 <body class="bg-[#f3f2f1] min-h-screen">
@@ -76,165 +113,195 @@
 
 <!-- ============ APP ============ -->
 <div id="app" class="hidden min-h-screen flex flex-col">
-  <header class="h-14 bg-white border-b border-slate-200 flex items-center px-3 md:px-4 gap-2 md:gap-3 sticky top-0 z-40">
-    <button id="toggleSidebar" class="p-2 rounded-lg hover:bg-slate-100 transition text-slate-600" title="إظهار/إخفاء القائمة">
+
+  <!-- Header -->
+  <header class="h-12 bg-[#0078D4] flex items-center px-2 md:px-3 gap-2 sticky top-0 z-40">
+    <button id="toggleSidebar" class="p-2 rounded hover:bg-white/15 transition text-white" title="إظهار/إخفاء القائمة">
       <i data-lucide="menu" class="w-5 h-5"></i>
     </button>
 
-    <div class="flex items-center gap-2 md:gap-3">
-      <div class="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center">
-        <i data-lucide="mail" class="w-4 h-4 text-white"></i>
-      </div>
-      <span class="font-bold text-slate-800 hidden md:inline">Mail System</span>
+    <div class="flex items-center gap-2 text-white">
+      <i data-lucide="mail" class="w-5 h-5"></i>
+      <span class="font-bold hidden md:inline">Mail System</span>
     </div>
 
-    <div class="flex-1 max-w-2xl relative hidden sm:block">
-      <i data-lucide="search" class="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-slate-400"></i>
-      <input id="globalSearch" type="text" placeholder="ابحث..." class="w-full bg-slate-100 hover:bg-slate-50 focus:bg-white border border-transparent focus:border-[#0078D4] rounded-lg pr-10 pl-4 py-2 text-sm focus:outline-none transition" />
+    <div class="flex-1 max-w-2xl relative hidden sm:block mx-3">
+      <i data-lucide="search" class="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-slate-500"></i>
+      <input id="globalSearch" type="text" placeholder="ابحث في الرسائل..." class="w-full bg-white border border-transparent rounded pr-9 pl-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-white/50" />
     </div>
 
     <div class="flex-1 sm:flex-none"></div>
 
     <!-- Notification Bell -->
     <div class="relative">
-      <button id="notifBtn" class="relative p-2 rounded-lg hover:bg-slate-100 transition" title="الإشعارات">
-        <i data-lucide="bell" class="w-5 h-5 text-slate-600"></i>
-        <span id="notifBadge" class="hidden absolute -top-0.5 -left-0.5 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1"></span>
+      <button id="notifBtn" class="relative p-2 rounded hover:bg-white/15 transition" title="الإشعارات">
+        <i data-lucide="bell" class="w-5 h-5 text-white"></i>
+        <span id="notifBadge" class="hidden absolute top-0.5 left-0.5 min-w-[16px] h-[16px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 border border-white"></span>
       </button>
 
-      <div id="notifDropdown" style="display:none" class="absolute left-0 mt-2 w-80 md:w-96 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50">
+      <div id="notifDropdown" style="display:none" class="absolute left-0 mt-2 w-80 md:w-96 bg-white rounded-lg shadow-2xl border border-slate-200 overflow-hidden z-50">
         <div class="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-          <div class="font-bold text-slate-800">الإشعارات</div>
+          <div class="font-bold text-slate-800 text-sm">الإشعارات</div>
           <button onclick="markAllRead()" class="text-xs text-[#0078D4] hover:underline font-medium">تحديد الكل كمقروء</button>
         </div>
         <div id="notifList" class="max-h-96 overflow-y-auto"></div>
       </div>
     </div>
 
-    <div class="flex items-center gap-2 md:gap-3 pl-2 md:pl-3 border-r border-slate-200">
-      <div class="text-left hidden md:block">
-        <div id="userName" class="text-sm font-semibold text-slate-800 leading-tight"></div>
-        <div id="userRole" class="text-xs text-slate-500"></div>
+    <div class="flex items-center gap-2 pl-2 md:pl-3 border-r border-white/20 pr-3">
+      <div class="text-right hidden md:block text-white">
+        <div id="userName" class="text-xs font-semibold leading-tight"></div>
+        <div id="userRole" class="text-[10px] opacity-80"></div>
       </div>
-      <div id="userAvatar" class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-sm"></div>
-      <button id="logoutBtn" class="p-2 rounded-lg hover:bg-red-50 transition text-slate-500 hover:text-red-600" title="خروج">
+      <div id="userAvatar" class="w-8 h-8 rounded-full bg-white/20 text-white border border-white/30 flex items-center justify-center font-bold text-xs"></div>
+      <button id="logoutBtn" class="p-2 rounded hover:bg-white/15 transition text-white" title="خروج">
         <i data-lucide="log-out" class="w-5 h-5"></i>
       </button>
     </div>
   </header>
 
   <div class="flex flex-1 overflow-hidden relative">
+    <!-- Sidebar -->
     <aside id="sidebar" class="w-64 bg-white border-l border-slate-200 flex flex-col overflow-y-auto flex-shrink-0">
-      <div class="p-3">
-        <button onclick="openCompose()" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 flex items-center justify-center gap-2 transition shadow-sm">
+      <div class="p-3 border-b border-slate-200">
+        <button onclick="openCompose()" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded py-2.5 flex items-center justify-center gap-2 transition shadow-sm">
           <i data-lucide="pencil" class="w-4 h-4"></i>
           <span>رسالة جديدة</span>
         </button>
       </div>
-      <nav class="flex-1 px-2 space-y-0.5" id="nav">
-        <button data-page="dashboard" class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+      <nav class="flex-1 py-2" id="nav">
+        <button data-page="dashboard" class="nav-btn w-full flex items-center gap-3 text-right px-4 py-2 hover:bg-slate-100 text-slate-700 text-sm transition border-r-2 border-transparent">
           <i data-lucide="home" class="w-4 h-4"></i><span>الرئيسية</span>
         </button>
-        <button data-page="inbox" class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+        <button data-page="inbox" class="nav-btn w-full flex items-center gap-3 text-right px-4 py-2 hover:bg-slate-100 text-slate-700 text-sm transition border-r-2 border-transparent">
           <i data-lucide="inbox" class="w-4 h-4"></i><span>صندوق الوارد</span>
           <span id="inboxCount" class="mr-auto text-xs bg-[#0078D4] text-white rounded-full px-2 py-0.5 hidden">0</span>
         </button>
-        <button data-page="sent" class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+        <button data-page="sent" class="nav-btn w-full flex items-center gap-3 text-right px-4 py-2 hover:bg-slate-100 text-slate-700 text-sm transition border-r-2 border-transparent">
           <i data-lucide="send" class="w-4 h-4"></i><span>المُرسلة</span>
         </button>
-        <div class="pt-3 pb-1 px-3" data-admin-only>
+
+        <div class="pt-4 pb-1 px-4" data-admin-only>
           <div class="text-xs font-bold text-slate-400 uppercase tracking-wider">الإدارة</div>
         </div>
-        <button data-page="users" data-admin-only class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+        <button data-page="users" data-admin-only class="nav-btn w-full flex items-center gap-3 text-right px-4 py-2 hover:bg-slate-100 text-slate-700 text-sm transition border-r-2 border-transparent">
           <i data-lucide="users" class="w-4 h-4"></i><span>المستخدمين</span>
         </button>
-        <button data-page="departments" data-admin-only class="nav-btn w-full flex items-center gap-3 text-right px-3 py-2.5 rounded-lg hover:bg-slate-100 text-slate-700 font-medium transition">
+        <button data-page="departments" data-admin-only class="nav-btn w-full flex items-center gap-3 text-right px-4 py-2 hover:bg-slate-100 text-slate-700 text-sm transition border-r-2 border-transparent">
           <i data-lucide="building-2" class="w-4 h-4"></i><span>الأقسام</span>
         </button>
       </nav>
       <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">
-        Mail System v1.4
+        Mail System v2.0
       </div>
     </aside>
 
+    <!-- Mobile Nav -->
     <nav id="mobileNav" style="display:none" class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex z-30">
-      <button data-page="dashboard" class="mnav-btn flex-1 flex flex-col items-center py-2.5 text-slate-500 text-xs gap-1">
+      <button data-page="dashboard" class="mnav-btn flex-1 flex flex-col items-center py-2 text-slate-500 text-[10px] gap-0.5">
         <i data-lucide="home" class="w-5 h-5"></i><span>الرئيسية</span>
       </button>
-      <button data-page="inbox" class="mnav-btn flex-1 flex flex-col items-center py-2.5 text-slate-500 text-xs gap-1 relative">
+      <button data-page="inbox" class="mnav-btn flex-1 flex flex-col items-center py-2 text-slate-500 text-[10px] gap-0.5 relative">
         <i data-lucide="inbox" class="w-5 h-5"></i><span>الوارد</span>
         <span id="inboxCountM" class="hidden absolute top-1 right-1/4 text-xs bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px]">0</span>
       </button>
-      <button onclick="openCompose()" class="mnav-btn flex-1 flex flex-col items-center py-2.5 text-[#0078D4] text-xs gap-1">
+      <button onclick="openCompose()" class="mnav-btn flex-1 flex flex-col items-center py-2 text-[#0078D4] text-[10px] gap-0.5">
         <div class="w-10 h-10 rounded-full bg-[#0078D4] -mt-5 flex items-center justify-center shadow-lg">
           <i data-lucide="pencil" class="w-5 h-5 text-white"></i>
         </div>
       </button>
-      <button data-page="sent" class="mnav-btn flex-1 flex flex-col items-center py-2.5 text-slate-500 text-xs gap-1">
+      <button data-page="sent" class="mnav-btn flex-1 flex flex-col items-center py-2 text-slate-500 text-[10px] gap-0.5">
         <i data-lucide="send" class="w-5 h-5"></i><span>المُرسلة</span>
       </button>
-      <button data-page="users" data-admin-only class="mnav-btn flex-1 flex flex-col items-center py-2.5 text-slate-500 text-xs gap-1">
+      <button data-page="users" data-admin-only class="mnav-btn flex-1 flex flex-col items-center py-2 text-slate-500 text-[10px] gap-0.5">
         <i data-lucide="users" class="w-5 h-5"></i><span>المستخدمين</span>
       </button>
     </nav>
 
-    <main id="mainContent" class="flex-1 overflow-hidden bg-[#faf9f8]">
+    <main id="mainContent" class="flex-1 overflow-hidden bg-white">
       <div id="pageContent" class="h-full overflow-y-auto"></div>
     </main>
   </div>
 </div>
 
-<!-- ============ COMPOSE MODAL ============ -->
+<!-- ============ COMPOSE MODAL (Outlook-style) ============ -->
 <div id="composeModal" style="display:none" class="fixed inset-0 bg-black/40 z-50 flex items-end md:items-center justify-center p-0 md:p-4 modal-overlay">
-  <div class="bg-white w-full md:max-w-2xl md:rounded-xl rounded-t-2xl shadow-2xl flex flex-col max-h-[90vh]">
-    <div class="flex items-center justify-between px-5 py-3 bg-[#0078D4] text-white md:rounded-t-xl rounded-t-2xl">
+  <div class="bg-white w-full md:max-w-3xl md:rounded-lg rounded-t-lg shadow-2xl flex flex-col max-h-[92vh]">
+    <!-- Title bar -->
+    <div class="flex items-center justify-between px-4 py-2.5 bg-[#0078D4] text-white md:rounded-t-lg rounded-t-lg">
       <div class="flex items-center gap-2">
         <i data-lucide="pencil" class="w-4 h-4"></i>
-        <span class="font-semibold">رسالة جديدة</span>
+        <span class="font-semibold text-sm">رسالة جديدة</span>
       </div>
-      <button onclick="closeCompose()" class="p-1 rounded hover:bg-white/20 transition">
-        <i data-lucide="x" class="w-5 h-5"></i>
+      <div class="flex items-center gap-1">
+        <button onclick="closeCompose()" class="p-1 rounded hover:bg-white/20 transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+    </div>
+
+    <!-- Ribbon -->
+    <div class="flex items-center gap-0.5 px-2 py-1.5 bg-slate-50 border-b border-slate-200">
+      <button id="sendBtn" onclick="sendMessage()" class="ribbon-btn primary">
+        <i data-lucide="send"></i>
+        <span>إرسال</span>
+      </button>
+      <div class="w-px h-8 bg-slate-300 mx-1"></div>
+      <button onclick="closeCompose()" class="ribbon-btn">
+        <i data-lucide="trash-2"></i>
+        <span>إلغاء</span>
       </button>
     </div>
-    <div class="flex-1 overflow-y-auto p-5 space-y-4" id="composeBody">
-      <div id="broadcastBox" style="display:none" class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+
+    <!-- Fields -->
+    <div class="border-b border-slate-200">
+      <div id="broadcastBox" style="display:none" class="px-4 py-2 bg-amber-50 border-b border-amber-200">
         <label class="flex items-center gap-3 cursor-pointer">
-          <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()" class="w-5 h-5 accent-amber-600 cursor-pointer" />
-          <div class="flex-1">
-            <div class="font-bold text-amber-900 flex items-center gap-2">
-              <i data-lucide="megaphone" class="w-4 h-4"></i>
+          <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()" class="w-4 h-4 accent-amber-600 cursor-pointer" />
+          <div class="flex-1 text-sm">
+            <div class="font-bold text-amber-900 flex items-center gap-1.5">
+              <i data-lucide="megaphone" class="w-3.5 h-3.5"></i>
               <span>إرسال لجميع المستخدمين</span>
             </div>
-            <div class="text-xs text-amber-700 mt-0.5">هتتبعت لـ <span id="broadcastCount">0</span> مستخدم نشط</div>
+            <div class="text-xs text-amber-700">هتتبعت لـ <span id="broadcastCount">0</span> مستخدم نشط</div>
           </div>
         </label>
       </div>
-      <div id="toBox">
-        <label class="block text-xs font-semibold text-slate-500 mb-1">إلى</label>
-        <select id="cTo" class="w-full border-b border-slate-300 focus:border-[#0078D4] py-2 text-sm focus:outline-none bg-transparent"></select>
+
+      <div id="toBox" class="flex items-center border-b border-slate-200">
+        <span class="px-4 py-2.5 text-xs font-semibold text-slate-600 w-16 flex-shrink-0">إلى</span>
+        <select id="cTo" class="flex-1 py-2.5 text-sm focus:outline-none bg-transparent"></select>
       </div>
-      <div>
-        <label class="block text-xs font-semibold text-slate-500 mb-1">الموضوع</label>
-        <input id="cSubject" placeholder="اكتب موضوع الرسالة..." class="w-full border-b border-slate-300 focus:border-[#0078D4] py-2 text-sm focus:outline-none bg-transparent" />
+
+      <div class="flex items-center border-b border-slate-200">
+        <span class="px-4 py-2.5 text-xs font-semibold text-slate-600 w-16 flex-shrink-0">الموضوع</span>
+        <input id="cSubject" placeholder="اكتب موضوع الرسالة..." class="flex-1 py-2.5 text-sm focus:outline-none bg-transparent" />
       </div>
-      <div>
-        <textarea id="cBody" rows="8" placeholder="اكتب رسالتك هنا..." class="w-full border border-slate-200 rounded-lg p-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4] focus:border-transparent resize-none"></textarea>
-      </div>
-      <input type="hidden" id="cThreadId" />
-      <p id="cStatus" class="text-sm hidden"></p>
     </div>
-    <div class="px-5 py-3 border-t border-slate-200 flex items-center justify-between bg-slate-50 md:rounded-b-xl">
-      <button id="sendBtn" onclick="sendMessage()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg px-5 py-2 flex items-center gap-2 transition shadow-sm">
-        <i data-lucide="send" class="w-4 h-4"></i>
-        <span>إرسال</span>
-      </button>
-      <button onclick="closeCompose()" class="text-slate-500 hover:text-slate-700 px-3 py-2 text-sm font-medium transition">إلغاء</button>
+
+    <!-- Body -->
+    <div class="flex-1 overflow-y-auto">
+      <textarea id="cBody" placeholder="اكتب رسالتك هنا..." class="w-full h-full min-h-[300px] p-4 text-sm focus:outline-none resize-none" style="font-family: 'Cairo', 'Segoe UI', sans-serif;"></textarea>
+    </div>
+
+    <input type="hidden" id="cThreadId" />
+
+    <!-- Footer -->
+    <div class="px-4 py-2 border-t border-slate-200 flex items-center justify-between bg-slate-50 md:rounded-b-lg">
+      <p id="cStatus" class="text-xs text-slate-500"></p>
+      <div class="flex items-center gap-2">
+        <button onclick="closeCompose()" class="text-slate-600 hover:bg-slate-200 px-3 py-1.5 rounded text-xs font-medium transition">إلغاء</button>
+        <button onclick="sendMessage()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded px-4 py-1.5 text-xs flex items-center gap-1.5 transition">
+          <i data-lucide="send" class="w-3.5 h-3.5"></i>
+          <span>إرسال</span>
+        </button>
+      </div>
     </div>
   </div>
 </div>
 
-<!-- ============ TOAST ============ -->
-<div id="toastContainer" class="fixed top-20 left-4 z-[100] space-y-2"></div>
+<!-- Toast -->
+<div id="toastContainer" class="fixed top-16 left-4 z-[100] space-y-2"></div>
 
 <script type="module">
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -268,6 +335,7 @@ let unreadMessages = [];
 let lastUnreadCount = 0;
 let selectedThreadId = null;
 let threadsCache = [];
+let expandedMsgs = new Set();
 window._currentThreadLastMsgId = null;
 
 const $  = (s) => document.querySelector(s);
@@ -282,15 +350,22 @@ const timeAgo = (ts) => {
   const d = new Date(ts.seconds * 1000);
   const diff = (Date.now() - d.getTime()) / 1000;
   if (diff < 60) return 'الآن';
-  if (diff < 3600) return `منذ ${Math.floor(diff/60)} د`;
-  if (diff < 86400) return `منذ ${Math.floor(diff/3600)} س`;
-  if (diff < 604800) return `منذ ${Math.floor(diff/86400)} ي`;
-  return d.toLocaleDateString('ar-EG');
+  if (diff < 3600) return `${Math.floor(diff/60)} د`;
+  if (diff < 86400) return `${Math.floor(diff/3600)} س`;
+  if (diff < 604800) return `${Math.floor(diff/86400)} ي`;
+  return d.toLocaleDateString('ar-EG', {month:'short', day:'numeric'});
 };
 const fullDate = (ts) => {
   if (!ts || !ts.seconds) return '';
   return new Date(ts.seconds * 1000).toLocaleString('ar-EG', {
     weekday:'long', year:'numeric', month:'long', day:'numeric',
+    hour:'2-digit', minute:'2-digit'
+  });
+};
+const shortDate = (ts) => {
+  if (!ts || !ts.seconds) return '';
+  return new Date(ts.seconds * 1000).toLocaleString('ar-EG', {
+    year:'numeric', month:'short', day:'numeric',
     hour:'2-digit', minute:'2-digit'
   });
 };
@@ -301,18 +376,18 @@ const isAdmin = () => currentUser?.role === 'admin' || isOwner();
 function showToast(title, body, onClick) {
   const container = $('#toastContainer');
   const toast = document.createElement('div');
-  toast.className = 'bg-white rounded-xl shadow-2xl border-r-4 border-[#0078D4] p-4 min-w-[300px] max-w-sm cursor-pointer fade-in';
+  toast.className = 'bg-white rounded shadow-2xl border-r-4 border-[#0078D4] p-3 min-w-[280px] max-w-sm cursor-pointer fade-in';
   toast.innerHTML = `
     <div class="flex items-start gap-3">
-      <div class="w-10 h-10 rounded-full bg-[#e5f0fa] flex items-center justify-center flex-shrink-0">
-        <i data-lucide="mail" class="w-5 h-5 text-[#0078D4]"></i>
+      <div class="w-9 h-9 rounded-full bg-[#e5f0fa] flex items-center justify-center flex-shrink-0">
+        <i data-lucide="mail" class="w-4 h-4 text-[#0078D4]"></i>
       </div>
       <div class="flex-1 min-w-0">
-        <div class="font-bold text-sm text-slate-800 truncate">${esc(title)}</div>
+        <div class="font-bold text-xs text-slate-800 truncate">${esc(title)}</div>
         <div class="text-xs text-slate-600 mt-0.5 truncate">${esc(body)}</div>
       </div>
       <button class="p-1 hover:bg-slate-100 rounded flex-shrink-0">
-        <i data-lucide="x" class="w-4 h-4 text-slate-400"></i>
+        <i data-lucide="x" class="w-3.5 h-3.5 text-slate-400"></i>
       </button>
     </div>
   `;
@@ -345,7 +420,6 @@ function startMessagesListener() {
     }
     lastUnreadCount = unreadMessages.length;
 
-    // لو إحنا في صفحة الوارد → حدّثها فورًا
     if (document.getElementById('inboxContainer')) inbox();
   });
 }
@@ -361,12 +435,11 @@ function updateNotificationUI() {
     if (notifBadge) {
       notifBadge.textContent = count > 9 ? '9+' : count;
       notifBadge.classList.remove('hidden');
-      notifBadge.classList.add('pulse');
     }
   } else {
     if (el) hide(el);
     if (elM) hide(elM);
-    if (notifBadge) { notifBadge.classList.add('hidden'); notifBadge.classList.remove('pulse'); }
+    if (notifBadge) notifBadge.classList.add('hidden');
   }
   renderNotifDropdown();
 }
@@ -387,10 +460,10 @@ function renderNotifDropdown() {
       <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(m.fromUserName)}</div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
-          <span class="font-semibold text-sm text-slate-800 truncate">${esc(m.fromUserName)}</span>
+          <span class="font-semibold text-xs text-slate-800 truncate">${esc(m.fromUserName)}</span>
           <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(m.createdAt)}</span>
         </div>
-        <div class="text-sm text-slate-700 truncate">${esc(m.subject)}</div>
+        <div class="text-xs text-slate-700 truncate">${esc(m.subject)}</div>
         <div class="text-xs text-slate-400 truncate mt-0.5">${esc((m.body||'').slice(0,60))}</div>
       </div>
     </div>
@@ -415,7 +488,7 @@ window.markAllRead = async () => {
 function showNotifDropdown() { $('#notifDropdown').style.display = 'block'; }
 function hideNotifDropdown() { $('#notifDropdown').style.display = 'none'; }
 
-/* ---------- Sidebar ---------- */
+/* ---------- Sidebar Toggle ---------- */
 function toggleSidebar() {
   const sidebar = $('#sidebar');
   sidebarCollapsed = !sidebarCollapsed;
@@ -550,9 +623,13 @@ async function loadUsersCache() {
 function navigate(page) {
   $$('.nav-btn').forEach(b => {
     const active = b.dataset.page === page;
-    b.classList.toggle('bg-[#e5f0fa]', active);
-    b.classList.toggle('text-[#0078D4]', active);
-    b.classList.toggle('font-semibold', active);
+    if (active) {
+      b.classList.add('bg-[#e5f0fa]','text-[#0078D4]','border-r-[#0078D4]','font-semibold');
+      b.classList.remove('border-transparent','text-slate-700');
+    } else {
+      b.classList.remove('bg-[#e5f0fa]','text-[#0078D4]','border-r-[#0078D4]','font-semibold');
+      b.classList.add('border-transparent','text-slate-700');
+    }
   });
   $$('.mnav-btn').forEach(b => {
     const active = b.dataset.page === page;
@@ -594,8 +671,8 @@ async function dashboard() {
           ${statCard('building-2', 'الأقسام', deptSnap.size, 'bg-purple-50', 'text-purple-600', "navigate('departments')")}
           ${statCard('mail', 'غير مقروء', unread, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
         </div>
-        <div class="bg-white rounded-2xl border border-slate-200 p-5 md:p-6">
-          <h2 class="font-bold text-lg mb-4 text-slate-800">إجراءات سريعة</h2>
+        <div class="bg-white rounded border border-slate-200 p-5 md:p-6">
+          <h2 class="font-bold text-base mb-4 text-slate-800">إجراءات سريعة</h2>
           <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
             ${quickAction('pencil', 'رسالة جديدة', 'openCompose()')}
             ${quickAction('users', 'إدارة المستخدمين', "navigate('users')")}
@@ -617,8 +694,8 @@ async function dashboard() {
           ${statCard('inbox', 'رسائل الوارد', snap.size, 'bg-blue-50', 'text-blue-600', "navigate('inbox')")}
           ${statCard('mail', 'غير مقروءة', unreadMessages.length, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
         </div>
-        <div class="bg-white rounded-2xl border border-slate-200 p-5 md:p-6">
-          <h2 class="font-bold text-lg mb-4 text-slate-800">إجراءات سريعة</h2>
+        <div class="bg-white rounded border border-slate-200 p-5 md:p-6">
+          <h2 class="font-bold text-base mb-4 text-slate-800">إجراءات سريعة</h2>
           <div class="grid grid-cols-2 gap-3">
             ${quickAction('pencil', 'رسالة جديدة', 'openCompose()')}
             ${quickAction('inbox', 'صندوق الوارد', "navigate('inbox')")}
@@ -632,8 +709,8 @@ async function dashboard() {
 function statCard(icon, label, value, bg, fg, onClick) {
   const cursor = onClick ? 'cursor-pointer hover:border-[#0078D4] hover:shadow-md' : 'hover:shadow-md';
   const click = onClick ? `onclick="${onClick}"` : '';
-  return `<div ${click} class="bg-white rounded-2xl border border-slate-200 p-4 md:p-5 transition ${cursor}">
-    <div class="w-10 h-10 md:w-11 md:h-11 rounded-xl ${bg} ${fg} flex items-center justify-center mb-3">
+  return `<div ${click} class="bg-white rounded border border-slate-200 p-4 md:p-5 transition ${cursor}">
+    <div class="w-10 h-10 md:w-11 md:h-11 rounded ${bg} ${fg} flex items-center justify-center mb-3">
       <i data-lucide="${icon}" class="w-5 h-5"></i>
     </div>
     <div class="text-xs md:text-sm text-slate-500">${label}</div>
@@ -641,8 +718,8 @@ function statCard(icon, label, value, bg, fg, onClick) {
   </div>`;
 }
 function quickAction(icon, label, action) {
-  return `<button onclick="${action}" class="flex flex-col items-center gap-2 p-4 bg-slate-50 hover:bg-[#e5f0fa] rounded-xl border border-slate-200 hover:border-[#0078D4] transition group">
-    <i data-lucide="${icon}" class="w-6 h-6 text-slate-500 group-hover:text-[#0078D4]"></i>
+  return `<button onclick="${action}" class="flex flex-col items-center gap-2 p-3 bg-slate-50 hover:bg-[#e5f0fa] rounded border border-slate-200 hover:border-[#0078D4] transition group">
+    <i data-lucide="${icon}" class="w-5 h-5 text-slate-500 group-hover:text-[#0078D4]"></i>
     <span class="text-xs font-medium text-slate-700 group-hover:text-[#0078D4] text-center">${label}</span>
   </button>`;
 }
@@ -660,13 +737,13 @@ async function users() {
         <div class="flex items-center gap-3">
           <div class="w-9 h-9 rounded-full bg-[#0070c0] text-white flex items-center justify-center font-bold text-xs">${initials(u.name)}</div>
           <div class="min-w-0">
-            <div class="font-medium text-slate-800 truncate">${esc(u.name)}</div>
+            <div class="font-medium text-slate-800 text-sm truncate">${esc(u.name)}</div>
             <div class="text-xs text-slate-400 font-mono truncate">${esc(u.email || '')}</div>
           </div>
         </div>
       </td>
       <td class="px-4 py-3 font-mono text-sm text-slate-600 hidden md:table-cell">${esc(u.username)}</td>
-      <td class="px-4 py-3"><span class="px-2.5 py-1 rounded-full text-xs font-semibold ${uColor} whitespace-nowrap">${uLabel}</span></td>
+      <td class="px-4 py-3"><span class="px-2.5 py-1 rounded text-xs font-semibold ${uColor} whitespace-nowrap">${uLabel}</span></td>
       <td class="px-4 py-3 hidden sm:table-cell">
         ${u.isActive === false
           ? `<span class="flex items-center gap-1 text-xs text-red-600"><span class="w-2 h-2 rounded-full bg-red-500"></span>معطّل</span>`
@@ -691,19 +768,19 @@ async function users() {
           <h1 class="text-2xl font-bold text-slate-800">المستخدمين</h1>
           <p class="text-slate-500 text-sm mt-1">${allUsersCache.length} مستخدم</p>
         </div>
-        <button onclick="openAddUser()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-3 md:px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm">
+        <button onclick="openAddUser()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-3 md:px-4 py-2 rounded text-sm font-semibold flex items-center gap-2 transition shadow-sm">
           <i data-lucide="user-plus" class="w-4 h-4"></i>
           <span class="hidden md:inline">إضافة مستخدم</span>
         </button>
       </div>
 
-      <div id="addUserForm" class="hidden bg-white rounded-2xl border border-slate-200 p-5 md:p-6 mb-6 fade-in">
+      <div id="addUserForm" class="hidden bg-white rounded border border-slate-200 p-5 md:p-6 mb-6 fade-in">
         <h3 class="font-bold mb-4 text-slate-800">مستخدم جديد</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input id="nuName" placeholder="الاسم الكامل" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-          <input id="nuUser" placeholder="اسم المستخدم (إنجليزي)" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-          <input id="nuPass" type="text" placeholder="كلمة السر (6+ حروف)" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-          <select id="nuRole" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+          <input id="nuName" placeholder="الاسم الكامل" class="border border-slate-300 rounded px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <input id="nuUser" placeholder="اسم المستخدم (إنجليزي)" class="border border-slate-300 rounded px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <input id="nuPass" type="text" placeholder="كلمة السر (6+ حروف)" class="border border-slate-300 rounded px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <select id="nuRole" class="border border-slate-300 rounded px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
             <option value="user">مستخدم عادي</option>
             <option value="manager">مدير</option>
             ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
@@ -712,18 +789,18 @@ async function users() {
         <p class="text-xs text-slate-500 mt-2">الإيميل: <span class="font-mono">username@${EMAIL_DOMAIN}</span></p>
         <p id="nuErr" class="text-sm mt-3 hidden"></p>
         <div class="mt-4 flex gap-2">
-          <button onclick="createNewUser()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded-lg text-sm font-semibold transition">حفظ</button>
-          <button onclick="closeAddUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">إلغاء</button>
+          <button onclick="createNewUser()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded text-sm font-semibold transition">حفظ</button>
+          <button onclick="closeAddUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm font-medium transition">إلغاء</button>
         </div>
       </div>
 
-      <div id="editUserForm" class="hidden bg-white rounded-2xl border border-slate-200 p-5 md:p-6 mb-6 fade-in">
+      <div id="editUserForm" class="hidden bg-white rounded border border-slate-200 p-5 md:p-6 mb-6 fade-in">
         <h3 class="font-bold mb-4 text-slate-800">تعديل مستخدم</h3>
         <input type="hidden" id="euId" />
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input id="euName" placeholder="الاسم" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-          <input id="euUser" placeholder="اسم المستخدم" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm bg-slate-50 text-slate-500" disabled />
-          <select id="euRole" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
+          <input id="euName" placeholder="الاسم" class="border border-slate-300 rounded px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <input id="euUser" placeholder="اسم المستخدم" class="border border-slate-300 rounded px-3 py-2.5 text-sm bg-slate-50 text-slate-500" disabled />
+          <select id="euRole" class="border border-slate-300 rounded px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]">
             <option value="user">مستخدم عادي</option>
             <option value="manager">مدير</option>
             ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
@@ -731,12 +808,12 @@ async function users() {
         </div>
         <p id="euErr" class="text-sm mt-3 hidden"></p>
         <div class="mt-4 flex gap-2">
-          <button onclick="saveEditUser()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-semibold transition">حفظ</button>
-          <button onclick="closeEditUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium transition">إلغاء</button>
+          <button onclick="saveEditUser()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-semibold transition">حفظ</button>
+          <button onclick="closeEditUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm font-medium transition">إلغاء</button>
         </div>
       </div>
 
-      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-white rounded border border-slate-200 overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-right">
             <thead class="bg-slate-50 border-b border-slate-200">
@@ -828,17 +905,17 @@ async function departments() {
   const snap = await getDocs(collection(db, 'departments'));
   const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
   const cards = list.map(d => `
-    <div class="bg-white rounded-2xl border border-slate-200 p-5 hover:shadow-md transition group">
-      <div class="flex items-start justify-between mb-3">
-        <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+    <div class="bg-white rounded border border-slate-200 p-4 hover:shadow-md transition group">
+      <div class="flex items-start justify-between mb-2">
+        <div class="w-10 h-10 rounded bg-purple-50 text-purple-600 flex items-center justify-center">
           <i data-lucide="building-2" class="w-5 h-5"></i>
         </div>
         <button onclick="deleteDept('${d.id}')" class="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-50 text-red-600 transition">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
         </button>
       </div>
-      <div class="font-bold text-slate-800">${esc(d.name)}</div>
-      <div class="text-sm text-slate-500 mt-1">${esc(d.description || 'بدون وصف')}</div>
+      <div class="font-bold text-slate-800 text-sm">${esc(d.name)}</div>
+      <div class="text-xs text-slate-500 mt-1">${esc(d.description || 'بدون وصف')}</div>
     </div>
   `).join('');
 
@@ -848,11 +925,11 @@ async function departments() {
         <h1 class="text-2xl font-bold text-slate-800">الأقسام</h1>
         <p class="text-slate-500 text-sm mt-1">${list.length} قسم</p>
       </div>
-      <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-6">
+      <div class="bg-white rounded border border-slate-200 p-4 mb-6">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <input id="dName" placeholder="اسم القسم" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-          <input id="dDesc" placeholder="وصف (اختياري)" class="border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
-          <button onclick="addDept()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white rounded-lg px-4 py-2.5 text-sm font-semibold transition flex items-center justify-center gap-2">
+          <input id="dName" placeholder="اسم القسم" class="border border-slate-300 rounded px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <input id="dDesc" placeholder="وصف (اختياري)" class="border border-slate-300 rounded px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#0078D4]" />
+          <button onclick="addDept()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white rounded px-4 py-2.5 text-sm font-semibold transition flex items-center justify-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>إضافة قسم</span>
           </button>
@@ -890,7 +967,8 @@ window.openCompose = async () => {
   $('#cThreadId').value = '';
   $('#cBroadcast').checked = false;
   $('#toBox').classList.remove('hidden');
-  hide($('#cStatus'));
+  $('#cStatus').textContent = '';
+  $('#cStatus').className = 'text-xs text-slate-500';
 
   if (isOwner()) {
     $('#broadcastCount').textContent = others.length;
@@ -921,13 +999,15 @@ window.sendMessage = async () => {
   const replyToThread = $('#cThreadId')?.value || null;
   const status = $('#cStatus');
   const sendBtn = $('#sendBtn');
-  hide(status);
 
-  if (!broadcast && !toUserId) { status.className='text-sm text-red-600'; status.textContent='اختر المستلم'; show(status); return; }
-  if (!subject) { status.className='text-sm text-red-600'; status.textContent='اكتب الموضوع'; show(status); return; }
+  status.className = 'text-xs text-slate-500';
+  status.textContent = '';
+
+  if (!broadcast && !toUserId) { status.className='text-xs text-red-600'; status.textContent='اختر المستلم'; return; }
+  if (!subject) { status.className='text-xs text-red-600'; status.textContent='اكتب الموضوع'; return; }
 
   sendBtn.disabled = true;
-  sendBtn.querySelector('span').textContent = 'جاري الإرسال...';
+  sendBtn.querySelector('span').textContent = broadcast ? 'جاري الإرسال...' : 'جاري الإرسال...';
 
   try {
     if (broadcast) {
@@ -946,8 +1026,10 @@ window.sendMessage = async () => {
         });
         await updateDoc(newDoc, { threadId: newDoc.id });
         sent++;
+        status.className = 'text-xs text-blue-600';
+        status.textContent = `جاري الإرسال... ${sent}/${recipients.length}`;
       }
-      status.className = 'text-sm text-green-600';
+      status.className = 'text-xs text-green-600';
       status.textContent = `✅ تم إرسال الرسالة إلى ${recipients.length} مستخدم!`;
     } else {
       const toUser = allUsersCache.find(u => u.id === toUserId);
@@ -965,22 +1047,20 @@ window.sendMessage = async () => {
       if (!replyToThread) {
         await updateDoc(newDoc, { threadId: newDoc.id });
       }
-      status.className = 'text-sm text-green-600';
+      status.className = 'text-xs text-green-600';
       status.textContent = '✅ تم الإرسال!';
     }
-    show(status);
     setTimeout(() => { closeCompose(); }, 1000);
   } catch (e) {
-    status.className = 'text-sm text-red-600';
+    status.className = 'text-xs text-red-600';
     status.textContent = e.message;
-    show(status);
   } finally {
     sendBtn.disabled = false;
     sendBtn.querySelector('span').textContent = 'إرسال';
   }
 };
 
-/* ---------- Inbox (Threads) ---------- */
+/* ---------- Inbox (Outlook style) ---------- */
 async function inbox() {
   const q1 = query(collection(db, 'messages'), where('toUserId', '==', currentUser.uid));
   const q2 = query(collection(db, 'messages'), where('fromUserId', '==', currentUser.uid));
@@ -1010,6 +1090,8 @@ async function inbox() {
     t.unread = mine.filter(m => !m.read).length;
     t.lastMsg = t.messages[t.messages.length - 1];
     t.lastAt = t.lastMsg.createdAt?.seconds || 0;
+    // آخر مرسل
+    t.lastFromMe = t.lastMsg.fromUserId === currentUser.uid;
     return t;
   }).sort((a,b) => b.lastAt - a.lastAt);
 
@@ -1020,13 +1102,16 @@ function renderThreadList() {
   const listHtml = threadsCache.map(t => {
     const last = t.lastMsg;
     const isFromMe = last.fromUserId === currentUser.uid;
+    const otherName = isFromMe ? last.toUserName : last.fromUserName;
+    const otherInitial = initials(otherName);
+
     return `
-      <div onclick="openThread('${t.threadId}')" class="msg-item ${t.threadId === selectedThreadId ? 'active' : ''} px-4 py-3 border-b border-slate-100">
+      <div onclick="openThread('${t.threadId}')" class="msg-item ${t.threadId === selectedThreadId ? 'active' : ''} px-4 py-3">
         <div class="flex items-start gap-3">
-          <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(last.fromUserName)}</div>
+          <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${otherInitial}</div>
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between gap-2">
-              <span class="text-sm text-slate-800 truncate ${t.unread ? 'font-bold' : 'font-medium'}">${esc(last.fromUserName)}</span>
+              <span class="text-sm text-slate-800 truncate ${t.unread ? 'font-bold' : 'font-medium'}">${esc(otherName || '')}</span>
               <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(last.createdAt)}</span>
             </div>
             <div class="text-sm text-slate-700 truncate ${t.unread ? 'font-semibold' : ''}">${esc(t.subject)}</div>
@@ -1034,7 +1119,7 @@ function renderThreadList() {
               ${isFromMe ? '<span class="text-[#0078D4] font-medium">أنت: </span>' : ''}${esc((last.body || '').slice(0, 55))}
             </div>
             <div class="flex items-center gap-2 mt-1">
-              ${t.messages.length > 1 ? `<span class="text-xs text-slate-400 flex items-center gap-1">💬 ${t.messages.length}</span>` : ''}
+              ${t.messages.length > 1 ? `<span class="text-xs text-slate-400">💬 ${t.messages.length}</span>` : ''}
               ${t.unread ? `<span class="text-xs bg-red-500 text-white rounded-full px-1.5 py-0.5">${t.unread}</span>` : ''}
             </div>
           </div>
@@ -1046,9 +1131,14 @@ function renderThreadList() {
   $('#pageContent').innerHTML = `
     <div id="inboxContainer" class="h-full flex fade-in">
       <div id="inboxList" class="inbox-list w-full md:w-96 border-l border-slate-200 bg-white flex-col">
-        <div class="p-4 border-b border-slate-200 bg-white z-10 flex-shrink-0">
-          <h2 class="font-bold text-slate-800">صندوق الوارد</h2>
-          <p class="text-xs text-slate-500 mt-0.5">${threadsCache.length} محادثة</p>
+        <div class="px-4 py-3 border-b border-slate-200 bg-white flex-shrink-0 flex items-center justify-between">
+          <div>
+            <h2 class="font-bold text-slate-800 text-sm">صندوق الوارد</h2>
+            <p class="text-xs text-slate-500 mt-0.5">${threadsCache.length} محادثة</p>
+          </div>
+          <button onclick="inbox()" class="p-1.5 rounded hover:bg-slate-100 text-slate-500 transition" title="تحديث">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+          </button>
         </div>
         <div class="flex-1 overflow-y-auto">
           ${listHtml || '<div class="text-center py-12 text-slate-400 text-sm">لا رسائل</div>'}
@@ -1065,6 +1155,7 @@ function renderThreadList() {
 
 window.openThread = (threadId) => {
   selectedThreadId = threadId;
+  expandedMsgs.clear();
   renderThreadList();
   if (window.innerWidth < 768) {
     $('#inboxList')?.classList.add('mobile-hidden');
@@ -1088,68 +1179,132 @@ function renderThreadReading() {
   if (!t) {
     content.innerHTML = `
       <div class="flex flex-col items-center justify-center h-full text-slate-400 p-8 min-h-[400px]">
-        <i data-lucide="mail-open" class="w-16 h-16 mb-4 opacity-40"></i>
-        <p class="text-sm">اختر محادثة لعرضها</p>
+        <i data-lucide="mail-open" class="w-16 h-16 mb-4 opacity-30"></i>
+        <p class="text-sm">اختر رسالة لعرضها</p>
       </div>`;
     icons();
     return;
   }
 
   window._currentThreadLastMsgId = t.lastMsg.id;
+  const lastIdx = t.messages.length - 1;
 
+  const replyUserId = t.lastMsg.fromUserId === currentUser.uid ? t.lastMsg.toUserId : t.lastMsg.fromUserId;
+  const replyUserName = t.lastMsg.fromUserId === currentUser.uid ? t.lastMsg.toUserName : t.lastMsg.fromUserName;
+  const replyUserUsername = allUsersCache.find(u => u.id === replyUserId)?.username || '';
+  const replyUserEmail = `${replyUserUsername}@${EMAIL_DOMAIN}`;
+
+  // بطاقات الرسائل — Outlook style
   const messagesHtml = t.messages.map((m, idx) => {
     const isMe = m.fromUserId === currentUser.uid;
-    const isFirst = idx === 0;
+    const isLatest = idx === lastIdx;
+    const isExpanded = expandedMsgs.has(idx);
+    const open = isLatest || isExpanded;
+    const senderEmail = m.fromUserUsername ? `${m.fromUserUsername}@${EMAIL_DOMAIN}` : '';
+    const dateStr = m.createdAt ? new Date(m.createdAt.seconds*1000).toLocaleString('ar-EG', {
+      year: 'numeric', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit'
+    }) : '';
+
     return `
-      <div class="mb-4 ${isMe ? 'flex justify-start' : 'flex justify-end'}">
-        <div class="max-w-[85%] ${isMe ? 'bg-[#e5f0fa] border-[#0078D4]' : 'bg-slate-100 border-slate-200'} border rounded-2xl p-4">
-          <div class="flex items-center gap-2 mb-2">
-            <div class="w-7 h-7 rounded-full ${isMe ? 'bg-[#0078D4]' : 'bg-slate-500'} text-white flex items-center justify-center font-bold text-[10px]">${initials(m.fromUserName)}</div>
-            <span class="font-semibold text-xs text-slate-700">${isMe ? 'أنت' : esc(m.fromUserName)}</span>
-            <span class="text-[10px] text-slate-400">${m.createdAt ? new Date(m.createdAt.seconds*1000).toLocaleString('ar-EG', {hour:'2-digit', minute:'2-digit'}) : ''}</span>
+      <div class="email-card bg-white border border-slate-200 rounded mb-2 overflow-hidden">
+        <div onclick="toggleMsgBody(${idx}, ${isLatest})" class="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition select-none">
+          <div class="w-10 h-10 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(m.fromUserName)}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-baseline gap-2 flex-wrap">
+              <span class="font-semibold text-sm text-slate-800">${isMe ? 'أنت' : esc(m.fromUserName)}</span>
+              ${!isMe && senderEmail ? `<span class="text-xs text-slate-400 font-mono hidden sm:inline">&lt;${esc(senderEmail)}&gt;</span>` : ''}
+              ${isLatest && t.messages.length > 1 ? '<span class="text-[10px] bg-[#e5f0fa] text-[#0078D4] px-1.5 py-0.5 rounded font-semibold">الأحدث</span>' : ''}
+            </div>
+            <div class="text-xs text-slate-500 mt-0.5">
+              إلى: ${isMe ? esc(m.toUserName) : esc(currentUser.name)}
+            </div>
+            ${!open ? `<div class="text-xs text-slate-400 mt-1 truncate">${esc((m.body || '').slice(0, 80))}</div>` : ''}
           </div>
-          ${isFirst ? `<div class="text-sm font-bold text-slate-800 mb-2 pb-2 border-b border-slate-300/50">${esc(m.subject)}</div>` : ''}
-          <div class="text-sm text-slate-700 whitespace-pre-line leading-relaxed">${esc(m.body || '')}</div>
+          <div class="flex items-center gap-2 flex-shrink-0">
+            <span class="text-xs text-slate-400 whitespace-nowrap hidden sm:inline">${dateStr}</span>
+            <i data-lucide="${open ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4 text-slate-400"></i>
+          </div>
         </div>
+        ${open ? `
+          <div class="border-t border-slate-100 px-4 py-4 bg-slate-50/40">
+            <div class="text-slate-700 whitespace-pre-line leading-relaxed text-sm">${esc(m.body || '')}</div>
+          </div>
+        ` : ''}
       </div>
     `;
   }).join('');
 
-  const lastMsg = t.lastMsg;
-  const replyToUserId = lastMsg.fromUserId === currentUser.uid ? lastMsg.toUserId : lastMsg.fromUserId;
-  const replyToName = lastMsg.fromUserId === currentUser.uid ? lastMsg.toUserName : lastMsg.fromUserName;
-
   content.innerHTML = `
-    <div class="p-4 md:p-8 fade-in flex flex-col h-full">
-      <button onclick="backToList()" class="md:hidden mb-4 flex items-center gap-2 text-[#0078D4] font-medium text-sm">
-        <i data-lucide="arrow-right" class="w-4 h-4"></i>
-        <span>رجوع للقائمة</span>
-      </button>
-
-      <div class="flex items-start justify-between gap-4 mb-4 pb-4 border-b border-slate-200">
-        <div class="flex-1 min-w-0">
-          <h1 class="text-lg md:text-xl font-bold text-slate-800 mb-1 break-words">${esc(t.subject)}</h1>
-          <p class="text-xs text-slate-500">${t.messages.length} رسالة</p>
-        </div>
-        <button onclick="deleteThread('${t.threadId}')" class="p-2 rounded-lg hover:bg-red-50 text-red-600 transition flex-shrink-0" title="حذف المحادثة">
-          <i data-lucide="trash-2" class="w-4 h-4"></i>
+    <div class="flex flex-col h-full bg-white">
+      <!-- Toolbar -->
+      <div class="px-3 md:px-4 py-2 bg-white border-b border-slate-200 flex items-center gap-1 flex-shrink-0">
+        <button onclick="backToList()" class="md:hidden p-2 rounded hover:bg-slate-100 text-slate-600">
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
         </button>
-      </div>
-
-      <div class="flex-1 overflow-y-auto mb-4">
-        ${messagesHtml}
-      </div>
-
-      <div class="pt-4 border-t border-slate-200">
-        <button onclick="replyToThread('${replyToUserId}', '${esc(replyToName).replace(/'/g,"\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g,"\\'")}')" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-3 rounded-lg text-sm font-semibold flex items-center justify-center gap-2 transition shadow-sm">
+        <button onclick="replyToThread('${replyUserId}', '${esc(replyUserName).replace(/'/g,"\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g,"\\'")}')" class="px-3 py-1.5 rounded hover:bg-[#e5f0fa] text-[#0078D4] font-semibold text-sm flex items-center gap-1.5 transition" title="رد">
           <i data-lucide="reply" class="w-4 h-4"></i>
-          <span>رد على ${esc(replyToName)}</span>
+          <span class="hidden md:inline">رد</span>
         </button>
+        <button onclick="deleteThread('${t.threadId}')" class="px-3 py-1.5 rounded hover:bg-red-50 text-red-600 font-semibold text-sm flex items-center gap-1.5 transition" title="حذف">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          <span class="hidden md:inline">حذف</span>
+        </button>
+        <div class="flex-1"></div>
+        <button onclick="toggleAllMsgs()" class="px-2 py-1.5 rounded hover:bg-slate-100 text-slate-600 text-xs transition" title="فتح/طي الكل">
+          <i data-lucide="chevrons-down-up" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Scrollable Content -->
+      <div class="flex-1 overflow-y-auto">
+        <div class="p-4 md:p-6 max-w-4xl mx-auto">
+          <!-- Subject Header -->
+          <div class="mb-5 pb-3">
+            <h1 class="text-xl md:text-2xl font-bold text-slate-800 mb-2 break-words">${esc(t.subject)}</h1>
+            <div class="flex items-center gap-3 text-xs text-slate-500">
+              <span class="flex items-center gap-1">
+                <i data-lucide="message-square" class="w-3 h-3"></i>
+                ${t.messages.length} رسالة
+              </span>
+              <span class="flex items-center gap-1">
+                <i data-lucide="clock" class="w-3 h-3"></i>
+                آخر تحديث ${timeAgo(t.lastMsg.createdAt)}
+              </span>
+            </div>
+          </div>
+
+          <!-- Messages -->
+          ${messagesHtml}
+        </div>
       </div>
     </div>
   `;
   icons();
 }
+
+window.toggleMsgBody = (idx, isLatest) => {
+  if (isLatest) return; // الأحدث مفتوحة دائمًا
+  if (expandedMsgs.has(idx)) expandedMsgs.delete(idx);
+  else expandedMsgs.add(idx);
+  renderThreadReading();
+};
+
+window.toggleAllMsgs = () => {
+  const t = threadsCache.find(x => x.threadId === selectedThreadId);
+  if (!t) return;
+  const lastIdx = t.messages.length - 1;
+  // لو كله مفتوح → اقفل الكل، لو فيه مقفول → افتح الكل
+  let allOpen = true;
+  for (let i = 0; i < lastIdx; i++) {
+    if (!expandedMsgs.has(i)) { allOpen = false; break; }
+  }
+  if (allOpen) expandedMsgs.clear();
+  else {
+    for (let i = 0; i < lastIdx; i++) expandedMsgs.add(i);
+  }
+  renderThreadReading();
+};
 
 window.replyToThread = async (userId, userName, threadId, subject) => {
   await openCompose();
@@ -1170,6 +1325,7 @@ window.deleteThread = async (threadId) => {
   }
   threadsCache = threadsCache.filter(x => x.threadId !== threadId);
   selectedThreadId = null;
+  expandedMsgs.clear();
   renderThreadList();
 };
 
@@ -1177,6 +1333,7 @@ window.backToList = () => {
   $('#inboxList')?.classList.remove('mobile-hidden');
   $('#inboxReading')?.classList.remove('mobile-show');
   selectedThreadId = null;
+  expandedMsgs.clear();
   renderThreadList();
 };
 
@@ -1223,7 +1380,7 @@ async function sent() {
         <h1 class="text-2xl font-bold text-slate-800">الرسائل المُرسلة</h1>
         <p class="text-slate-500 text-sm mt-1">${list.length} رسالة</p>
       </div>
-      <div class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-white rounded border border-slate-200 overflow-hidden">
         ${rows || '<div class="text-center py-12 text-slate-400">لا رسائل مُرسلة</div>'}
       </div>
     </div>
