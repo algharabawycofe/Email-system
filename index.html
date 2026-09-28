@@ -21,9 +21,10 @@
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .modal-overlay { animation: modalIn 0.2s ease-out; }
   @keyframes modalIn { from { opacity: 0; } to { opacity: 1; } }
-  @media (max-width: 767px) {
-    .mobile-hide { display: none !important; }
-    .mobile-show { display: block !important; }
+  #sidebar { transition: margin-right 0.25s ease, width 0.25s ease; }
+  #sidebar.collapsed { margin-right: -16rem; }
+  @media (min-width: 768px) {
+    #sidebar.collapsed { margin-right: -16rem; }
   }
 </style>
 </head>
@@ -66,22 +67,31 @@
 <!-- ============ APP ============ -->
 <div id="app" class="hidden min-h-screen flex flex-col">
   <!-- Header -->
-  <header class="h-14 bg-white border-b border-slate-200 flex items-center px-4 gap-3 sticky top-0 z-30">
-    <div class="flex items-center gap-3">
+  <header class="h-14 bg-white border-b border-slate-200 flex items-center px-3 md:px-4 gap-2 md:gap-3 sticky top-0 z-30">
+    <!-- Toggle Sidebar Button -->
+    <button id="toggleSidebar" class="p-2 rounded-lg hover:bg-slate-100 transition text-slate-600" title="إظهار/إخفاء القائمة">
+      <i data-lucide="menu" class="w-5 h-5"></i>
+    </button>
+
+    <div class="flex items-center gap-2 md:gap-3">
       <div class="w-8 h-8 rounded-lg bg-[#0078D4] flex items-center justify-center">
         <i data-lucide="mail" class="w-4 h-4 text-white"></i>
       </div>
       <span class="font-bold text-slate-800 hidden md:inline">Mail System</span>
     </div>
+
     <div class="flex-1 max-w-2xl relative hidden sm:block">
       <i data-lucide="search" class="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-slate-400"></i>
       <input id="globalSearch" type="text" placeholder="ابحث..." class="w-full bg-slate-100 hover:bg-slate-50 focus:bg-white border border-transparent focus:border-[#0078D4] rounded-lg pr-10 pl-4 py-2 text-sm focus:outline-none transition" />
     </div>
+
     <div class="flex-1 sm:flex-none"></div>
+
     <button class="relative p-2 rounded-lg hover:bg-slate-100 transition" title="الإشعارات">
       <i data-lucide="bell" class="w-5 h-5 text-slate-600"></i>
     </button>
-    <div class="flex items-center gap-3 pl-3 border-r border-slate-200">
+
+    <div class="flex items-center gap-2 md:gap-3 pl-2 md:pl-3 border-r border-slate-200">
       <div class="text-left hidden md:block">
         <div id="userName" class="text-sm font-semibold text-slate-800 leading-tight"></div>
         <div id="userRole" class="text-xs text-slate-500"></div>
@@ -93,9 +103,9 @@
     </div>
   </header>
 
-  <div class="flex flex-1 overflow-hidden">
+  <div class="flex flex-1 overflow-hidden relative">
     <!-- Sidebar -->
-    <aside class="w-64 bg-white border-l border-slate-200 flex flex-col overflow-y-auto hidden md:flex">
+    <aside id="sidebar" class="w-64 bg-white border-l border-slate-200 flex flex-col overflow-y-auto flex-shrink-0">
       <div class="p-3">
         <button onclick="openCompose()" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 flex items-center justify-center gap-2 transition shadow-sm">
           <i data-lucide="pencil" class="w-4 h-4"></i>
@@ -124,12 +134,12 @@
         </button>
       </nav>
       <div class="p-3 border-t border-slate-200 text-xs text-slate-400 text-center">
-        Mail System v1.1
+        Mail System v1.2
       </div>
     </aside>
 
     <!-- Mobile bottom nav -->
-    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex z-30" id="mobileNav">
+    <nav id="mobileNav" style="display:none" class="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 flex z-30">
       <button data-page="dashboard" class="mnav-btn flex-1 flex flex-col items-center py-2.5 text-slate-500 text-xs gap-1">
         <i data-lucide="home" class="w-5 h-5"></i><span>الرئيسية</span>
       </button>
@@ -150,7 +160,7 @@
       </button>
     </nav>
 
-    <main class="flex-1 overflow-hidden bg-[#faf9f8] pb-16 md:pb-0">
+    <main id="mainContent" class="flex-1 overflow-hidden bg-[#faf9f8]">
       <div id="pageContent" class="h-full overflow-y-auto"></div>
     </main>
   </div>
@@ -170,7 +180,6 @@
     </div>
 
     <div class="flex-1 overflow-y-auto p-5 space-y-4">
-      <!-- خيار إرسال للجميع (يظهر للأونر بس) -->
       <div id="broadcastBox" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-3">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()" class="w-5 h-5 accent-amber-600 cursor-pointer" />
@@ -234,6 +243,7 @@ const db   = getFirestore(app);
 
 let currentUser = null;
 let allUsersCache = [];
+let sidebarCollapsed = false;
 
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => document.querySelectorAll(s);
@@ -262,6 +272,48 @@ const fullDate = (ts) => {
 const isOwner = () => currentUser?.role === 'owner';
 const isAdmin = () => currentUser?.role === 'admin' || isOwner();
 
+/* ---------- Sidebar Toggle ---------- */
+function toggleSidebar() {
+  const sidebar = $('#sidebar');
+  sidebarCollapsed = !sidebarCollapsed;
+  if (sidebarCollapsed) {
+    sidebar.classList.add('collapsed');
+  } else {
+    sidebar.classList.remove('collapsed');
+  }
+  // save pref
+  try { localStorage.setItem('sidebarCollapsed', sidebarCollapsed ? '1' : '0'); } catch(e){}
+}
+
+function initSidebar() {
+  const sidebar = $('#sidebar');
+  const mobileNav = $('#mobileNav');
+  const main = $('#mainContent');
+
+  // استرجاع الحالة المحفوظة
+  try {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    if (saved === '1') { sidebarCollapsed = true; sidebar.classList.add('collapsed'); }
+  } catch(e){}
+
+  const update = () => {
+    if (window.innerWidth < 768) {
+      // موبايل: اخفي sidebar واظهر mobile nav
+      sidebar.style.display = 'none';
+      mobileNav.style.display = 'flex';
+      main.classList.add('pb-16');
+    } else {
+      // ديسكتوب: اظهر sidebar واخفي mobile nav
+      sidebar.style.display = 'flex';
+      mobileNav.style.display = 'none';
+      main.classList.remove('pb-16');
+    }
+  };
+  update();
+  window.addEventListener('resize', update);
+}
+
+/* ---------- Create Auth User ---------- */
 async function createAuthUser(email, password) {
   const secondaryApp = initializeApp(firebaseConfig, 'Sec-' + Date.now());
   const secondaryAuth = getAuth(secondaryApp);
@@ -310,6 +362,7 @@ $('#loginBtn').onclick = async () => {
 
 $('#loginPass').addEventListener('keypress', e => { if (e.key === 'Enter') $('#loginBtn').click(); });
 $('#logoutBtn').onclick = () => signOut(auth);
+$('#toggleSidebar').onclick = toggleSidebar;
 
 /* ---------- Auth State ---------- */
 onAuthStateChanged(auth, async (user) => {
@@ -335,7 +388,6 @@ onAuthStateChanged(auth, async (user) => {
     else el.classList.add('hidden');
   });
 
-  // الأونر يشوف خيار "إرسال للجميع"
   if (isOwner()) show($('#broadcastBox'));
 
   await loadUsersCache();
@@ -344,6 +396,7 @@ onAuthStateChanged(auth, async (user) => {
   hide($('#loginScreen'));
   show($('#app'));
   icons();
+  initSidebar();
   navigate('dashboard');
 });
 
@@ -408,10 +461,10 @@ async function dashboard() {
           <p class="text-slate-500 mt-1 text-sm">${new Date().toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
         </div>
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-          ${statCard('users', 'إجمالي المستخدمين', total, 'bg-blue-50', 'text-blue-600')}
-          ${statCard('user-check', 'نشط', active, 'bg-green-50', 'text-green-600')}
-          ${statCard('building-2', 'الأقسام', deptSnap.size, 'bg-purple-50', 'text-purple-600')}
-          ${statCard('mail', 'غير مقروء', unread, 'bg-orange-50', 'text-orange-600')}
+          ${statCard('users', 'إجمالي المستخدمين', total, 'bg-blue-50', 'text-blue-600', "navigate('users')")}
+          ${statCard('user-check', 'نشط', active, 'bg-green-50', 'text-green-600', "navigate('users')")}
+          ${statCard('building-2', 'الأقسام', deptSnap.size, 'bg-purple-50', 'text-purple-600', "navigate('departments')")}
+          ${statCard('mail', 'غير مقروء', unread, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-5 md:p-6">
           <h2 class="font-bold text-lg mb-4 text-slate-800">إجراءات سريعة</h2>
@@ -435,8 +488,8 @@ async function dashboard() {
           <p class="text-slate-500 mt-1 text-sm">${new Date().toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'})}</p>
         </div>
         <div class="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
-          ${statCard('inbox', 'رسائل الوارد', snap.size, 'bg-blue-50', 'text-blue-600')}
-          ${statCard('mail', 'غير مقروءة', unread, 'bg-orange-50', 'text-orange-600')}
+          ${statCard('inbox', 'رسائل الوارد', snap.size, 'bg-blue-50', 'text-blue-600', "navigate('inbox')")}
+          ${statCard('mail', 'غير مقروءة', unread, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
         </div>
         <div class="bg-white rounded-2xl border border-slate-200 p-5 md:p-6">
           <h2 class="font-bold text-lg mb-4 text-slate-800">إجراءات سريعة</h2>
@@ -450,8 +503,10 @@ async function dashboard() {
   }
   icons();
 }
-function statCard(icon, label, value, bg, fg) {
-  return `<div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-5 hover:shadow-md transition">
+function statCard(icon, label, value, bg, fg, onClick) {
+  const cursor = onClick ? 'cursor-pointer hover:border-[#0078D4] hover:shadow-md' : 'hover:shadow-md';
+  const click = onClick ? `onclick="${onClick}"` : '';
+  return `<div ${click} class="bg-white rounded-2xl border border-slate-200 p-4 md:p-5 transition ${cursor}">
     <div class="w-10 h-10 md:w-11 md:h-11 rounded-xl ${bg} ${fg} flex items-center justify-center mb-3">
       <i data-lucide="${icon}" class="w-5 h-5"></i>
     </div>
@@ -716,7 +771,6 @@ window.openCompose = async () => {
   $('#toBox').classList.remove('hidden');
   hide($('#cStatus'));
 
-  // عرض خيار البث للأونر فقط
   if (isOwner()) {
     $('#broadcastCount').textContent = others.length;
     show($('#broadcastBox'));
@@ -756,7 +810,6 @@ window.sendMessage = async () => {
 
   try {
     if (broadcast) {
-      // إرسال للجميع
       const recipients = allUsersCache.filter(u => u.id !== currentUser.uid && u.isActive !== false);
       let sent = 0;
       for (const u of recipients) {
@@ -841,7 +894,6 @@ function renderInbox() {
 
   $('#pageContent').innerHTML = `
     <div id="inboxContainer" class="h-full flex fade-in">
-      <!-- List -->
       <div id="inboxList" class="w-full md:w-96 border-l border-slate-200 bg-white flex flex-col">
         <div class="p-4 border-b border-slate-200 bg-white z-10">
           <h2 class="font-bold text-slate-800">صندوق الوارد</h2>
@@ -851,7 +903,6 @@ function renderInbox() {
           ${listHtml || '<div class="text-center py-12 text-slate-400 text-sm">لا رسائل</div>'}
         </div>
       </div>
-      <!-- Reading pane -->
       <div id="inboxReading" class="hidden md:flex flex-1 bg-white overflow-y-auto flex-col">
         <div id="readingContent" class="flex-1"></div>
       </div>
@@ -878,13 +929,11 @@ function renderReading() {
 
   content.innerHTML = `
     <div class="p-4 md:p-8 fade-in">
-      <!-- Mobile back button -->
       <button onclick="backToList()" class="md:hidden mb-4 flex items-center gap-2 text-[#0078D4] font-medium text-sm">
         <i data-lucide="arrow-right" class="w-4 h-4"></i>
         <span>رجوع للقائمة</span>
       </button>
 
-      <!-- Subject + Actions -->
       <div class="flex items-start justify-between gap-4 mb-6">
         <div class="flex-1 min-w-0">
           <h1 class="text-xl md:text-2xl font-bold text-slate-800 mb-2 break-words">${esc(selected.subject)}</h1>
@@ -897,7 +946,6 @@ function renderReading() {
         </div>
       </div>
 
-      <!-- Sender Card -->
       <div class="bg-slate-50 rounded-xl p-4 mb-6 border border-slate-200">
         <div class="flex items-start gap-3">
           <div class="w-12 h-12 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-base flex-shrink-0">${initials(selected.fromUserName)}</div>
@@ -917,14 +965,12 @@ function renderReading() {
         </div>
       </div>
 
-      <!-- Body -->
       <div class="bg-white border border-slate-200 rounded-xl p-5 md:p-6 mb-6">
         <div class="text-slate-700 whitespace-pre-line leading-loose text-base">${esc(selected.body || '')}</div>
       </div>
 
-      <!-- Actions -->
       <div class="flex flex-wrap gap-2 pt-4 border-t border-slate-200">
-        <button onclick="replyTo('${selected.fromUserId}', '${esc(selected.subject).replace(/'/g,"\\'")}', '${esc(selected.fromUserName).replace(/'/g,"\\'")}')" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm">
+        <button onclick="replyTo('${selected.fromUserId}', '${esc(selected.subject).replace(/'/g,"\\'")}')" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition shadow-sm">
           <i data-lucide="reply" class="w-4 h-4"></i>
           <span>رد</span>
         </button>
@@ -942,13 +988,11 @@ window.selectMsg = (id) => {
   selectedMsgId = id;
   const m = inboxList.find(x => x.id === id);
   renderInbox();
-  // على الموبايل: اخفي القائمة واظهر الرسالة
   if (window.innerWidth < 768) {
     $('#inboxList').classList.add('hidden');
     $('#inboxReading').classList.remove('hidden');
     $('#inboxReading').classList.add('flex');
   }
-  // حدد كمقروء تلقائيًا
   if (m && !m.read) {
     setTimeout(() => markRead(id, true), 500);
   }
@@ -984,7 +1028,7 @@ window.deleteMsg = async (id) => {
   updateInboxCount();
 };
 
-window.replyTo = async (userId, subject, toName) => {
+window.replyTo = async (userId, subject) => {
   await openCompose();
   $('#cTo').value = userId;
   $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
@@ -1000,7 +1044,6 @@ async function sent() {
   const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
     .sort((a,b) => (b.createdAt?.seconds||0) - (a.createdAt?.seconds||0));
 
-  // تجميع رسائل البث
   const grouped = {};
   const unique = [];
   list.forEach(m => {
