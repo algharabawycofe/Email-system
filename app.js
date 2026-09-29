@@ -63,23 +63,21 @@ document.addEventListener('DOMContentLoaded', () => {
    ═══════════════════════════════════════════════════════ */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
-    // Cmd/Ctrl + K = Focus search
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
       const search = $('#globalSearch');
-      if (search && !state.currentUser === false) {
+      if (search && state.currentUser) {
         search.focus();
         search.select();
       }
     }
-    // Cmd/Ctrl + N = New message
     if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
       e.preventDefault();
       if (state.currentUser) openCompose();
     }
-    // Escape = Close modals
     if (e.key === 'Escape') {
-      if (!$('#composeModal').style.display || $('#composeModal').style.display === 'flex') {
+      const composeModal = $('#composeModal');
+      if (composeModal && composeModal.style.display === 'flex') {
         closeCompose();
       }
       hide($('#profileModal'));
@@ -1606,6 +1604,7 @@ window.sendMessage = async () => {
   const sendBtn = $('#sendBtn');
 
   status.className = 'send-status';
+  status.style.color = '';
   status.textContent = '';
 
   if (!broadcast && !deptSend && !toUserId) {
