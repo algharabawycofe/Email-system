@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v4.4 - Utilities & Helpers
-   Sound Disabled
+   Mail System v5.1 - Utilities & Helpers
+   iOS Optimized + Sound Disabled
    ═══════════════════════════════════════════════════════════ */
 
 import { auth, db, doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from './firebase.js';
@@ -124,12 +124,22 @@ export const roleColors = {
 };
 
 /* ═══════════════════════════════════════════════════════
-   ICONS
+   ICONS (iOS Optimized - batched via requestAnimationFrame)
    ═══════════════════════════════════════════════════════ */
+let iconsScheduled = false;
 export const icons = () => {
-  if (window.lucide && window.lucide.createIcons) {
-    window.lucide.createIcons();
-  }
+  if (!window.lucide || !window.lucide.createIcons) return;
+
+  // ✅ iOS: batch icons calls — مرة واحدة في الـ frame
+  if (iconsScheduled) return;
+  iconsScheduled = true;
+
+  requestAnimationFrame(() => {
+    iconsScheduled = false;
+    try {
+      window.lucide.createIcons();
+    } catch (e) {}
+  });
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -189,43 +199,9 @@ function getAudioContext() {
 
 /**
  * 🔇 الصوت متعطّل حالياً
- * لتشغيله: امسح السطر `return;` اللي تحت
  */
 export function playNotifSound() {
   return; // 🔇 الصوت متعطّل
-
-  // الكود التالي مش هيتنفذ دلوقتي
-  if (!state.settings.soundEnabled) return;
-
-  try {
-    const ctx = getAudioContext();
-    if (!ctx) return;
-
-    const now = ctx.currentTime;
-    playSoftTone(ctx, now, 523.25, 0.55, 0.03);
-    playSoftTone(ctx, now + 0.10, 659.25, 0.65, 0.02);
-  } catch (e) {
-    console.warn('Web Audio error:', e);
-  }
-}
-
-function playSoftTone(ctx, startTime, freq, duration, volume) {
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-
-  osc.type = 'sine';
-  osc.frequency.value = freq;
-
-  gain.gain.setValueAtTime(0, startTime);
-  gain.gain.linearRampToValueAtTime(volume, startTime + 0.03);
-  gain.gain.setValueAtTime(volume, startTime + duration * 0.4);
-  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-
-  osc.start(startTime);
-  osc.stop(startTime + duration + 0.05);
 }
 
 export function toggleSound() {
@@ -239,7 +215,6 @@ export function toggleSound() {
 }
 
 export function loadSoundSetting() {
-  // الصوت متعطّل — مش محتاجين نعمل أي حاجة
   state.settings.soundEnabled = false;
 }
 
@@ -277,7 +252,6 @@ export function confirmDialog(title, message) {
    TOAST
    ═══════════════════════════════════════════════════════ */
 export function showToast(title, body, onClick, playSound = false) {
-  // playSound بقت false افتراضيًا — مش بنشغل صوت
   if (playSound) playNotifSound();
 
   const container = document.getElementById('toastContainer');
@@ -481,8 +455,7 @@ export function getAvatarColor(name) {
    UNLOCK AUDIO - DISABLED
    ═══════════════════════════════════════════════════════ */
 export function unlockAudioOnFirstClick() {
-  // 🔇 الصوت متعطّل — مش محتاجين نفتح AudioContext
   return;
 }
 
-console.log('🛠️ Utils v4.4 loaded - Sound Disabled 🔇');
+console.log('🛠️ Utils v5.1 loaded - iOS Optimized + Sound Disabled 🔇');
