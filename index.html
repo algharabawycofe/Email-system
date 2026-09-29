@@ -7,17 +7,13 @@
 <meta name="description" content="نظام الرسائل الداخلي الاحترافي" />
 <meta name="theme-color" content="#0078D4" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Mail System" />
 <meta name="mobile-web-app-capable" content="yes" />
-<meta name="format-detection" content="telephone=no" />
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
-<link rel="dns-prefetch" href="https://unpkg.com">
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -25,13 +21,20 @@
 </head>
 <body>
 
-<!-- ═══════════════════════════════════════════════════════
-     LOGIN SCREEN
-     ═══════════════════════════════════════════════════════ -->
+<!-- ══════════ SKELETON LOADER (Global) ══════════ -->
+<div id="globalLoader" class="global-loader hidden">
+  <div class="spinner"></div>
+</div>
+
+<!-- ══════════ LOGIN ══════════ -->
 <div id="loginScreen" class="login-screen">
+  <div class="login-bg-shapes">
+    <div class="shape shape-1"></div>
+    <div class="shape shape-2"></div>
+    <div class="shape shape-3"></div>
+  </div>
   <div class="login-container">
     <div class="login-card fade-in">
-
       <div class="login-brand">
         <div class="login-logo">
           <i data-lucide="mail" class="w-7 h-7"></i>
@@ -54,7 +57,7 @@
           <div class="input-wrapper">
             <i data-lucide="lock" class="input-icon"></i>
             <input id="loginPass" type="password" placeholder="••••••••" class="form-input" autocomplete="current-password" />
-            <button type="button" id="togglePassBtn" class="input-action" title="إظهار كلمة السر">
+            <button type="button" id="togglePassBtn" class="input-action">
               <i data-lucide="eye" class="w-4 h-4" id="eyeIcon"></i>
             </button>
           </div>
@@ -66,29 +69,25 @@
             <span class="check-box"></span>
             <span class="check-label">تذكرني</span>
           </label>
-          <button type="button" id="forgotPassBtn" class="link-btn">
-            نسيت كلمة السر؟
-          </button>
+          <button type="button" id="forgotPassBtn" class="link-btn">نسيت كلمة السر؟</button>
         </div>
 
         <p id="loginError" class="alert alert-error hidden"></p>
 
-        <button id="loginBtn" class="btn btn-primary btn-full">
+        <button id="loginBtn" class="btn btn-primary btn-full btn-lg">
           <i data-lucide="log-in" class="w-4 h-4"></i>
           <span>تسجيل الدخول</span>
         </button>
       </div>
 
       <div class="login-footer">
-        <span>Mail System v7.0</span>
+        <span>Mail System v8.0</span>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     FORGOT PASSWORD MODAL
-     ═══════════════════════════════════════════════════════ -->
+<!-- ══════════ FORGOT PASSWORD ══════════ -->
 <div id="forgotModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-sm fade-in">
     <div class="modal-header">
@@ -117,12 +116,10 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     MAIN APP
-     ═══════════════════════════════════════════════════════ -->
+<!-- ══════════ APP ══════════ -->
 <div id="app" class="app-shell hidden">
 
-  <!-- ═══════ TOP BAR ═══════ -->
+  <!-- TOP BAR -->
   <header class="app-header">
     <div class="header-start">
       <button id="toggleSidebar" class="header-btn" title="إظهار/إخفاء القائمة">
@@ -167,11 +164,11 @@
             <div id="userName" class="user-name"></div>
             <div id="userRole" class="user-role"></div>
           </div>
-          <div id="userAvatar" class="user-avatar"></div>
+          <div id="userAvatar" class="user-avatar gradient-1"></div>
         </button>
         <div id="userMenu" class="dropdown-panel dropdown-md" style="display:none">
           <div class="user-card">
-            <div class="user-card-avatar" id="menuUserAvatar"></div>
+            <div class="user-card-avatar gradient-1" id="menuUserAvatar"></div>
             <div class="user-card-info">
               <div id="menuUserName" class="user-card-name"></div>
               <div id="menuUserEmail" class="user-card-email"></div>
@@ -196,12 +193,11 @@
     </div>
   </header>
 
-  <!-- ═══════ BODY ═══════ -->
+  <!-- BODY -->
   <div class="app-body">
 
-    <!-- ═══════ SIDEBAR ═══════ -->
+    <!-- SIDEBAR -->
     <aside id="sidebar" class="app-sidebar">
-
       <div class="sidebar-compose">
         <button onclick="openCompose()" class="btn btn-primary btn-full btn-lg">
           <i data-lucide="pencil" class="w-4 h-4"></i>
@@ -250,11 +246,11 @@
       </nav>
 
       <div class="sidebar-footer">
-        <span class="text-xs text-slate-400">v7.0</span>
+        <span class="text-xs">v8.0</span>
       </div>
     </aside>
 
-    <!-- ═══════ MOBILE NAV ═══════ -->
+    <!-- MOBILE NAV -->
     <nav id="mobileNav" class="mobile-nav" style="display:none">
       <button data-page="dashboard" class="mnav-item">
         <i data-lucide="home" class="w-5 h-5"></i>
@@ -280,16 +276,14 @@
       </button>
     </nav>
 
-    <!-- ═══════ MAIN ═══════ -->
+    <!-- MAIN -->
     <main id="mainContent" class="app-main">
       <div id="pageContent" class="page-content"></div>
     </main>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     COMPOSE MODAL
-     ═══════════════════════════════════════════════════════ -->
+<!-- ══════════ COMPOSE MODAL v8.0 ══════════ -->
 <div id="composeModal" class="compose-modal" style="display:none">
   <div class="compose-dialog">
 
@@ -298,18 +292,41 @@
         <i data-lucide="mail" class="w-4 h-4"></i>
         <span id="composeTitle">رسالة جديدة</span>
       </div>
-      <button onclick="closeCompose()" class="title-icon-btn" title="إغلاق">
-        <i data-lucide="x" class="w-4 h-4"></i>
-      </button>
+      <div class="compose-titlebar-actions">
+        <button onclick="closeCompose()" class="title-icon-btn" title="إغلاق">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
     </div>
 
+    <!-- To -->
     <div class="compose-row" id="toBox">
       <span class="row-label">إلى</span>
       <div class="row-content">
         <select id="cTo" class="row-select"></select>
       </div>
+      <button type="button" onclick="toggleCCBCC()" class="row-action-btn" title="Cc / Bcc">
+        <i data-lucide="chevron-down" class="w-4 h-4" id="ccbccIcon"></i>
+      </button>
     </div>
 
+    <!-- CC / BCC (Hidden by default) -->
+    <div id="ccbccFields" class="hidden">
+      <div class="compose-row">
+        <span class="row-label">Cc</span>
+        <div class="row-content">
+          <select id="cCC" class="row-select"></select>
+        </div>
+      </div>
+      <div class="compose-row">
+        <span class="row-label">Bcc</span>
+        <div class="row-content">
+          <select id="cBCC" class="row-select"></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Broadcast -->
     <div id="broadcastBox" class="compose-row toggle-row" style="display:none">
       <span class="row-label">للجميع</span>
       <div class="row-content">
@@ -321,6 +338,7 @@
       </div>
     </div>
 
+    <!-- Dept -->
     <div id="deptBox" class="compose-row toggle-row" style="display:none">
       <span class="row-label">لقسم</span>
       <div class="row-content" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
@@ -333,6 +351,7 @@
       </div>
     </div>
 
+    <!-- Subject -->
     <div class="compose-row">
       <span class="row-label">الموضوع</span>
       <div class="row-content">
@@ -340,6 +359,7 @@
       </div>
     </div>
 
+    <!-- Priority -->
     <div class="compose-row priority-row">
       <span class="row-label">الأولوية</span>
       <div class="row-content">
@@ -362,6 +382,7 @@
       </div>
     </div>
 
+    <!-- Body -->
     <div class="compose-body">
       <textarea id="cBody" placeholder="اكتب رسالتك هنا..." class="compose-body-input"></textarea>
     </div>
@@ -369,15 +390,16 @@
     <input type="hidden" id="cThreadId" />
     <input type="hidden" id="cDraftId" />
 
+    <!-- Actions -->
     <div class="compose-actions">
       <div class="actions-start">
         <button onclick="sendMessage()" id="sendBtn" class="btn-send-primary">
           <i data-lucide="send" class="w-4 h-4"></i>
           <span>إرسال</span>
         </button>
-        <button onclick="saveDraft()" class="btn-ghost">
+        <button onclick="saveDraft()" class="btn-ghost-sm">
           <i data-lucide="file-text" class="w-4 h-4"></i>
-          <span>حفظ كمسودة</span>
+          <span>مسودة</span>
         </button>
       </div>
       <div class="actions-end">
@@ -388,9 +410,7 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     PROFILE MODAL
-     ═══════════════════════════════════════════════════════ -->
+<!-- ══════════ PROFILE MODAL ══════════ -->
 <div id="profileModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -405,7 +425,7 @@
 
     <div class="modal-body">
       <div class="profile-hero">
-        <div id="profileAvatar" class="profile-avatar"></div>
+        <div id="profileAvatar" class="profile-avatar gradient-1"></div>
       </div>
 
       <div class="form-grid">
@@ -437,9 +457,7 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     SETTINGS MODAL
-     ═══════════════════════════════════════════════════════ -->
+<!-- ══════════ SETTINGS ══════════ -->
 <div id="settingsModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -468,21 +486,17 @@
         <div class="settings-item">
           <div class="settings-info">
             <div class="settings-title">الإشعارات المدفوعة</div>
-            <div class="settings-desc">Push notifications حتى والمتصفح مقفول</div>
+            <div class="settings-desc">Push notifications</div>
           </div>
-          <button id="enablePushBtn" onclick="enablePushNotifications()" class="btn btn-sm btn-primary">
-            تفعيل
-          </button>
+          <button id="enablePushBtn" onclick="enablePushNotifications()" class="btn btn-sm btn-primary">تفعيل</button>
         </div>
 
         <div class="settings-item">
           <div class="settings-info">
             <div class="settings-title">تثبيت التطبيق</div>
-            <div class="settings-desc">ثبّت النظام كتطبيق على جهازك</div>
+            <div class="settings-desc">ثبّت النظام كتطبيق</div>
           </div>
-          <button id="installPwaBtn" onclick="installPWA()" class="btn btn-sm btn-success hidden">
-            تثبيت
-          </button>
+          <button id="installPwaBtn" onclick="installPWA()" class="btn btn-sm btn-success hidden">تثبيت</button>
         </div>
 
         <div class="settings-divider"></div>
@@ -492,9 +506,7 @@
             <div class="settings-title">تسجيل الخروج</div>
             <div class="settings-desc">خروج آمن من هذا الجهاز</div>
           </div>
-          <button onclick="signOutApp()" class="btn btn-sm btn-danger">
-            خروج
-          </button>
+          <button onclick="signOutApp()" class="btn btn-sm btn-danger">خروج</button>
         </div>
       </div>
     </div>
@@ -505,9 +517,7 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     CONFIRM MODAL
-     ═══════════════════════════════════════════════════════ -->
+<!-- ══════════ CONFIRM ══════════ -->
 <div id="confirmModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-xs fade-in">
     <div class="modal-body text-center">
@@ -524,19 +534,11 @@
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════
-     TOASTS
-     ═══════════════════════════════════════════════════════ -->
+<!-- TOASTS -->
 <div id="toastContainer" class="toast-container"></div>
 
-<!-- ═══════════════════════════════════════════════════════
-     AUDIO (Disabled)
-     ═══════════════════════════════════════════════════════ -->
 <audio id="notifSound" preload="none" style="display:none"></audio>
 
-<!-- ═══════════════════════════════════════════════════════
-     SCRIPTS
-     ═══════════════════════════════════════════════════════ -->
 <script type="module" src="firebase.js"></script>
 <script type="module" src="app.js"></script>
 
