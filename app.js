@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.0 - Enterprise Application
-   Features: Attachments, Tags, Instant Search, Image Viewer
+   Mail System v9.1 - Enterprise Application
+   Features: Per-user deletion (Admin sees all)
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -87,6 +87,21 @@ function highlightText(text, query) {
   const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${q})`, 'gi');
   return safe.replace(regex, '<mark class="search-highlight">$1</mark>');
+}
+
+function isHiddenFromMe(msg) {
+  if (!msg || !state.currentUser) return false;
+  if (isAdmin()) return false;
+  const deletedBy = msg.deletedBy || {};
+  return !!deletedBy[state.currentUser.uid];
+}
+
+function getDeletedByNames(msg) {
+  if (!msg || !msg.deletedBy) return [];
+  return Object.keys(msg.deletedBy).map(uid => {
+    const u = state.allUsersCache.find(x => x.id === uid);
+    return u ? u.name : 'مستخدم';
+  });
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -657,7 +672,7 @@ async function performInstantSearch(query) {
     [...s1.docs, ...s2.docs].forEach(d => all.set(d.id, { id: d.id, ...d.data() }));
 
     const matches = Array.from(all.values())
-      .filter(m => !m.deleted && matchesSearch(m, query))
+      .filter(m => !isHiddenFromMe(m) && matchesSearch(m, query))
       .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
       .slice(0, 15);
 
@@ -1145,7 +1160,7 @@ window.deleteDept = async (id) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   INBOX
+   INBOX - با Per-User Deletion
    ═══════════════════════════════════════════════════════ */
 async function renderInbox() {
   const filter = state.currentFilter;
@@ -1184,9 +1199,22 @@ async function renderInbox() {
   const all = new Map();
   [...s1.docs, ...s2.docs].forEach(d => all.set(d.id, { id: d.id, ...d.data() }));
 
+  const isAdminUser = isAdmin();
+  const myUID = state.currentUser.uid;
+
+  // ═══════ الفلترة الأساسية ═══════
   const visible = Array.from(all.values()).filter(m => {
-    if (state.currentFilter === 'trash') return m.deleted;
-    return !m.deleted;
+    const deletedBy = m.deletedBy || {};
+
+    if (state.currentFilter === 'trash') {
+      // TRASH: admin يشوف كل اللي اتحذف، user يشوف اللي هو حذفه بس
+      if (isAdminUser) return Object.keys(deletedBy).length > 0;
+      return !!deletedBy[myUID];
+    }
+
+    // INBOX/SENT/etc: admin يشوف الكل، user يشوف اللي هو ماحذفهاش
+    if (isAdminUser) return true;
+    return !deletedBy[myUID];
   });
 
   const threadsMap = {};
@@ -1247,6 +1275,20 @@ function renderThreadList() {
       </div>
     ` : '';
 
+    // ═══════ Badge "محذوفة من" للأدمن ═══════
+    let deletedBadgeHtml = '';
+    if (isAdmin()) {
+      const deletedNames = getDeletedByNames(last);
+      if (deletedNames.length > 0) {
+        deletedBadgeHtml = `
+          <div style="margin-top:6px;font-size:11px;color:var(--danger);display:flex;align-items:center;gap:4px;">
+            <i data-lucide="trash-2" style="width:11px;height:11px;"></i>
+            <span>محذوفة من: ${deletedNames.map(esc).join('، ')}</span>
+          </div>
+        `;
+      }
+    }
+
     return `
       <div class="msg-item ${t.threadId === state.selectedThreadId ? 'active' : ''} ${unreadClass}" data-thread="${t.threadId}">
         <div class="msg-swipe-actions right">
@@ -1270,6 +1312,7 @@ function renderThreadList() {
               ${esc(t.subject)}
             </div>
             <div class="msg-preview">${t.isFromMe ? 'أنت: ' : ''}${esc((last.body || '').slice(0, 60))}</div>
+            ${deletedBadgeHtml}
             ${tagsHtml}
             <div class="msg-meta">
               ${t.messages.length > 1 ? `<span class="msg-thread-count">💬 ${t.messages.length}</span>` : ''}
@@ -1381,6 +1424,19 @@ function renderThreadReading() {
   const replyUserId = t.lastMsg.fromUserId === state.currentUser.uid ? t.lastMsg.toUserId : t.lastMsg.fromUserId;
   const replyUserName = t.lastMsg.fromUserId === state.currentUser.uid ? t.lastMsg.toUserName : t.lastMsg.fromUserName;
 
+  // ═══════ معلومات الحذف للأدمن ═══════
+  const allDeletedByUIDs = new Set();
+  t.messages.forEach(m => {
+    Object.keys(m.deletedBy || {}).forEach(uid => allDeletedByUIDs.add(uid));
+  });
+
+  const deletedUsers = Array.from(allDeletedByUIDs).map(uid => {
+    const u = state.allUsersCache.find(x => x.id === uid);
+    return u || { id: uid, name: 'مستخدم' };
+  });
+
+  const showDeletedInfo = isAdmin() && deletedUsers.length > 0;
+
   const messagesHtml = t.messages.map((m, idx) => {
     const isMe = m.fromUserId === state.currentUser.uid;
     const isLatest = idx === lastIdx;
@@ -1424,6 +1480,16 @@ function renderThreadReading() {
       </div>
     ` : '';
 
+    // معلومات حذف الرسالة للأدمن
+    const msgDeletedNames = getDeletedByNames(m);
+    const showMsgDeleteInfo = isAdmin() && msgDeletedNames.length > 0;
+    const msgDeletedHtml = showMsgDeleteInfo ? `
+      <div style="margin-top:12px;padding:8px 12px;background:var(--danger-bg);border-radius:6px;font-size:11.5px;color:var(--danger);display:flex;align-items:center;gap:6px;">
+        <i data-lucide="trash-2" style="width:12px;height:12px;"></i>
+        <span>حذفها: ${msgDeletedNames.map(esc).join('، ')}</span>
+      </div>
+    ` : '';
+
     return `
       <div class="email-message">
         <div class="email-message-header" onclick="toggleMsgBody(${idx}, ${isLatest})">
@@ -1446,6 +1512,7 @@ function renderThreadReading() {
         ${open ? `
           <div class="email-message-body">
             ${esc(m.body || '')}
+            ${msgDeletedHtml}
             ${msgTagsHtml}
             ${attachmentsHtml}
           </div>
@@ -1456,7 +1523,7 @@ function renderThreadReading() {
 
   const threadStarred = t.messages.some(m => m.starred);
 
-  const inlineReplyHtml = !isTrash ? `
+  const inlineReplyHtml = !isTrash && !showDeletedInfo ? `
     <div class="inline-reply">
       <div class="inline-reply-header" onclick="toggleInlineReply()">
         <i data-lucide="reply" class="w-4 h-4"></i>
@@ -1480,7 +1547,7 @@ function renderThreadReading() {
     <div class="reading-toolbar">
       <button onclick="backToList()" class="toolbar-btn" style="display:none;" id="mobileBackBtn"><i data-lucide="arrow-right" class="w-4 h-4"></i></button>
 
-      ${!isTrash ? `
+      ${!isTrash && !showDeletedInfo ? `
         <button onclick="replyToThread('${replyUserId}', '${esc(replyUserName).replace(/'/g, "\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g, "\\'")}')" class="toolbar-btn primary"><i data-lucide="reply" class="w-4 h-4"></i><span>رد</span></button>
         <button onclick="replyAllToThread('${t.threadId}')" class="toolbar-btn primary"><i data-lucide="reply-all" class="w-4 h-4"></i><span>رد على الكل</span></button>
         <button onclick="toggleStar('${t.threadId}')" class="toolbar-btn ${threadStarred ? 'primary' : ''}"><i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i><span>${threadStarred ? 'مميزة' : 'تمييز'}</span></button>
@@ -1490,7 +1557,13 @@ function renderThreadReading() {
         <i data-lucide="${isTrash ? 'rotate-ccw' : 'trash-2'}" class="w-4 h-4"></i><span>${isTrash ? 'استعادة' : 'حذف'}</span>
       </button>
 
-      ${isTrash ? `<button onclick="permanentDelete('${t.threadId}')" class="toolbar-btn danger"><i data-lucide="x-circle" class="w-4 h-4"></i><span>حذف نهائي</span></button>` : ''}
+      ${isAdmin() && (deletedUsers.length > 0 || t.messages.some(m => Object.keys(m.deletedBy || {}).length > 0)) ? `
+        <button onclick="restoreThreadForAll('${t.threadId}')" class="toolbar-btn primary" title="استعادة الرسائل للجميع">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i><span>استعادة للكل</span>
+        </button>
+      ` : ''}
+
+      ${isTrash && isAdmin() ? `<button onclick="permanentDelete('${t.threadId}')" class="toolbar-btn danger"><i data-lucide="x-circle" class="w-4 h-4"></i><span>حذف نهائي</span></button>` : ''}
 
       <div class="toolbar-spacer"></div>
 
@@ -1503,6 +1576,22 @@ function renderThreadReading() {
         <span><i data-lucide="message-square" class="w-3 h-3 inline"></i> ${t.messages.length} رسالة</span>
         <span><i data-lucide="clock" class="w-3 h-3 inline"></i> ${timeAgo(t.lastMsg.createdAt)}</span>
       </div>
+
+      ${showDeletedInfo ? `
+        <div style="background:var(--danger-bg);border:1px solid #F0B8BB;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;">
+          <i data-lucide="trash-2" class="w-5 h-5" style="color:var(--danger);flex-shrink:0;margin-top:2px;"></i>
+          <div style="flex:1;">
+            <div style="font-weight:700;font-size:13px;color:var(--danger);">رسالة محذوفة (للأرشيف)</div>
+            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
+              حذفها من عندهم: <strong>${deletedUsers.map(u => esc(u.name)).join('، ')}</strong>
+            </div>
+            <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:4px;">
+              💡 محتوى الرسالة متاح للقراءة فقط. استخدم "استعادة للكل" لو عايز ترجعها.
+            </div>
+          </div>
+        </div>
+      ` : ''}
+
       ${messagesHtml}
       ${inlineReplyHtml}
     </div>
@@ -1546,7 +1635,8 @@ window.sendInlineReply = async (toUserId, threadId, subject) => {
       toUserId, toUserName: toUser?.name || '',
       read: false, threadId,
       parentId: state._currentThreadLastMsgId,
-      notified: false, starred: false, deleted: false,
+      notified: false, starred: false,
+      deletedBy: {},
       attachments: [], tags: [],
       createdAt: serverTimestamp()
     });
@@ -1624,24 +1714,53 @@ window.toggleStar = async (threadId) => {
   renderThreadReading();
 };
 
+/* ═══════════════════════════════════════════════════════
+   TRASH - per user deletion
+   ═══════════════════════════════════════════════════════ */
 window.trashThread = async (threadId, isTrash) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
-  const newVal = !isTrash;
+
+  const myUID = state.currentUser.uid;
+
   for (const m of t.messages) {
-    await updateDoc(doc(db, 'messages', m.id), { deleted: newVal, deletedAt: newVal ? serverTimestamp() : null }).catch(() => {});
-    m.deleted = newVal;
+    const deletedBy = m.deletedBy || {};
+
+    if (isTrash) {
+      // استعادة → شيل اسمي من deletedBy
+      const newDeletedBy = { ...deletedBy };
+      delete newDeletedBy[myUID];
+      await updateDoc(doc(db, 'messages', m.id), { deletedBy: newDeletedBy }).catch(() => {});
+      m.deletedBy = newDeletedBy;
+    } else {
+      // حذف → ضيف اسمي في deletedBy
+      const newDeletedBy = { ...deletedBy, [myUID]: new Date().toISOString() };
+      await updateDoc(doc(db, 'messages', m.id), { deletedBy: newDeletedBy }).catch(() => {});
+      m.deletedBy = newDeletedBy;
+    }
   }
-  if (state.currentFilter === 'trash' && !newVal) renderInbox();
-  else if (state.currentFilter !== 'trash' && newVal) renderInbox();
+
+  if (state.currentFilter === 'trash' && isTrash) renderInbox();
+  else if (state.currentFilter !== 'trash' && !isTrash) renderInbox();
   else renderThreadReading();
 };
 
 window.permanentDelete = async (threadId) => {
-  const ok = await confirmDialog('حذف نهائي', 'متأكد؟');
+  // ⚠️ الأدمن/الأونر بس
+  if (!isAdmin()) {
+    showToastAdvanced('غير مسموح', 'الأدمن بس اللي يقدر يحذف نهائياً', { type: 'error', icon: 'shield-x' });
+    return;
+  }
+
+  const ok = await confirmDialog(
+    'حذف نهائي',
+    'هيتم حذف الرسائل نهائيًا من النظام (لكل المستخدمين). متأكد؟'
+  );
   if (!ok) return;
+
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
+
   for (const m of t.messages) {
     if (m.attachments?.length) {
       for (const att of m.attachments) {
@@ -1650,8 +1769,34 @@ window.permanentDelete = async (threadId) => {
     }
     await deleteDoc(doc(db, 'messages', m.id));
   }
+
   state.selectedThreadId = null;
+  showToastAdvanced('تم الحذف النهائي 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2500 });
   renderInbox();
+};
+
+window.restoreThreadForAll = async (threadId) => {
+  if (!isAdmin()) {
+    showToastAdvanced('غير مسموح', '', { type: 'error', icon: 'shield-x' });
+    return;
+  }
+
+  const ok = await confirmDialog(
+    'استعادة للكل',
+    'هيتم إرجاع الرسائل لكل المستخدمين اللي حذفوها. متأكد؟'
+  );
+  if (!ok) return;
+
+  const t = state.threadsCache.find(x => x.threadId === threadId);
+  if (!t) return;
+
+  for (const m of t.messages) {
+    await updateDoc(doc(db, 'messages', m.id), { deletedBy: {} }).catch(() => {});
+    m.deletedBy = {};
+  }
+
+  showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', { type: 'success', icon: 'check-circle', duration: 2500 });
+  renderThreadReading();
 };
 
 async function renderStarred() { state.currentFilter = 'starred'; state.searchQuery = ''; await renderInbox(); }
@@ -1663,7 +1808,10 @@ async function renderTrash() { state.currentFilter = 'trash'; state.searchQuery 
 async function renderSent() {
   const q = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
   const snap = await getDocs(q);
-  const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !m.deleted).sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  const list = snap.docs
+    .map(d => ({ id: d.id, ...d.data() }))
+    .filter(m => !isHiddenFromMe(m))
+    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
   const grouped = {};
   const unique = [];
@@ -1707,7 +1855,7 @@ async function renderSent() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   COMPOSE v9.0
+   COMPOSE
    ═══════════════════════════════════════════════════════ */
 window.openCompose = async () => {
   await loadUsersCache();
@@ -1971,7 +2119,7 @@ window.clearAttachments = () => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   SEND with Undo + Attachments + Tags
+   SEND
    ═══════════════════════════════════════════════════════ */
 window.sendMessage = async () => {
   const broadcast = isOwner() && $('#cBroadcast').checked;
@@ -2063,7 +2211,8 @@ async function performSend(data) {
           toUserId: u.id, toUserName: u.name,
           read: false, isBroadcast: true,
           threadId: msgRef.id,
-          notified: false, starred: false, deleted: false,
+          notified: false, starred: false,
+          deletedBy: {},
           attachments: data.attachments || [],
           tags: data.tags || [],
           createdAt: serverTimestamp()
@@ -2082,7 +2231,8 @@ async function performSend(data) {
           toUserId: u.id, toUserName: u.name,
           read: false, isBroadcast: false,
           threadId: msgRef.id,
-          notified: false, starred: false, deleted: false,
+          notified: false, starred: false,
+          deletedBy: {},
           attachments: data.attachments || [],
           tags: data.tags || [],
           createdAt: serverTimestamp()
@@ -2108,7 +2258,8 @@ async function performSend(data) {
         read: false,
         threadId: data.replyToThread || msgRef.id,
         parentId: data.replyToThread ? (state._currentThreadLastMsgId || null) : null,
-        notified: false, starred: false, deleted: false,
+        notified: false, starred: false,
+        deletedBy: {},
         attachments: data.attachments || [],
         tags: data.tags || [],
         createdAt: serverTimestamp()
@@ -2303,11 +2454,14 @@ function startMessagesListener() {
     const all = [];
     snap.forEach(d => all.push({ id: d.id, ...d.data() }));
     all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-    state.unreadMessages = all.filter(m => !m.read && !m.deleted);
+
+    // ✅ فلترة deletedBy للمستخدم العادي (الأدمن يشوف الكل)
+    const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
+    state.unreadMessages = visibleUnread;
     updateNotificationUI();
 
-    if (state.lastUnreadCount > 0 && state.unreadMessages.length > state.lastUnreadCount) {
-      const m = state.unreadMessages[0];
+    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
+      const m = visibleUnread[0];
       if (m && m.fromUserId !== state.currentUser.uid) {
         showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
           type: 'info', icon: 'mail', actionLabel: 'فتح',
@@ -2316,7 +2470,7 @@ function startMessagesListener() {
         });
       }
     }
-    state.lastUnreadCount = state.unreadMessages.length;
+    state.lastUnreadCount = visibleUnread.length;
 
     if (document.getElementById('inboxList')) renderInbox();
   });
@@ -2379,4 +2533,4 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-console.log('🚀 Mail System v9.0 loaded - Attachments + Tags + Search');
+console.log('🚀 Mail System v9.1 loaded - Per-User Deletion');
