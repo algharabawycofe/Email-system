@@ -11,7 +11,7 @@
 </head>
 <body>
 
-<!-- ============ LOGIN SCREEN ============ -->
+<!-- LOGIN -->
 <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4 login-bg">
   <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
     <div class="flex justify-center mb-6">
@@ -60,7 +60,7 @@
   </div>
 </div>
 
-<!-- ============ FORGOT PASSWORD MODAL ============ -->
+<!-- FORGOT PASSWORD -->
 <div id="forgotModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-4">
@@ -83,10 +83,9 @@
   </div>
 </div>
 
-<!-- ============ APP ============ -->
+<!-- APP -->
 <div id="app" class="hidden min-h-screen flex flex-col">
 
-  <!-- ========== HEADER ========== -->
   <header class="app-header">
     <button id="toggleSidebar" class="icon-btn" title="إظهار/إخفاء القائمة">
       <i data-lucide="menu" class="w-5 h-5"></i>
@@ -104,12 +103,10 @@
 
     <div class="flex-1 sm:flex-none"></div>
 
-    <!-- Dark mode toggle -->
     <button id="themeToggle" class="icon-btn" title="تبديل الوضع الليلي">
       <i data-lucide="moon" class="w-5 h-5"></i>
     </button>
 
-    <!-- Notifications -->
     <div class="relative">
       <button id="notifBtn" class="relative icon-btn" title="الإشعارات">
         <i data-lucide="bell" class="w-5 h-5"></i>
@@ -124,7 +121,6 @@
       </div>
     </div>
 
-    <!-- User menu -->
     <div class="relative">
       <button id="userMenuBtn" class="flex items-center gap-2 pl-2 md:pl-3 border-r border-white/20 pr-3 hover:bg-white/10 rounded transition">
         <div class="text-right hidden md:block text-white">
@@ -155,10 +151,8 @@
     </div>
   </header>
 
-  <!-- ========== BODY ========== -->
   <div class="flex flex-1 overflow-hidden relative">
 
-    <!-- SIDEBAR -->
     <aside id="sidebar" class="app-sidebar">
       <div class="p-3 border-b border-slate-200 dark:border-slate-700">
         <button onclick="openCompose()" class="btn-primary w-full">
@@ -185,6 +179,13 @@
           <i data-lucide="trash-2" class="w-4 h-4"></i><span>سلة المهملات</span>
         </button>
 
+        <div class="pt-4 pb-1 px-4" data-manager-only>
+          <div class="nav-section-title">الفريق</div>
+        </div>
+        <button data-page="myteam" data-manager-only class="nav-btn">
+          <i data-lucide="users-round" class="w-4 h-4"></i><span>فريقي</span>
+        </button>
+
         <div class="pt-4 pb-1 px-4" data-admin-only>
           <div class="nav-section-title">الإدارة</div>
         </div>
@@ -197,11 +198,10 @@
       </nav>
 
       <div class="p-3 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-400 text-center">
-        Mail System v4.0
+        Mail System v4.1
       </div>
     </aside>
 
-    <!-- MOBILE NAV -->
     <nav id="mobileNav" class="mobile-nav" style="display:none">
       <button data-page="dashboard" class="mnav-btn">
         <i data-lucide="home" class="w-5 h-5"></i><span>الرئيسية</span>
@@ -218,19 +218,18 @@
       <button data-page="starred" class="mnav-btn">
         <i data-lucide="star" class="w-5 h-5"></i><span>المميزة</span>
       </button>
-      <button data-page="users" data-admin-only class="mnav-btn">
-        <i data-lucide="users" class="w-5 h-5"></i><span>المستخدمين</span>
+      <button data-page="myteam" data-manager-only class="mnav-btn">
+        <i data-lucide="users-round" class="w-5 h-5"></i><span>فريقي</span>
       </button>
     </nav>
 
-    <!-- MAIN CONTENT -->
     <main id="mainContent" class="app-main">
       <div id="pageContent" class="h-full overflow-y-auto"></div>
     </main>
   </div>
 </div>
 
-<!-- ============ COMPOSE MODAL ============ -->
+<!-- COMPOSE -->
 <div id="composeModal" class="modal-fullscreen" style="display:none">
   <div class="compose-window">
     <div class="compose-header">
@@ -260,7 +259,6 @@
     </div>
 
     <div class="compose-fields">
-      <!-- Broadcast checkbox -->
       <div id="broadcastBox" class="broadcast-box" style="display:none">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()" class="w-4 h-4 accent-amber-600 cursor-pointer" />
@@ -274,14 +272,13 @@
         </label>
       </div>
 
-      <!-- Send to whole department -->
       <div id="deptBox" class="dept-box" style="display:none">
         <label class="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" id="cDept" onchange="toggleDeptSend()" class="w-4 h-4 accent-purple-600 cursor-pointer" />
           <div class="flex-1 text-sm">
             <div class="font-bold text-purple-900 flex items-center gap-1.5">
               <i data-lucide="building-2" class="w-3.5 h-3.5"></i>
-              <span>إرسال لكل موظفي قسم</span>
+              <span id="deptSendLabel">إرسال لكل موظفي قسم</span>
             </div>
             <select id="deptSelect" class="mt-1 text-xs border border-purple-300 rounded px-2 py-1 bg-white"></select>
           </div>
@@ -333,7 +330,7 @@
   </div>
 </div>
 
-<!-- ============ PROFILE MODAL ============ -->
+<!-- PROFILE -->
 <div id="profileModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-5">
@@ -379,7 +376,7 @@
   </div>
 </div>
 
-<!-- ============ SETTINGS MODAL ============ -->
+<!-- SETTINGS -->
 <div id="settingsModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-5">
@@ -439,7 +436,7 @@
   </div>
 </div>
 
-<!-- ============ CONFIRM MODAL ============ -->
+<!-- CONFIRM -->
 <div id="confirmModal" class="hidden fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm fade-in">
     <div class="flex items-center gap-3 mb-4">
@@ -460,16 +457,13 @@
   </div>
 </div>
 
-<!-- ============ TOAST ============ -->
+<!-- TOAST -->
 <div id="toastContainer" class="fixed top-16 left-4 z-[100] space-y-2"></div>
 
-<!-- ============ AUDIO ============ -->
-<audio id="notifSound" preload="auto">
-  <source src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" type="audio/ogg">
-  <source src="https://actions.google.com/sounds/v1/alarms/beep_short.mp3" type="audio/mpeg">
-</audio>
+<!-- Audio placeholder (Web Audio API is used instead) -->
+<audio id="notifSound" preload="none" style="display:none"></audio>
 
-<!-- ============ SCRIPTS ============ -->
+<!-- SCRIPTS -->
 <script type="module" src="firebase.js"></script>
 <script type="module" src="app.js"></script>
 
