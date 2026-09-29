@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v5.1 - Main Application
-   iOS Optimized + Dept Manager can send to ALL users
+   Mail System v7.0 - Main Application
+   Professional Enterprise Design
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -44,7 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupGlobalListeners();
   setupServiceWorkerMessages();
   setupPWAHandlers();
-  setupIOSOptimizations();
+  setupKeyboardShortcuts();
   icons();
 
   const lastUser = loadLastUser();
@@ -59,19 +59,34 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ═══════════════════════════════════════════════════════
-   iOS OPTIMIZATIONS
+   KEYBOARD SHORTCUTS
    ═══════════════════════════════════════════════════════ */
-function setupIOSOptimizations() {
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-  if (!isIOS) return;
-
-  // ✅ passive listeners للـ scroll
-  document.querySelectorAll('.overflow-y-auto').forEach(el => {
-    el.addEventListener('touchstart', () => {}, { passive: true });
-    el.addEventListener('touchmove', () => {}, { passive: true });
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    // Cmd/Ctrl + K = Focus search
+    if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      e.preventDefault();
+      const search = $('#globalSearch');
+      if (search && !state.currentUser === false) {
+        search.focus();
+        search.select();
+      }
+    }
+    // Cmd/Ctrl + N = New message
+    if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
+      e.preventDefault();
+      if (state.currentUser) openCompose();
+    }
+    // Escape = Close modals
+    if (e.key === 'Escape') {
+      if (!$('#composeModal').style.display || $('#composeModal').style.display === 'flex') {
+        closeCompose();
+      }
+      hide($('#profileModal'));
+      hide($('#settingsModal'));
+      hide($('#forgotModal'));
+    }
   });
-
-  console.log('📱 iOS optimizations applied');
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -82,7 +97,6 @@ function setupPWAHandlers() {
     e.preventDefault();
     deferredPrompt = e;
     console.log('📱 PWA Install prompt captured');
-
     const installBtn = document.getElementById('installPwaBtn');
     if (installBtn) installBtn.classList.remove('hidden');
   });
@@ -119,11 +133,9 @@ window.installPWA = async () => {
     showToast('التثبيت غير متاح', 'استخدم قائمة المتصفح للإضافة للشاشة الرئيسية', null, false);
     return;
   }
-
   deferredPrompt.prompt();
   const { outcome } = await deferredPrompt.userChoice;
   console.log('📱 Install outcome:', outcome);
-
   deferredPrompt = null;
   const installBtn = document.getElementById('installPwaBtn');
   if (installBtn) installBtn.classList.add('hidden');
@@ -211,7 +223,7 @@ async function handleLogin() {
     show(err);
   } finally {
     btn.disabled = false;
-    btn.querySelector('span').textContent = 'دخول';
+    btn.querySelector('span').textContent = 'تسجيل الدخول';
   }
 }
 
@@ -233,21 +245,21 @@ window.sendPasswordReset = async () => {
   const email = ($('#forgotEmail')?.value || '').trim().toLowerCase();
   const status = $('#forgotStatus');
   if (!email) {
-    status.className = 'text-sm mb-3 text-red-600';
+    status.className = 'alert alert-error';
     status.textContent = 'اكتب الإيميل';
     show(status);
     return;
   }
-  status.className = 'text-sm mb-3 text-blue-600';
+  status.className = 'alert alert-info';
   status.textContent = 'جاري الإرسال...';
   show(status);
 
   const result = await resetUserPassword(email);
   if (result.success) {
-    status.className = 'text-sm mb-3 text-green-600';
+    status.className = 'alert alert-success';
     status.textContent = '✅ تم إرسال رابط الاستعادة للإيميل';
   } else {
-    status.className = 'text-sm mb-3 text-red-600';
+    status.className = 'alert alert-error';
     if (result.error === 'auth/user-not-found') {
       status.textContent = 'الإيميل غير مسجل';
     } else if (result.error === 'auth/invalid-email') {
@@ -300,7 +312,7 @@ function checkAuthState() {
     show($('#app'));
     icons();
     initSidebar();
-    navigate('dashboard');
+    navigate('inbox');
 
     startMessagesListener();
     setTimeout(registerFCMToken, 1500);
@@ -308,7 +320,7 @@ function checkAuthState() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   UPDATE UI BASED ON ROLE
+   UPDATE UI FOR ROLE
    ═══════════════════════════════════════════════════════ */
 function updateUIForRole() {
   const nameEl = $('#userName');
@@ -316,12 +328,16 @@ function updateUIForRole() {
   const avatarEl = $('#userAvatar');
   const menuName = $('#menuUserName');
   const menuEmail = $('#menuUserEmail');
+  const menuAvatar = $('#menuUserAvatar');
+
+  const initial = initials(state.currentUser.name);
 
   if (nameEl) nameEl.textContent = state.currentUser.name;
   if (roleEl) roleEl.textContent = roleLabels[state.currentUser.role] || state.currentUser.role;
-  if (avatarEl) avatarEl.textContent = initials(state.currentUser.name);
+  if (avatarEl) avatarEl.textContent = initial;
   if (menuName) menuName.textContent = state.currentUser.name;
   if (menuEmail) menuEmail.textContent = state.currentUser.email || '';
+  if (menuAvatar) menuAvatar.textContent = initial;
 
   const admin = isAdmin();
   $$('[data-admin-only]').forEach(el => {
@@ -390,7 +406,7 @@ function setupGlobalListeners() {
   const nav = $('#nav');
   if (nav) {
     nav.addEventListener('click', (e) => {
-      const btn = e.target.closest('.nav-btn');
+      const btn = e.target.closest('.nav-item');
       if (btn) navigate(btn.dataset.page);
     });
   }
@@ -398,7 +414,7 @@ function setupGlobalListeners() {
   const mobileNav = $('#mobileNav');
   if (mobileNav) {
     mobileNav.addEventListener('click', (e) => {
-      const btn = e.target.closest('.mnav-btn');
+      const btn = e.target.closest('.mnav-item');
       if (btn && btn.dataset.page) navigate(btn.dataset.page);
     });
   }
@@ -498,7 +514,6 @@ window.signOutApp = handleLogout;
    NAVIGATION
    ═══════════════════════════════════════════════════════ */
 const ROUTES = {
-  dashboard: renderDashboard,
   inbox: renderInbox,
   sent: renderSent,
   starred: renderStarred,
@@ -511,11 +526,11 @@ const ROUTES = {
 export function navigate(page) {
   state.currentFilter = page;
 
-  $$('.nav-btn').forEach(b => {
+  $$('.nav-item').forEach(b => {
     const active = b.dataset.page === page;
     b.classList.toggle('active', active);
   });
-  $$('.mnav-btn').forEach(b => {
+  $$('.mnav-item').forEach(b => {
     const active = b.dataset.page === page;
     b.classList.toggle('active', active);
   });
@@ -526,142 +541,6 @@ export function navigate(page) {
 }
 
 window.navigate = navigate;
-
-/* ═══════════════════════════════════════════════════════
-   DASHBOARD
-   ═══════════════════════════════════════════════════════ */
-async function renderDashboard() {
-  const admin = isAdmin();
-  const manager = isDeptManager();
-  const today = todayArabic();
-  const content = $('#pageContent');
-
-  if (admin) {
-    const [usersSnap, deptSnap] = await Promise.all([
-      getDocs(collection(db, 'users')),
-      getDocs(collection(db, 'departments'))
-    ]);
-    const total = usersSnap.size;
-    const active = usersSnap.docs.filter(d => d.data().isActive !== false).length;
-
-    content.innerHTML = `
-      <div class="p-4 md:p-8 max-w-7xl mx-auto fade-in">
-        <div class="mb-6 md:mb-8">
-          <h1 class="text-2xl md:text-3xl font-bold text-slate-800">أهلاً ${esc(state.currentUser.name)} 👋</h1>
-          <p class="text-slate-500 mt-1 text-sm">${today}</p>
-        </div>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-          ${statCard('users', 'إجمالي المستخدمين', total, 'bg-blue-50', 'text-blue-600', "navigate('users')")}
-          ${statCard('user-check', 'نشط', active, 'bg-green-50', 'text-green-600', "navigate('users')")}
-          ${statCard('building-2', 'الأقسام', deptSnap.size, 'bg-purple-50', 'text-purple-600', "navigate('departments')")}
-          ${statCard('mail', 'غير مقروء', state.unreadMessages.length, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
-        </div>
-        <div class="bg-white rounded border border-slate-200 p-5 md:p-6">
-          <h2 class="font-bold text-base mb-4 text-slate-800">إجراءات سريعة</h2>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            ${quickAction('pencil', 'رسالة جديدة', 'openCompose()')}
-            ${quickAction('users', 'إدارة المستخدمين', "navigate('users')")}
-            ${quickAction('building-2', 'الأقسام', "navigate('departments')")}
-            ${quickAction('inbox', 'الوارد', "navigate('inbox')")}
-          </div>
-        </div>
-      </div>
-    `;
-  } else if (manager) {
-    const myDepts = getMyManagedDepts();
-    const team = getMyTeamMembers();
-    const unreadCount = state.unreadMessages.length;
-
-    const deptCards = myDepts.map(d => {
-      const members = getUsersByDept(d.id);
-      return `
-        <div class="bg-white rounded border border-slate-200 p-5 hover:shadow-md transition">
-          <div class="flex items-start justify-between mb-3">
-            <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-              <i data-lucide="building-2" class="w-5 h-5"></i>
-            </div>
-            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-semibold">${members.length} عضو</span>
-          </div>
-          <div class="font-bold text-slate-800">${esc(d.name)}</div>
-          <div class="text-xs text-slate-500 mt-1">${esc(d.description || 'بدون وصف')}</div>
-        </div>
-      `;
-    }).join('');
-
-    content.innerHTML = `
-      <div class="p-4 md:p-8 max-w-7xl mx-auto fade-in">
-        <div class="mb-6 md:mb-8">
-          <h1 class="text-2xl md:text-3xl font-bold text-slate-800">أهلاً ${esc(state.currentUser.name)} 👋</h1>
-          <p class="text-slate-500 mt-1 text-sm">${today} · <span class="text-purple-600 font-semibold">مدير ${myDepts.length} قسم</span></p>
-        </div>
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
-          ${statCard('users-round', 'أعضاء فريقي', team.length, 'bg-purple-50', 'text-purple-600', "navigate('myteam')")}
-          ${statCard('building-2', 'أقسامي', myDepts.length, 'bg-blue-50', 'text-blue-600', "navigate('myteam')")}
-          ${statCard('mail', 'غير مقروء', unreadCount, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
-          ${statCard('send', 'مُرسلة', 0, 'bg-green-50', 'text-green-600', "navigate('sent')")}
-        </div>
-        <div class="mb-6">
-          <h2 class="font-bold text-lg mb-3 text-slate-800">أقسامي</h2>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            ${deptCards || '<div class="col-span-full text-center py-8 text-slate-400">لم يتم تعيينك مديرًا لأي قسم</div>'}
-          </div>
-        </div>
-        <div class="bg-white rounded border border-slate-200 p-5 md:p-6">
-          <h2 class="font-bold text-base mb-4 text-slate-800">إجراءات سريعة</h2>
-          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-            ${quickAction('pencil', 'رسالة جديدة', 'openCompose()')}
-            ${quickAction('users-round', 'فريقي', "navigate('myteam')")}
-            ${quickAction('megaphone', 'إرسال للفريق', "quickSendToTeam()")}
-            ${quickAction('inbox', 'الوارد', "navigate('inbox')")}
-          </div>
-        </div>
-      </div>
-    `;
-  } else {
-    const snap = await getDocs(query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid)));
-    const myDept = state.currentUser.departmentId ? getDeptById(state.currentUser.departmentId) : null;
-
-    content.innerHTML = `
-      <div class="p-4 md:p-8 max-w-5xl mx-auto fade-in">
-        <div class="mb-6 md:mb-8">
-          <h1 class="text-2xl md:text-3xl font-bold text-slate-800">أهلاً ${esc(state.currentUser.name)} 👋</h1>
-          <p class="text-slate-500 mt-1 text-sm">${today}${myDept ? ` · <span class="text-blue-600 font-semibold">${esc(myDept.name)}</span>` : ''}</p>
-        </div>
-        <div class="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
-          ${statCard('inbox', 'رسائل الوارد', snap.size, 'bg-blue-50', 'text-blue-600', "navigate('inbox')")}
-          ${statCard('mail', 'غير مقروءة', state.unreadMessages.length, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
-        </div>
-        <div class="bg-white rounded border border-slate-200 p-5 md:p-6">
-          <h2 class="font-bold text-base mb-4 text-slate-800">إجراءات سريعة</h2>
-          <div class="grid grid-cols-2 gap-3">
-            ${quickAction('pencil', 'رسالة جديدة', 'openCompose()')}
-            ${quickAction('inbox', 'صندوق الوارد', "navigate('inbox')")}
-          </div>
-        </div>
-      </div>
-    `;
-  }
-  icons();
-}
-
-function statCard(icon, label, value, bg, fg, onClick) {
-  const cursor = onClick ? 'cursor-pointer hover:border-[#0078D4] hover:shadow-md' : 'hover:shadow-md';
-  const click = onClick ? `onclick="${onClick}"` : '';
-  return `<div ${click} class="bg-white rounded border border-slate-200 p-4 md:p-5 transition ${cursor}">
-    <div class="w-10 h-10 md:w-11 md:h-11 rounded ${bg} ${fg} flex items-center justify-center mb-3">
-      <i data-lucide="${icon}" class="w-5 h-5"></i>
-    </div>
-    <div class="text-xs md:text-sm text-slate-500">${label}</div>
-    <div class="text-2xl md:text-3xl font-bold text-slate-800 mt-1">${value}</div>
-  </div>`;
-}
-
-function quickAction(icon, label, action) {
-  return `<button onclick="${action}" class="flex flex-col items-center gap-2 p-3 bg-slate-50 hover:bg-[#e5f0fa] rounded border border-slate-200 hover:border-[#0078D4] transition group">
-    <i data-lucide="${icon}" class="w-5 h-5 text-slate-500 group-hover:text-[#0078D4]"></i>
-    <span class="text-xs font-medium text-slate-700 group-hover:text-[#0078D4] text-center">${label}</span>
-  </button>`;
-}
 
 /* ═══════════════════════════════════════════════════════
    MY TEAM
@@ -684,66 +563,62 @@ async function renderMyTeam() {
   const deptSections = myDepts.map(d => {
     const members = byDept[d.id] || [];
     const memberRows = members.map(m => `
-      <div class="flex items-center gap-3 p-3 border-b border-slate-100 hover:bg-slate-50 transition">
-        <div class="w-9 h-9 rounded-full bg-[#0070c0] text-white flex items-center justify-center font-bold text-xs">${initials(m.name)}</div>
-        <div class="flex-1 min-w-0">
-          <div class="font-medium text-sm text-slate-800 truncate">${esc(m.name)}</div>
-          <div class="text-xs text-slate-400 font-mono truncate">@${esc(m.username)}</div>
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border-subtle);">
+        <div class="user-cell-avatar">${initials(m.name)}</div>
+        <div style="flex:1;min-width:0;">
+          <div class="user-cell-name">${esc(m.name)}</div>
+          <div class="user-cell-email">@${esc(m.username)}</div>
         </div>
-        <button onclick="quickSendToUser('${m.id}')" class="p-1.5 rounded hover:bg-blue-50 text-blue-600 transition" title="إرسال رسالة">
+        <button onclick="quickSendToUser('${m.id}')" class="row-action primary" title="إرسال رسالة">
           <i data-lucide="send" class="w-4 h-4"></i>
         </button>
       </div>
     `).join('');
 
     return `
-      <div class="bg-white rounded border border-slate-200 overflow-hidden mb-4">
-        <div class="px-4 py-3 bg-purple-50 border-b border-purple-200 flex items-center justify-between">
-          <div class="flex items-center gap-2">
-            <i data-lucide="building-2" class="w-4 h-4 text-purple-600"></i>
-            <h3 class="font-bold text-purple-900">${esc(d.name)}</h3>
+      <div class="section" style="padding:0;overflow:hidden;">
+        <div style="padding:14px 18px;background:var(--bg-subtle);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border-default);">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <i data-lucide="building-2" class="w-4 h-4" style="color:#8764B8;"></i>
+            <span style="font-weight:700;font-size:14px;">${esc(d.name)}</span>
           </div>
-          <div class="flex items-center gap-2">
-            <span class="text-xs text-purple-700">${members.length} عضو</span>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;color:var(--text-tertiary);">${members.length} عضو</span>
             ${members.length > 0 ? `
-              <button onclick="quickSendToDept('${d.id}')" class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded font-semibold flex items-center gap-1">
+              <button onclick="quickSendToDept('${d.id}')" class="btn btn-primary btn-sm">
                 <i data-lucide="megaphone" class="w-3 h-3"></i>
-                إرسال للقسم
+                <span>إرسال للقسم</span>
               </button>
             ` : ''}
           </div>
         </div>
-        <div>
-          ${memberRows || '<div class="text-center py-6 text-slate-400 text-sm">لا يوجد أعضاء في هذا القسم</div>'}
-        </div>
+        <div>${memberRows || '<div class="empty-state" style="padding:32px;"><p>لا يوجد أعضاء</p></div>'}</div>
       </div>
     `;
   }).join('');
 
   $('#pageContent').innerHTML = `
-    <div class="p-4 md:p-8 max-w-5xl mx-auto fade-in">
-      <div class="mb-6">
-        <h1 class="text-2xl font-bold text-slate-800">فريقي</h1>
-        <p class="text-slate-500 text-sm mt-1">${team.length} عضو · ${myDepts.length} قسم</p>
+    <div class="dashboard">
+      <div class="dashboard-header">
+        <h1 class="dashboard-title">فريقي</h1>
+        <p class="dashboard-date">${team.length} عضو · ${myDepts.length} قسم</p>
       </div>
 
       ${myDepts.length === 0 ? `
-        <div class="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
-          <i data-lucide="alert-circle" class="w-12 h-12 text-amber-500 mx-auto mb-3"></i>
-          <div class="font-bold text-amber-900 mb-1">لم يتم تعيينك مديرًا لأي قسم</div>
-          <div class="text-sm text-amber-700">تواصل مع الأدمن لتعيينك مدير قسم</div>
+        <div class="section" style="text-align:center;padding:40px;">
+          <i data-lucide="alert-circle" class="w-12 h-12" style="color:var(--warning);margin-bottom:12px;"></i>
+          <div style="font-weight:700;margin-bottom:4px;">لم يتم تعيينك مديرًا لأي قسم</div>
+          <div style="font-size:13px;color:var(--text-tertiary);">تواصل مع الأدمن لتعيينك مدير قسم</div>
         </div>
       ` : deptSections}
 
       ${team.length > 0 ? `
-        <div class="mt-6 bg-white rounded border border-slate-200 p-5">
-          <h3 class="font-bold text-slate-800 mb-3">إجراءات جماعية</h3>
-          <div class="flex flex-wrap gap-2">
-            <button onclick="quickSendToTeam()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
-              <i data-lucide="megaphone" class="w-4 h-4"></i>
-              إرسال لكل فريقي (${team.length})
-            </button>
-          </div>
+        <div class="section">
+          <h3 class="section-title">إجراءات جماعية</h3>
+          <button onclick="quickSendToTeam()" class="btn btn-primary">
+            <i data-lucide="megaphone" class="w-4 h-4"></i>
+            <span>إرسال لكل فريقي (${team.length})</span>
+          </button>
         </div>
       ` : ''}
     </div>
@@ -785,113 +660,157 @@ async function renderUsers() {
   await loadDepartmentsCache();
 
   const rows = state.allUsersCache.map(u => {
-    const uColor = roleColors[u.role] || roleColors.user;
     const uLabel = roleLabels[u.role] || u.role;
+    const roleClass = `role-${u.role}`;
     const dept = u.departmentId ? getDeptById(u.departmentId) : null;
-    return `<tr class="border-b border-slate-100 hover:bg-slate-50 transition">
-      <td class="px-4 py-3">
-        <div class="flex items-center gap-3">
-          <div class="w-9 h-9 rounded-full bg-[#0070c0] text-white flex items-center justify-center font-bold text-xs">${initials(u.name)}</div>
-          <div class="min-w-0">
-            <div class="font-medium text-slate-800 text-sm truncate">${esc(u.name)}</div>
-            <div class="text-xs text-slate-400 font-mono truncate">${esc(u.email || '')}</div>
+    return `
+      <tr>
+        <td>
+          <div class="user-cell">
+            <div class="user-cell-avatar">${initials(u.name)}</div>
+            <div style="min-width:0;">
+              <div class="user-cell-name">${esc(u.name)}</div>
+              <div class="user-cell-email">${esc(u.email || '')}</div>
+            </div>
           </div>
-        </div>
-      </td>
-      <td class="px-4 py-3 font-mono text-sm text-slate-600 hidden md:table-cell">${esc(u.username)}</td>
-      <td class="px-4 py-3 hidden lg:table-cell">
-        ${dept ? `<span class="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">${esc(dept.name)}</span>` : '<span class="text-xs text-slate-400">—</span>'}
-      </td>
-      <td class="px-4 py-3"><span class="px-2.5 py-1 rounded text-xs font-semibold ${uColor} whitespace-nowrap">${uLabel}</span></td>
-      <td class="px-4 py-3 hidden sm:table-cell">
-        ${u.isActive === false
-          ? `<span class="flex items-center gap-1 text-xs text-red-600"><span class="w-2 h-2 rounded-full bg-red-500"></span>معطّل</span>`
-          : `<span class="flex items-center gap-1 text-xs text-green-600"><span class="w-2 h-2 rounded-full bg-green-500"></span>نشط</span>`}
-      </td>
-      <td class="px-4 py-3 text-left">
-        <div class="flex items-center justify-end gap-1">
-          <button onclick="editUser('${u.id}')" class="p-1.5 rounded hover:bg-blue-50 text-blue-600 transition" title="تعديل"><i data-lucide="pencil" class="w-4 h-4"></i></button>
-          <button onclick="toggleUser('${u.id}', ${u.isActive === false})" class="p-1.5 rounded hover:bg-amber-50 text-amber-600 transition" title="${u.isActive === false ? 'تفعيل' : 'تعطيل'}">
-            <i data-lucide="${u.isActive === false ? 'user-check' : 'user-x'}" class="w-4 h-4"></i>
-          </button>
-          <button onclick="deleteUserDoc('${u.id}')" class="p-1.5 rounded hover:bg-red-50 text-red-600 transition" title="حذف"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-        </div>
-      </td>
-    </tr>`;
+        </td>
+        <td style="font-family:'SF Mono',monospace;font-size:12.5px;color:var(--text-secondary);">${esc(u.username)}</td>
+        <td>
+          ${dept ? `<span style="font-size:11.5px;background:#E5F0FA;color:var(--brand-primary);padding:3px 8px;border-radius:4px;font-weight:600;">${esc(dept.name)}</span>` : '<span style="color:var(--text-disabled);">—</span>'}
+        </td>
+        <td><span class="role-badge ${roleClass}">${uLabel}</span></td>
+        <td>
+          <span class="status-cell ${u.isActive === false ? 'status-inactive' : 'status-active'}">
+            <span class="status-dot"></span>
+            ${u.isActive === false ? 'معطّل' : 'نشط'}
+          </span>
+        </td>
+        <td>
+          <div class="row-actions">
+            <button onclick="editUser('${u.id}')" class="row-action primary" title="تعديل">
+              <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+            </button>
+            <button onclick="toggleUser('${u.id}', ${u.isActive === false})" class="row-action" title="${u.isActive === false ? 'تفعيل' : 'تعطيل'}">
+              <i data-lucide="${u.isActive === false ? 'user-check' : 'user-x'}" class="w-3.5 h-3.5"></i>
+            </button>
+            <button onclick="deleteUserDoc('${u.id}')" class="row-action danger" title="حذف">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
   }).join('');
 
   $('#pageContent').innerHTML = `
-    <div class="p-4 md:p-8 max-w-7xl mx-auto fade-in">
-      <div class="flex items-center justify-between mb-6">
+    <div class="dashboard">
+      <div class="page-header" style="padding:0 0 20px;border:none;">
         <div>
-          <h1 class="text-2xl font-bold text-slate-800">المستخدمين</h1>
-          <p class="text-slate-500 text-sm mt-1">${state.allUsersCache.length} مستخدم</p>
+          <h1 class="dashboard-title">المستخدمين</h1>
+          <p class="dashboard-date">${state.allUsersCache.length} مستخدم</p>
         </div>
-        <button onclick="openAddUser()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-3 md:px-4 py-2 rounded text-sm font-semibold flex items-center gap-2 transition shadow-sm">
+        <button onclick="openAddUser()" class="btn btn-primary">
           <i data-lucide="user-plus" class="w-4 h-4"></i>
-          <span class="hidden md:inline">إضافة مستخدم</span>
+          <span>إضافة مستخدم</span>
         </button>
       </div>
 
-      <div id="addUserForm" class="hidden bg-white rounded border border-slate-200 p-5 md:p-6 mb-6 fade-in">
-        <h3 class="font-bold mb-4 text-slate-800">مستخدم جديد</h3>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input id="nuName" placeholder="الاسم الكامل" class="input-field" />
-          <input id="nuUser" placeholder="اسم المستخدم (إنجليزي)" class="input-field" />
-          <input id="nuPass" type="text" placeholder="كلمة السر (6+ حروف)" class="input-field" />
-          <select id="nuRole" class="input-field">
-            <option value="user">مستخدم عادي</option>
-            <option value="manager">مدير قسم</option>
-            ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
-          </select>
-          <select id="nuDept" class="input-field">
-            <option value="">— بدون قسم —</option>
-          </select>
+      <div id="addUserForm" class="section hidden fade-in">
+        <h3 class="section-title">مستخدم جديد</h3>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-group">
+            <label class="form-label">الاسم الكامل</label>
+            <input id="nuName" class="form-input" placeholder="محمد أحمد" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">اسم المستخدم</label>
+            <input id="nuUser" class="form-input" placeholder="mohamed (إنجليزي)" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">كلمة السر</label>
+            <input id="nuPass" type="text" class="form-input" placeholder="6 حروف على الأقل" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">الدور</label>
+            <select id="nuRole" class="form-input">
+              <option value="user">مستخدم عادي</option>
+              <option value="manager">مدير قسم</option>
+              ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">القسم</label>
+            <select id="nuDept" class="form-input">
+              <option value="">— بدون قسم —</option>
+            </select>
+          </div>
         </div>
-        <p class="text-xs text-slate-500 mt-2">الإيميل: <span class="font-mono">username@${EMAIL_DOMAIN}</span></p>
-        <p id="nuErr" class="text-sm mt-3 hidden"></p>
-        <div class="mt-4 flex gap-2">
-          <button onclick="createNewUser()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white px-4 py-2 rounded text-sm font-semibold">حفظ</button>
-          <button onclick="closeAddUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm font-medium">إلغاء</button>
+        <p style="font-size:12px;color:var(--text-tertiary);margin:12px 0 0;">
+          الإيميل: <span style="font-family:monospace;">username@${EMAIL_DOMAIN}</span>
+        </p>
+        <p id="nuErr" class="alert hidden" style="margin-top:12px;"></p>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+          <button onclick="createNewUser()" class="btn btn-primary">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>حفظ</span>
+          </button>
+          <button onclick="closeAddUser()" class="btn btn-ghost">إلغاء</button>
         </div>
       </div>
 
-      <div id="editUserForm" class="hidden bg-white rounded border border-slate-200 p-5 md:p-6 mb-6 fade-in">
-        <h3 class="font-bold mb-4 text-slate-800">تعديل مستخدم</h3>
+      <div id="editUserForm" class="section hidden fade-in">
+        <h3 class="section-title">تعديل مستخدم</h3>
         <input type="hidden" id="euId" />
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input id="euName" placeholder="الاسم" class="input-field" />
-          <input id="euUser" class="input-field bg-slate-50 text-slate-500" disabled />
-          <select id="euRole" class="input-field">
-            <option value="user">مستخدم عادي</option>
-            <option value="manager">مدير قسم</option>
-            ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
-          </select>
-          <select id="euDept" class="input-field">
-            <option value="">— بدون قسم —</option>
-          </select>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr;">
+          <div class="form-group">
+            <label class="form-label">الاسم</label>
+            <input id="euName" class="form-input" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">اسم المستخدم</label>
+            <input id="euUser" class="form-input form-input-disabled" disabled />
+          </div>
+          <div class="form-group">
+            <label class="form-label">الدور</label>
+            <select id="euRole" class="form-input">
+              <option value="user">مستخدم عادي</option>
+              <option value="manager">مدير قسم</option>
+              ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">القسم</label>
+            <select id="euDept" class="form-input">
+              <option value="">— بدون قسم —</option>
+            </select>
+          </div>
         </div>
-        <p id="euErr" class="text-sm mt-3 hidden"></p>
-        <div class="mt-4 flex gap-2">
-          <button onclick="saveEditUser()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-semibold">حفظ</button>
-          <button onclick="closeEditUser()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded text-sm font-medium">إلغاء</button>
+        <p id="euErr" class="alert hidden" style="margin-top:12px;"></p>
+        <div style="display:flex;gap:8px;margin-top:16px;">
+          <button onclick="saveEditUser()" class="btn btn-success">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>حفظ</span>
+          </button>
+          <button onclick="closeEditUser()" class="btn btn-ghost">إلغاء</button>
         </div>
       </div>
 
-      <div class="bg-white rounded border border-slate-200 overflow-hidden">
-        <div class="overflow-x-auto">
-          <table class="w-full text-right">
-            <thead class="bg-slate-50 border-b border-slate-200">
-              <tr class="text-slate-500 text-xs font-semibold uppercase tracking-wider">
-                <th class="px-4 py-3 text-right">المستخدم</th>
-                <th class="px-4 py-3 text-right hidden md:table-cell">اسم المستخدم</th>
-                <th class="px-4 py-3 text-right hidden lg:table-cell">القسم</th>
-                <th class="px-4 py-3 text-right">الدور</th>
-                <th class="px-4 py-3 text-right hidden sm:table-cell">الحالة</th>
-                <th class="px-4 py-3 text-left">إجراءات</th>
+      <div class="data-table-wrapper">
+        <div class="data-table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>المستخدم</th>
+                <th>اسم المستخدم</th>
+                <th>القسم</th>
+                <th>الدور</th>
+                <th>الحالة</th>
+                <th style="text-align:left;">إجراءات</th>
               </tr>
             </thead>
-            <tbody>${rows || '<tr><td colspan="6" class="text-center py-12 text-slate-400">لا يوجد مستخدمين</td></tr>'}</tbody>
+            <tbody>
+              ${rows || '<tr><td colspan="6" style="text-align:center;padding:48px;color:var(--text-tertiary);">لا يوجد مستخدمين</td></tr>'}
+            </tbody>
           </table>
         </div>
       </div>
@@ -929,16 +848,16 @@ window.createNewUser = async () => {
   hide(err);
 
   if (!name || !user || !pass) {
-    err.className = 'text-sm mt-3 text-red-600'; err.textContent = 'املأ كل البيانات'; show(err); return;
+    err.className = 'alert alert-error'; err.textContent = 'املأ كل البيانات'; show(err); return;
   }
   if (!validateUsername(user)) {
-    err.className = 'text-sm mt-3 text-red-600'; err.textContent = 'اسم المستخدم بحروف إنجليزية وأرقام فقط (3-30 حرف)'; show(err); return;
+    err.className = 'alert alert-error'; err.textContent = 'اسم المستخدم بحروف إنجليزية (3-30 حرف)'; show(err); return;
   }
   if (!validatePassword(pass)) {
-    err.className = 'text-sm mt-3 text-red-600'; err.textContent = 'كلمة السر 6 حروف على الأقل'; show(err); return;
+    err.className = 'alert alert-error'; err.textContent = 'كلمة السر 6 حروف على الأقل'; show(err); return;
   }
 
-  err.className = 'text-sm mt-3 text-blue-600'; err.textContent = 'جاري الإنشاء...'; show(err);
+  err.className = 'alert alert-info'; err.textContent = 'جاري الإنشاء...'; show(err);
 
   try {
     const email = `${user}@${EMAIL_DOMAIN}`;
@@ -948,11 +867,11 @@ window.createNewUser = async () => {
       departmentId: deptId || null,
       isActive: true, createdAt: serverTimestamp()
     });
-    err.className = 'text-sm mt-3 text-green-600'; err.textContent = `✅ تم إنشاء ${user} بنجاح!`;
+    err.className = 'alert alert-success'; err.textContent = `✅ تم إنشاء ${user} بنجاح!`;
     $('#nuName').value = ''; $('#nuUser').value = ''; $('#nuPass').value = '';
     setTimeout(() => { hide($('#addUserForm')); renderUsers(); }, 1200);
   } catch (e) {
-    err.className = 'text-sm mt-3 text-red-600';
+    err.className = 'alert alert-error';
     err.textContent = e.code === 'auth/email-already-in-use' ? 'اسم المستخدم مستخدم قبل كده' : e.message;
     show(err);
   }
@@ -981,7 +900,7 @@ window.saveEditUser = async () => {
   const err = $('#euErr');
   hide(err);
   if (!name) {
-    err.className = 'text-sm mt-3 text-red-600'; err.textContent = 'اكتب الاسم'; show(err); return;
+    err.className = 'alert alert-error'; err.textContent = 'اكتب الاسم'; show(err); return;
   }
   try {
     await updateDoc(doc(db, 'users', uid), {
@@ -990,7 +909,7 @@ window.saveEditUser = async () => {
     hide($('#editUserForm'));
     renderUsers();
   } catch (e) {
-    err.className = 'text-sm mt-3 text-red-600'; err.textContent = e.message; show(err);
+    err.className = 'alert alert-error'; err.textContent = e.message; show(err);
   }
 };
 
@@ -1017,37 +936,35 @@ async function renderDepartments() {
     const members = getUsersByDept(d.id);
     const manager = d.managerId ? getUserById(d.managerId) : null;
     return `
-      <div class="bg-white rounded border border-slate-200 p-4 hover:shadow-md transition group">
-        <div class="flex items-start justify-between mb-3">
-          <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+      <div class="dept-card">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;">
+          <div class="dept-card-icon">
             <i data-lucide="building-2" class="w-5 h-5"></i>
           </div>
-          <div class="flex items-center gap-1">
-            <button onclick="editDept('${d.id}')" class="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-blue-50 text-blue-600 transition" title="تعديل">
-              <i data-lucide="pencil" class="w-4 h-4"></i>
+          <div style="display:flex;gap:4px;">
+            <button onclick="editDept('${d.id}')" class="row-action primary" title="تعديل">
+              <i data-lucide="pencil" class="w-3.5 h-3.5"></i>
             </button>
-            <button onclick="deleteDept('${d.id}')" class="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-50 text-red-600 transition" title="حذف">
-              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            <button onclick="deleteDept('${d.id}')" class="row-action danger" title="حذف">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
             </button>
           </div>
         </div>
-        <div class="font-bold text-slate-800">${esc(d.name)}</div>
-        <div class="text-xs text-slate-500 mt-1 mb-3">${esc(d.description || 'بدون وصف')}</div>
-        
-        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
-          <div class="flex items-center gap-1.5">
-            <i data-lucide="users" class="w-3.5 h-3.5 text-slate-400"></i>
-            <span class="text-xs text-slate-500">${members.length} عضو</span>
+        <div class="dept-card-name">${esc(d.name)}</div>
+        <div class="dept-card-desc">${esc(d.description || 'بدون وصف')}</div>
+        <div class="dept-card-footer">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <i data-lucide="users" class="w-3.5 h-3.5"></i>
+            <span>${members.length} عضو</span>
           </div>
           ${manager ? `
-            <div class="flex items-center gap-1.5">
-              <div class="w-5 h-5 rounded-full bg-purple-500 text-white flex items-center justify-center font-bold text-[9px]">${initials(manager.name)}</div>
-              <span class="text-xs text-purple-700 font-medium truncate max-w-[80px]">${esc(manager.name)}</span>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <div style="width:22px;height:22px;border-radius:50%;background:#8764B8;color:white;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;">${initials(manager.name)}</div>
+              <span style="font-size:11.5px;color:#8764B8;font-weight:600;">${esc(manager.name)}</span>
             </div>
           ` : `
-            <button onclick="editDept('${d.id}')" class="text-xs text-amber-600 hover:underline font-medium flex items-center gap-1">
-              <i data-lucide="alert-circle" class="w-3 h-3"></i>
-              بدون مدير
+            <button onclick="editDept('${d.id}')" style="background:none;border:none;color:#E8A100;font-size:11.5px;cursor:pointer;font-family:inherit;font-weight:600;">
+              ⚠ بدون مدير
             </button>
           `}
         </div>
@@ -1056,29 +973,40 @@ async function renderDepartments() {
   }).join('');
 
   $('#pageContent').innerHTML = `
-    <div class="p-4 md:p-8 max-w-7xl mx-auto fade-in">
-      <div class="mb-6">
-        <h1 class="text-2xl font-bold text-slate-800">الأقسام</h1>
-        <p class="text-slate-500 text-sm mt-1">${state.allDeptsCache.length} قسم</p>
+    <div class="dashboard">
+      <div class="page-header" style="padding:0 0 20px;border:none;">
+        <div>
+          <h1 class="dashboard-title">الأقسام</h1>
+          <p class="dashboard-date">${state.allDeptsCache.length} قسم</p>
+        </div>
       </div>
 
-      <div class="bg-white rounded border border-slate-200 p-4 mb-6">
-        <h3 class="font-bold text-sm mb-3">إضافة قسم جديد</h3>
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
-          <input id="dName" placeholder="اسم القسم" class="input-field" />
-          <input id="dDesc" placeholder="وصف (اختياري)" class="input-field" />
-          <select id="dManager" class="input-field">
-            <option value="">— بدون مدير —</option>
-          </select>
-          <button onclick="addDept()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white rounded px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2">
+      <div class="section">
+        <h3 class="section-title">إضافة قسم جديد</h3>
+        <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end;">
+          <div class="form-group">
+            <label class="form-label">اسم القسم</label>
+            <input id="dName" class="form-input" placeholder="تكنولوجيا المعلومات" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">وصف (اختياري)</label>
+            <input id="dDesc" class="form-input" placeholder="وصف مختصر" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">مدير القسم</label>
+            <select id="dManager" class="form-input">
+              <option value="">— بدون مدير —</option>
+            </select>
+          </div>
+          <button onclick="addDept()" class="btn btn-primary" style="height:36px;">
             <i data-lucide="plus" class="w-4 h-4"></i>
             <span>إضافة</span>
           </button>
         </div>
       </div>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        ${cards || '<div class="col-span-full text-center py-12 text-slate-400">لا يوجد أقسام بعد</div>'}
+      <div class="dept-grid">
+        ${cards || '<div class="empty-state" style="grid-column:1/-1;"><i data-lucide="building-2"></i><p>لا يوجد أقسام بعد</p></div>'}
       </div>
     </div>
   `;
@@ -1118,40 +1046,39 @@ window.editDept = async (id) => {
     .join('');
 
   const modal = document.createElement('div');
-  modal.className = 'fixed inset-0 bg-black/40 z-[80] flex items-center justify-center p-4 modal-overlay';
+  modal.className = 'modal-backdrop';
   modal.id = 'deptEditModal';
   modal.innerHTML = `
-    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
-      <div class="flex items-center justify-between mb-5">
-        <h3 class="text-lg font-bold text-slate-800">تعديل القسم</h3>
-        <button onclick="document.getElementById('deptEditModal').remove()" class="p-1 rounded hover:bg-slate-100">
-          <i data-lucide="x" class="w-5 h-5 text-slate-500"></i>
+    <div class="modal-panel modal-md fade-in">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-title">تعديل القسم</h2>
+          <p class="modal-subtitle">${esc(d.name)}</p>
+        </div>
+        <button onclick="document.getElementById('deptEditModal').remove()" class="icon-btn icon-btn-ghost">
+          <i data-lucide="x" class="w-4 h-4"></i>
         </button>
       </div>
-      <div class="space-y-3">
-        <div>
-          <label class="block text-xs font-semibold mb-1 text-slate-600">اسم القسم</label>
-          <input id="editDeptName" class="input-field" value="${esc(d.name)}" />
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">اسم القسم</label>
+          <input id="editDeptName" class="form-input" value="${esc(d.name)}" />
         </div>
-        <div>
-          <label class="block text-xs font-semibold mb-1 text-slate-600">الوصف</label>
-          <input id="editDeptDesc" class="input-field" value="${esc(d.description || '')}" />
+        <div class="form-group">
+          <label class="form-label">الوصف</label>
+          <input id="editDeptDesc" class="form-input" value="${esc(d.description || '')}" />
         </div>
-        <div>
-          <label class="block text-xs font-semibold mb-1 text-slate-600">مدير القسم</label>
-          <select id="editDeptManager" class="input-field">
+        <div class="form-group">
+          <label class="form-label">مدير القسم</label>
+          <select id="editDeptManager" class="form-input">
             <option value="">— بدون مدير —</option>
             ${managerOpts}
           </select>
         </div>
       </div>
-      <div class="flex gap-2 mt-5">
-        <button onclick="saveEditDept('${id}')" class="flex-1 bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 transition">
-          حفظ
-        </button>
-        <button onclick="document.getElementById('deptEditModal').remove()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 rounded-lg transition">
-          إلغاء
-        </button>
+      <div class="modal-footer">
+        <button onclick="document.getElementById('deptEditModal').remove()" class="btn btn-ghost">إلغاء</button>
+        <button onclick="saveEditDept('${id}')" class="btn btn-primary">حفظ</button>
       </div>
     </div>
   `;
@@ -1244,28 +1171,27 @@ function renderThreadList() {
     const last = t.lastMsg;
     const otherName = t.isFromMe ? last.toUserName : last.fromUserName;
     const otherInitial = initials(otherName);
+    const unreadClass = t.unread > 0 ? 'unread' : '';
 
     return `
-      <div onclick="openThread('${t.threadId}')" class="msg-item ${t.threadId === state.selectedThreadId ? 'active' : ''} px-4 py-3">
-        <div class="flex items-start gap-3">
-          <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${otherInitial}</div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-sm text-slate-800 truncate ${t.unread ? 'font-bold' : 'font-medium'}">${esc(otherName || '')}</span>
-              <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(last.createdAt)}</span>
-            </div>
-            <div class="text-sm text-slate-700 truncate ${t.unread ? 'font-semibold' : ''}">
-              ${t.starred ? '<span class="text-amber-500">⭐ </span>' : ''}
-              ${last.priority === 'urgent' ? '<span class="text-red-500">🔴 </span>' : ''}
-              ${esc(t.subject)}
-            </div>
-            <div class="text-xs text-slate-400 truncate mt-0.5">
-              ${t.isFromMe ? '<span class="text-[#0078D4] font-medium">أنت: </span>' : ''}${esc((last.body || '').slice(0, 55))}
-            </div>
-            <div class="flex items-center gap-2 mt-1">
-              ${t.messages.length > 1 ? `<span class="text-xs text-slate-400">💬 ${t.messages.length}</span>` : ''}
-              ${t.unread ? `<span class="text-xs bg-red-500 text-white rounded-full px-1.5 py-0.5">${t.unread}</span>` : ''}
-            </div>
+      <div onclick="openThread('${t.threadId}')" class="msg-item ${t.threadId === state.selectedThreadId ? 'active' : ''} ${unreadClass}">
+        <div class="msg-avatar">${otherInitial}</div>
+        <div class="msg-content">
+          <div class="msg-row-1">
+            <span class="msg-from">${esc(otherName || '')}</span>
+            <span class="msg-time">${timeAgo(last.createdAt)}</span>
+          </div>
+          <div class="msg-subject">
+            ${t.starred ? '⭐ ' : ''}
+            ${last.priority === 'urgent' ? '🔴 ' : ''}
+            ${esc(t.subject)}
+          </div>
+          <div class="msg-preview">
+            ${t.isFromMe ? 'أنت: ' : ''}${esc((last.body || '').slice(0, 60))}
+          </div>
+          <div class="msg-meta">
+            ${t.messages.length > 1 ? `<span class="msg-thread-count">💬 ${t.messages.length}</span>` : ''}
+            ${t.unread ? `<span class="msg-unread-badge">${t.unread}</span>` : ''}
           </div>
         </div>
       </div>
@@ -1273,23 +1199,23 @@ function renderThreadList() {
   }).join('');
 
   $('#pageContent').innerHTML = `
-    <div id="inboxContainer" class="h-full flex fade-in">
-      <div id="inboxList" class="inbox-list w-full md:w-96 border-l border-slate-200 bg-white flex-col">
-        <div class="px-4 py-3 border-b border-slate-200 bg-white flex-shrink-0 flex items-center justify-between">
+    <div class="inbox-shell fade-in">
+      <div id="inboxList" class="inbox-list">
+        <div class="inbox-list-header">
           <div>
-            <h2 class="font-bold text-slate-800 text-sm">${title}</h2>
-            <p class="text-xs text-slate-500 mt-0.5">${state.threadsCache.length} محادثة${state.searchQuery ? ` · "${esc(state.searchQuery)}"` : ''}</p>
+            <div class="inbox-list-title">${title}</div>
+            <div class="inbox-list-meta">${state.threadsCache.length} محادثة${state.searchQuery ? ` · "${esc(state.searchQuery)}"` : ''}</div>
           </div>
-          <button onclick="renderInbox()" class="p-1.5 rounded hover:bg-slate-100 text-slate-500 transition" title="تحديث">
+          <button onclick="renderInbox()" class="icon-btn icon-btn-ghost" title="تحديث">
             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
           </button>
         </div>
-        <div class="flex-1 overflow-y-auto">
-          ${listHtml || '<div class="text-center py-12 text-slate-400 text-sm">لا رسائل</div>'}
+        <div class="inbox-list-body">
+          ${listHtml || '<div class="empty-state"><i data-lucide="mail-open"></i><p>لا رسائل</p></div>'}
         </div>
       </div>
-      <div id="inboxReading" class="inbox-reading flex-1 bg-white overflow-y-auto flex-col">
-        <div id="readingContent" class="flex-1"></div>
+      <div id="inboxReading" class="reading-pane">
+        <div id="readingContent" style="flex:1;min-height:0;display:flex;flex-direction:column;"></div>
       </div>
     </div>
   `;
@@ -1324,9 +1250,9 @@ function renderThreadReading() {
 
   if (!t) {
     content.innerHTML = `
-      <div class="flex flex-col items-center justify-center h-full text-slate-400 p-8 min-h-[400px]">
-        <i data-lucide="mail-open" class="w-16 h-16 mb-4 opacity-30"></i>
-        <p class="text-sm">اختر رسالة لعرضها</p>
+      <div class="empty-state" style="flex:1;min-height:400px;">
+        <i data-lucide="mail-open"></i>
+        <p>اختر رسالة لعرضها</p>
       </div>`;
     icons();
     return;
@@ -1348,28 +1274,26 @@ function renderThreadReading() {
     const dateStr = formatDate(m.createdAt);
 
     return `
-      <div class="email-card bg-white border border-slate-200 rounded mb-2 overflow-hidden">
-        <div onclick="toggleMsgBody(${idx}, ${isLatest})" class="flex items-start gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition select-none">
-          <div class="w-10 h-10 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(m.fromUserName)}</div>
-          <div class="flex-1 min-w-0">
-            <div class="flex items-baseline gap-2 flex-wrap">
-              <span class="font-semibold text-sm text-slate-800">${isMe ? 'أنت' : esc(m.fromUserName)}</span>
-              ${!isMe && senderEmail ? `<span class="text-xs text-slate-400 font-mono hidden sm:inline">&lt;${esc(senderEmail)}&gt;</span>` : ''}
+      <div class="email-message">
+        <div class="email-message-header" onclick="toggleMsgBody(${idx}, ${isLatest})">
+          <div class="email-message-avatar">${initials(m.fromUserName)}</div>
+          <div class="email-message-info">
+            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
+              <span class="email-message-from">${isMe ? 'أنت' : esc(m.fromUserName)}</span>
+              ${!isMe && senderEmail ? `<span style="font-size:11.5px;color:var(--text-tertiary);font-family:monospace;direction:ltr;">&lt;${esc(senderEmail)}&gt;</span>` : ''}
               ${m.priority === 'urgent' ? '<span class="priority-urgent">🔴 عاجل</span>' : ''}
-              ${isLatest && t.messages.length > 1 ? '<span class="text-[10px] bg-[#e5f0fa] text-[#0078D4] px-1.5 py-0.5 rounded font-semibold">الأحدث</span>' : ''}
+              ${isLatest && t.messages.length > 1 ? '<span style="font-size:10.5px;background:var(--brand-primary-light);color:var(--brand-primary);padding:2px 8px;border-radius:4px;font-weight:600;">الأحدث</span>' : ''}
             </div>
-            <div class="text-xs text-slate-500 mt-0.5">إلى: ${isMe ? esc(m.toUserName) : esc(state.currentUser.name)}</div>
-            ${!open ? `<div class="text-xs text-slate-400 mt-1 truncate">${esc((m.body || '').slice(0, 80))}</div>` : ''}
+            <div class="email-message-to">إلى: ${isMe ? esc(m.toUserName) : esc(state.currentUser.name)}</div>
+            ${!open ? `<div class="email-message-preview">${esc((m.body || '').slice(0, 120))}</div>` : ''}
           </div>
-          <div class="flex items-center gap-2 flex-shrink-0">
-            <span class="text-xs text-slate-400 whitespace-nowrap hidden sm:inline">${dateStr}</span>
-            <i data-lucide="${open ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4 text-slate-400"></i>
+          <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            <span class="email-message-time">${dateStr}</span>
+            <i data-lucide="${open ? 'chevron-up' : 'chevron-down'}" class="w-4 h-4" style="color:var(--text-tertiary);"></i>
           </div>
         </div>
         ${open ? `
-          <div class="border-t border-slate-100 px-4 py-4 bg-slate-50/40">
-            <div class="text-slate-700 whitespace-pre-line leading-relaxed text-sm">${esc(m.body || '')}</div>
-          </div>
+          <div class="email-message-body">${esc(m.body || '')}</div>
         ` : ''}
       </div>
     `;
@@ -1378,52 +1302,48 @@ function renderThreadReading() {
   const threadStarred = t.messages.some(m => m.starred);
 
   content.innerHTML = `
-    <div class="flex flex-col h-full bg-white">
-      <div class="px-3 md:px-4 py-2 bg-white border-b border-slate-200 flex items-center gap-1 flex-shrink-0">
-        <button onclick="backToList()" class="md:hidden p-2 rounded hover:bg-slate-100 text-slate-600">
-          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+    <div class="reading-toolbar">
+      <button onclick="backToList()" class="toolbar-btn md:hidden">
+        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+      </button>
+
+      ${!isTrash ? `
+        <button onclick="replyToThread('${replyUserId}', '${esc(replyUserName).replace(/'/g, "\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g, "\\'")}')" class="toolbar-btn primary">
+          <i data-lucide="reply" class="w-4 h-4"></i>
+          <span class="hidden md:inline">رد</span>
         </button>
-
-        ${!isTrash ? `
-          <button onclick="replyToThread('${replyUserId}', '${esc(replyUserName).replace(/'/g, "\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g, "\\'")}')" class="px-3 py-1.5 rounded hover:bg-[#e5f0fa] text-[#0078D4] font-semibold text-sm flex items-center gap-1.5 transition" title="رد">
-            <i data-lucide="reply" class="w-4 h-4"></i>
-            <span class="hidden md:inline">رد</span>
-          </button>
-          <button onclick="toggleStar('${t.threadId}')" class="px-3 py-1.5 rounded hover:bg-amber-50 ${threadStarred ? 'text-amber-500' : 'text-slate-500'} font-semibold text-sm flex items-center gap-1.5 transition" title="${threadStarred ? 'إزالة التمييز' : 'تمييز'}">
-            <i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i>
-            <span class="hidden md:inline">${threadStarred ? 'مميزة' : 'تمييز'}</span>
-          </button>
-        ` : ''}
-
-        <button onclick="trashThread('${t.threadId}', ${isTrash})" class="px-3 py-1.5 rounded hover:${isTrash ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'} font-semibold text-sm flex items-center gap-1.5 transition">
-          <i data-lucide="${isTrash ? 'rotate-ccw' : 'trash-2'}" class="w-4 h-4"></i>
-          <span class="hidden md:inline">${isTrash ? 'استعادة' : 'حذف'}</span>
+        <button onclick="toggleStar('${t.threadId}')" class="toolbar-btn ${threadStarred ? 'primary' : ''}">
+          <i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i>
+          <span class="hidden md:inline">${threadStarred ? 'مميزة' : 'تمييز'}</span>
         </button>
+      ` : ''}
 
-        ${isTrash ? `
-          <button onclick="permanentDelete('${t.threadId}')" class="px-3 py-1.5 rounded hover:bg-red-50 text-red-600 font-semibold text-sm flex items-center gap-1.5 transition">
-            <i data-lucide="x-circle" class="w-4 h-4"></i>
-            <span class="hidden md:inline">حذف نهائي</span>
-          </button>
-        ` : ''}
+      <button onclick="trashThread('${t.threadId}', ${isTrash})" class="toolbar-btn ${isTrash ? 'primary' : 'danger'}">
+        <i data-lucide="${isTrash ? 'rotate-ccw' : 'trash-2'}" class="w-4 h-4"></i>
+        <span class="hidden md:inline">${isTrash ? 'استعادة' : 'حذف'}</span>
+      </button>
 
-        <div class="flex-1"></div>
-        <button onclick="toggleAllMsgs()" class="px-2 py-1.5 rounded hover:bg-slate-100 text-slate-600 text-xs transition" title="فتح/طي الكل">
-          <i data-lucide="chevrons-down-up" class="w-4 h-4"></i>
+      ${isTrash ? `
+        <button onclick="permanentDelete('${t.threadId}')" class="toolbar-btn danger">
+          <i data-lucide="x-circle" class="w-4 h-4"></i>
+          <span class="hidden md:inline">حذف نهائي</span>
         </button>
+      ` : ''}
+
+      <div class="toolbar-spacer"></div>
+
+      <button onclick="toggleAllMsgs()" class="toolbar-btn" title="فتح/طي الكل">
+        <i data-lucide="chevrons-down-up" class="w-4 h-4"></i>
+      </button>
+    </div>
+
+    <div class="reading-body">
+      <h1 class="reading-subject">${esc(t.subject)}</h1>
+      <div class="reading-meta">
+        <span><i data-lucide="message-square" class="w-3 h-3 inline"></i> ${t.messages.length} رسالة</span>
+        <span><i data-lucide="clock" class="w-3 h-3 inline"></i> آخر تحديث ${timeAgo(t.lastMsg.createdAt)}</span>
       </div>
-      <div class="flex-1 overflow-y-auto">
-        <div class="p-4 md:p-6 max-w-4xl mx-auto">
-          <div class="mb-5 pb-3">
-            <h1 class="text-xl md:text-2xl font-bold text-slate-800 mb-2 break-words">${esc(t.subject)}</h1>
-            <div class="flex items-center gap-3 text-xs text-slate-500">
-              <span class="flex items-center gap-1"><i data-lucide="message-square" class="w-3 h-3"></i>${t.messages.length} رسالة</span>
-              <span class="flex items-center gap-1"><i data-lucide="clock" class="w-3 h-3"></i>آخر تحديث ${timeAgo(t.lastMsg.createdAt)}</span>
-            </div>
-          </div>
-          ${messagesHtml}
-        </div>
-      </div>
+      ${messagesHtml}
     </div>
   `;
   icons();
@@ -1543,33 +1463,31 @@ async function renderSent() {
   });
 
   const rows = unique.map(m => `
-    <div class="px-4 py-3 border-b border-slate-100 hover:bg-slate-50 transition cursor-pointer" onclick="openThread('${m.threadId || m.id}')">
-      <div class="flex items-start gap-3">
-        <div class="w-9 h-9 rounded-full ${m.isBroadcast ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'} flex items-center justify-center flex-shrink-0">
-          <i data-lucide="${m.isBroadcast ? 'megaphone' : 'send'}" class="w-4 h-4"></i>
+    <div class="msg-item" onclick="openThread('${m.threadId || m.id}')">
+      <div class="msg-avatar" style="${m.isBroadcast ? 'background:#FFF4CE;color:#7A5D00;' : 'background:#DFF6DD;color:#107C10;'}">
+        <i data-lucide="${m.isBroadcast ? 'megaphone' : 'send'}" class="w-4 h-4"></i>
+      </div>
+      <div class="msg-content">
+        <div class="msg-row-1">
+          <span class="msg-from">${m.isBroadcast ? `📢 إعلان عام (${m.count})` : `إلى: ${esc(m.toUserName || '')}`}</span>
+          <span class="msg-time">${timeAgo(m.createdAt)}</span>
         </div>
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-semibold text-sm text-slate-800 truncate">
-              ${m.isBroadcast ? `📢 إعلان عام (${m.count} مستلم)` : `إلى: ${esc(m.toUserName || '')}`}
-            </span>
-            <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(m.createdAt)}</span>
-          </div>
-          <div class="text-sm text-slate-700 truncate">${esc(m.subject)}</div>
-          <div class="text-xs text-slate-400 truncate mt-0.5">${esc((m.body || '').slice(0, 80))}</div>
-        </div>
+        <div class="msg-subject">${esc(m.subject)}</div>
+        <div class="msg-preview">${esc((m.body || '').slice(0, 80))}</div>
       </div>
     </div>
   `).join('');
 
   $('#pageContent').innerHTML = `
-    <div class="p-4 md:p-8 max-w-4xl mx-auto fade-in">
-      <div class="mb-6">
-        <h1 class="text-2xl font-bold text-slate-800">الرسائل المُرسلة</h1>
-        <p class="text-slate-500 text-sm mt-1">${list.length} رسالة</p>
+    <div class="dashboard" style="max-width:900px;">
+      <div class="page-header" style="padding:0 0 20px;border:none;">
+        <div>
+          <h1 class="dashboard-title">الرسائل المُرسلة</h1>
+          <p class="dashboard-date">${list.length} رسالة</p>
+        </div>
       </div>
-      <div class="bg-white rounded border border-slate-200 overflow-hidden">
-        ${rows || '<div class="text-center py-12 text-slate-400">لا رسائل مُرسلة</div>'}
+      <div class="data-table-wrapper" style="padding:0;">
+        ${rows || '<div class="empty-state"><i data-lucide="send"></i><p>لا رسائل مُرسلة</p></div>'}
       </div>
     </div>
   `;
@@ -1583,7 +1501,6 @@ window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  // ✅ الكل يقدر يبعت للكل (بما فيهم مديرين الأقسام والأدمن)
   const others = state.allUsersCache.filter(u =>
     u.id !== state.currentUser.uid && u.isActive !== false
   );
@@ -1598,34 +1515,27 @@ window.openCompose = async () => {
   const deptSel = $('#deptSelect');
   const deptBox = $('#deptBox');
 
-  // ✅ الكل يقدر يبعت لقسم (الأدمن = كل الأقسام، مدير القسم = أقسامه، المستخدم = كل الأقسام)
   if (isAdmin()) {
     if (deptSel) {
       deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d =>
-        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length} مستخدم)</option>`
+        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`
       ).join('');
     }
-    if (deptBox) deptBox.style.display = 'block';
+    if (deptBox) deptBox.style.display = 'flex';
     const label = $('#deptSendLabel');
     if (label) label.textContent = 'إرسال لكل موظفي قسم';
   } else if (isDeptManager()) {
     const myDepts = getMyManagedDepts();
     if (deptSel) {
       deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + myDepts.map(d =>
-        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length} عضو)</option>`
+        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`
       ).join('');
     }
-    if (deptBox) deptBox.style.display = 'block';
+    if (deptBox) deptBox.style.display = 'flex';
     const label = $('#deptSendLabel');
     if (label) label.textContent = 'إرسال لكل فريقي';
   } else {
-    // مستخدم عادي — يقدر يبعت لقسم برضه
-    if (deptSel) {
-      deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d =>
-        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length} مستخدم)</option>`
-      ).join('');
-    }
-    if (deptBox) deptBox.style.display = 'block';
+    if (deptBox) deptBox.style.display = 'none';
   }
 
   $('#cSubject').value = '';
@@ -1638,14 +1548,14 @@ window.openCompose = async () => {
   $('#composeTitle').textContent = 'رسالة جديدة';
   const statusEl = $('#cStatus');
   statusEl.textContent = '';
-  statusEl.className = 'text-xs text-slate-500';
+  statusEl.className = 'send-status';
 
   document.querySelectorAll('input[name="priority"]').forEach(r => r.checked = r.value === 'normal');
 
   const broadcastBox = $('#broadcastBox');
   if (isOwner()) {
     $('#broadcastCount').textContent = others.length;
-    broadcastBox.style.display = 'block';
+    broadcastBox.style.display = 'flex';
   } else {
     broadcastBox.style.display = 'none';
   }
@@ -1657,6 +1567,7 @@ window.openCompose = async () => {
 
 window.closeCompose = () => {
   $('#composeModal').style.display = 'none';
+  $('#composeTitle').textContent = 'رسالة جديدة';
 };
 
 window.toggleBroadcast = () => {
@@ -1667,7 +1578,7 @@ window.toggleBroadcast = () => {
     $('#cDept').checked = false;
   } else {
     show($('#toBox'));
-    show($('#deptBox'));
+    if (isAdmin() || isDeptManager()) show($('#deptBox'));
   }
 };
 
@@ -1694,17 +1605,17 @@ window.sendMessage = async () => {
   const status = $('#cStatus');
   const sendBtn = $('#sendBtn');
 
-  status.className = 'text-xs text-slate-500';
+  status.className = 'send-status';
   status.textContent = '';
 
   if (!broadcast && !deptSend && !toUserId) {
-    status.className = 'text-xs text-red-600'; status.textContent = 'اختر المستلم'; return;
+    status.style.color = 'var(--danger)'; status.textContent = 'اختر المستلم'; return;
   }
   if (deptSend && !deptId) {
-    status.className = 'text-xs text-red-600'; status.textContent = 'اختر القسم'; return;
+    status.style.color = 'var(--danger)'; status.textContent = 'اختر القسم'; return;
   }
   if (!subject) {
-    status.className = 'text-xs text-red-600'; status.textContent = 'اكتب الموضوع'; return;
+    status.style.color = 'var(--danger)'; status.textContent = 'اكتب الموضوع'; return;
   }
 
   sendBtn.disabled = true;
@@ -1729,11 +1640,11 @@ window.sendMessage = async () => {
           createdAt: serverTimestamp()
         });
         sent++;
-        status.className = 'text-xs text-blue-600';
+        status.style.color = 'var(--brand-primary)';
         status.textContent = `جاري الإرسال... ${sent}/${recipients.length}`;
       }
-      status.className = 'text-xs text-green-600';
-      status.textContent = `✅ تم إرسال الرسالة إلى ${recipients.length} مستخدم!`;
+      status.style.color = 'var(--success)';
+      status.textContent = `✅ تم الإرسال إلى ${recipients.length} مستخدم`;
     }
     else if (deptSend) {
       const recipients = getUsersByDept(deptId).filter(u => u.id !== state.currentUser.uid);
@@ -1753,11 +1664,11 @@ window.sendMessage = async () => {
           createdAt: serverTimestamp()
         });
         sent++;
-        status.className = 'text-xs text-blue-600';
+        status.style.color = 'var(--brand-primary)';
         status.textContent = `جاري الإرسال... ${sent}/${recipients.length}`;
       }
-      status.className = 'text-xs text-green-600';
-      status.textContent = `✅ تم إرسال الرسالة إلى ${recipients.length} موظف!`;
+      status.style.color = 'var(--success)';
+      status.textContent = `✅ تم الإرسال إلى ${recipients.length} موظف`;
     }
     else {
       const toUser = state.allUsersCache.find(u => u.id === toUserId);
@@ -1775,13 +1686,13 @@ window.sendMessage = async () => {
         starred: false, deleted: false,
         createdAt: serverTimestamp()
       });
-      status.className = 'text-xs text-green-600';
+      status.style.color = 'var(--success)';
       status.textContent = '✅ تم الإرسال!';
     }
     setTimeout(() => { closeCompose(); }, 1000);
   } catch (e) {
     console.error('SEND ERROR:', e);
-    status.className = 'text-xs text-red-600';
+    status.style.color = 'var(--danger)';
     status.textContent = e.message;
   } finally {
     sendBtn.disabled = false;
@@ -1796,7 +1707,7 @@ window.saveDraft = async () => {
   const status = $('#cStatus');
 
   if (!subject && !body) {
-    status.className = 'text-xs text-red-600';
+    status.style.color = 'var(--danger)';
     status.textContent = 'اكتب حاجة الأول';
     return;
   }
@@ -1815,12 +1726,12 @@ window.saveDraft = async () => {
       const ref = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
       $('#cDraftId').value = ref.id;
     }
-    status.className = 'text-xs text-green-600';
+    status.style.color = 'var(--success)';
     status.textContent = '✅ تم حفظ المسودة';
     setTimeout(() => { closeCompose(); }, 1200);
   } catch (e) {
-    status.className = 'text-xs text-red-600';
-    status.textContent = 'خطأ في الحفظ: ' + e.message;
+    status.style.color = 'var(--danger)';
+    status.textContent = 'خطأ: ' + e.message;
   }
 };
 
@@ -1858,7 +1769,7 @@ window.saveProfile = async () => {
   const name = $('#profileName').value.trim();
   const status = $('#profileStatus');
   if (!name) {
-    status.className = 'text-xs mt-3 text-red-600';
+    status.className = 'alert alert-error';
     status.textContent = 'اكتب الاسم';
     show(status);
     return;
@@ -1869,12 +1780,12 @@ window.saveProfile = async () => {
     $('#userName').textContent = name;
     $('#userAvatar').textContent = initials(name);
     $('#profileAvatar').textContent = initials(name);
-    status.className = 'text-xs mt-3 text-green-600';
+    status.className = 'alert alert-success';
     status.textContent = '✅ تم الحفظ';
     show(status);
     setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1200);
   } catch (e) {
-    status.className = 'text-xs mt-3 text-red-600';
+    status.className = 'alert alert-error';
     status.textContent = e.message;
     show(status);
   }
@@ -1915,7 +1826,7 @@ window.enablePushNotifications = async () => {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') {
       btn.textContent = 'مرفوض';
-      btn.className = 'text-xs bg-red-500 text-white px-3 py-1.5 rounded font-semibold';
+      btn.className = 'btn btn-sm btn-danger';
       return;
     }
     const reg = await navigator.serviceWorker.register(SW_PATH);
@@ -1930,15 +1841,15 @@ window.enablePushNotifications = async () => {
         userAgent: navigator.userAgent
       });
       btn.textContent = '✅ مفعّل';
-      btn.className = 'text-xs bg-green-500 text-white px-3 py-1.5 rounded font-semibold';
+      btn.className = 'btn btn-sm btn-success';
     } else {
       btn.textContent = 'فشل';
-      btn.className = 'text-xs bg-red-500 text-white px-3 py-1.5 rounded font-semibold';
+      btn.className = 'btn btn-sm btn-danger';
     }
   } catch (e) {
     console.error(e);
     btn.textContent = 'خطأ';
-    btn.className = 'text-xs bg-red-500 text-white px-3 py-1.5 rounded font-semibold';
+    btn.className = 'btn btn-sm btn-danger';
   }
 };
 
@@ -2036,7 +1947,7 @@ function startMessagesListener() {
     }
     state.lastUnreadCount = state.unreadMessages.length;
 
-    if (document.getElementById('inboxContainer')) renderInbox();
+    if (document.getElementById('inboxList')) renderInbox();
   });
 }
 
@@ -2066,24 +1977,24 @@ function renderNotifDropdown() {
   if (!list) return;
 
   if (state.unreadMessages.length === 0) {
-    list.innerHTML = `<div class="text-center py-12 text-slate-400 text-sm">
-      <i data-lucide="bell-off" class="w-10 h-10 mx-auto mb-2 opacity-40"></i>
-      <p>لا إشعارات جديدة</p>
+    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;">
+      <i data-lucide="bell-off" style="width:40px;height:40px;"></i>
+      <p style="font-size:13px;">لا إشعارات جديدة</p>
     </div>`;
     icons();
     return;
   }
 
   list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
-    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" class="px-4 py-3 border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition flex items-start gap-3">
-      <div class="w-9 h-9 rounded-full bg-[#0078D4] text-white flex items-center justify-center font-bold text-xs flex-shrink-0">${initials(m.fromUserName)}</div>
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center justify-between gap-2">
-          <span class="font-semibold text-xs text-slate-800 truncate">${esc(m.fromUserName)}</span>
-          <span class="text-xs text-slate-400 flex-shrink-0">${timeAgo(m.createdAt)}</span>
+    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;transition:background 0.1s;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='transparent'">
+      <div class="msg-avatar" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+          <span style="font-weight:600;font-size:13px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
+          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
         </div>
-        <div class="text-xs text-slate-700 truncate">${esc(m.subject)}</div>
-        <div class="text-xs text-slate-400 truncate mt-0.5">${esc((m.body || '').slice(0, 60))}</div>
+        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
+        <div style="font-size:11.5px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc((m.body || '').slice(0, 60))}</div>
       </div>
     </div>
   `).join('');
@@ -2104,4 +2015,4 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-console.log('🚀 Mail System v5.1 loaded (iOS Optimized)');
+console.log('🚀 Mail System v7.0 loaded (Professional Enterprise)');
