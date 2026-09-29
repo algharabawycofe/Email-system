@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v4.1 - Utilities & Helpers
+   Mail System v4.3 - Utilities & Helpers
+   Soft Notification Sound (Mac/iPhone style)
    ═══════════════════════════════════════════════════════════ */
 
 import { auth, db, doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from './firebase.js';
@@ -103,8 +104,7 @@ export const isOwner = () => state.currentUser?.role === 'owner';
 export const isAdmin = () => state.currentUser?.role === 'admin' || isOwner();
 export const isDeptManager = () => {
   if (!state.currentUser) return false;
-  // إما دوره manager أو هو مدير قسم
-  return state.currentUser.role === 'manager' || 
+  return state.currentUser.role === 'manager' ||
     state.allDeptsCache.some(d => d.managerId === state.currentUser.uid);
 };
 export const isManagerOrAbove = () => isAdmin() || isDeptManager();
@@ -166,7 +166,8 @@ export function toggleDarkMode() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SOUND - Web Audio API (Cross-platform: PC, Android, iOS)
+   SOUND - Soft Notification (Mac/iPhone style)
+   Cross-platform: PC, Android, iOS
    ═══════════════════════════════════════════════════════ */
 
 let audioCtx = null;
@@ -197,37 +198,37 @@ export function playNotifSound() {
       return;
     }
 
-    // 🎵 نغمة Outlook-style: 3 تدرجات (E5 - G5 - C6)
-    const melody = [
-      { freq: 659.25,  start: 0.00, dur: 0.14 },
-      { freq: 783.99,  start: 0.14, dur: 0.14 },
-      { freq: 1046.50, start: 0.28, dur: 0.35 }
-    ];
-
     const now = ctx.currentTime;
 
-    melody.forEach(note => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(note.freq, now + note.start);
-
-      gain.gain.setValueAtTime(0, now + note.start);
-      gain.gain.linearRampToValueAtTime(0.35, now + note.start + 0.015);
-      gain.gain.setValueAtTime(0.35, now + note.start + note.dur * 0.7);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + note.start + note.dur);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-
-      osc.start(now + note.start);
-      osc.stop(now + note.start + note.dur + 0.05);
-    });
+    // 🎵 نغمة ناعمة - Soft Chime (زي Mac/iPhone)
+    // C5 (دافئة) → E5 (هادية)
+    playSoftTone(ctx, now, 523.25, 0.55, 0.09);
+    playSoftTone(ctx, now + 0.10, 659.25, 0.65, 0.07);
   } catch (e) {
     console.warn('Web Audio error:', e);
     playAudioFallback();
   }
+}
+
+function playSoftTone(ctx, startTime, freq, duration, volume) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  // sine = الصوت الأنعم والأهدى
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+
+  // Envelope ناعم جداً
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(volume, startTime + 0.03);
+  gain.gain.setValueAtTime(volume, startTime + duration * 0.4);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.05);
 }
 
 function playAudioFallback() {
@@ -235,7 +236,7 @@ function playAudioFallback() {
     const audio = document.getElementById('notifSound');
     if (!audio) return;
     audio.currentTime = 0;
-    audio.volume = 0.5;
+    audio.volume = 0.3;
     audio.play().catch(e => console.warn('Sound blocked:', e));
   } catch (e) {}
 }
@@ -395,17 +396,13 @@ export function isManagerOfDept(deptId) {
 
 export function getMyTeamMembers() {
   if (!state.currentUser) return [];
-  // لو أدمن → كل المستخدمين
   if (isAdmin()) return state.allUsersCache.filter(u => u.isActive !== false && u.id !== state.currentUser.uid);
-  
-  // لو مدير قسم → أعضاء أقسامه فقط
   const myDepts = getMyManagedDepts();
   if (myDepts.length === 0) return [];
-  
   const myDeptIds = myDepts.map(d => d.id);
-  return state.allUsersCache.filter(u => 
-    myDeptIds.includes(u.departmentId) && 
-    u.isActive !== false && 
+  return state.allUsersCache.filter(u =>
+    myDeptIds.includes(u.departmentId) &&
+    u.isActive !== false &&
     u.id !== state.currentUser.uid
   );
 }
@@ -530,4 +527,4 @@ export function unlockAudioOnFirstClick() {
   document.addEventListener('keydown', unlock, { once: true });
 }
 
-console.log('🛠️ Utils v4.1 loaded');
+console.log('🛠️ Utils v4.3 loaded - Soft Sound');
