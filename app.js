@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
    Mail System v5.0 - Main Application
-   Features: PWA Support + Dept Manager + Full Mail System
+   Features: PWA + Dept Manager + Full Mail System
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -61,18 +61,15 @@ document.addEventListener('DOMContentLoaded', () => {
    PWA HANDLERS
    ═══════════════════════════════════════════════════════ */
 function setupPWAHandlers() {
-  // Capture install prompt
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     console.log('📱 PWA Install prompt captured');
 
-    // Show install button
     const installBtn = document.getElementById('installPwaBtn');
     if (installBtn) installBtn.classList.remove('hidden');
   });
 
-  // App installed
   window.addEventListener('appinstalled', () => {
     console.log('✅ PWA Installed');
     deferredPrompt = null;
@@ -81,19 +78,16 @@ function setupPWAHandlers() {
     showToast('تم التثبيت 🎉', 'التطبيق مثبّت على جهازك', null, false);
   });
 
-  // Detect if already installed (standalone mode)
   if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
     console.log('📱 Running as PWA');
     document.body.classList.add('pwa-mode');
   }
 
-  // Handle URL parameters (shortcuts)
   const params = new URLSearchParams(window.location.search);
   if (params.get('action') === 'compose') {
     setTimeout(() => {
       if (state.currentUser) openCompose();
     }, 2000);
-    // Clear URL
     window.history.replaceState({}, '', '/Email-system/');
   } else if (params.get('page') === 'inbox') {
     setTimeout(() => {
@@ -112,12 +106,6 @@ window.installPWA = async () => {
   deferredPrompt.prompt();
   const { outcome } = await deferredPrompt.userChoice;
   console.log('📱 Install outcome:', outcome);
-
-  if (outcome === 'accepted') {
-    console.log('✅ User accepted install');
-  } else {
-    console.log('❌ User dismissed install');
-  }
 
   deferredPrompt = null;
   const installBtn = document.getElementById('installPwaBtn');
@@ -1880,7 +1868,6 @@ window.openSettings = () => {
   hideStyle($('#userMenu'));
   $('#darkModeToggle').checked = state.settings.darkMode;
 
-  // Check PWA install availability
   const installBtn = $('#installPwaBtn');
   if (installBtn) {
     if (deferredPrompt) installBtn.classList.remove('hidden');
@@ -1985,14 +1972,12 @@ function setupServiceWorkerMessages() {
     }
   });
 
-  // ✅ PWA: Detect new SW + reload
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (window.__refreshing) return;
     window.__refreshing = true;
     window.location.reload();
   });
 
-  // ✅ PWA: Register SW
   navigator.serviceWorker.register(SW_PATH).then((reg) => {
     console.log('✅ PWA Service Worker registered');
 
@@ -2002,7 +1987,7 @@ function setupServiceWorkerMessages() {
 
       newWorker.addEventListener('statechange', () => {
         if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-          console.log('🔄 New version available — will update on next visit');
+          console.log('🔄 New version available');
         }
       });
     });
