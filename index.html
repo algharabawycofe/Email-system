@@ -4,62 +4,54 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Mail System</title>
-<meta name="description" content="نظام الرسائل الداخلي - إرسال واستقبال الرسائل والإشعارات" />
+<meta name="description" content="نظام الرسائل الداخلي" />
 <meta name="theme-color" content="#0078D4" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Mail System" />
 <meta name="mobile-web-app-capable" content="yes" />
-<meta name="format-detection" content="telephone=no" />
 <link rel="manifest" href="manifest.json" />
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E" />
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E" />
-
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="dns-prefetch" href="https://cdn.tailwindcss.com">
-<link rel="dns-prefetch" href="https://unpkg.com">
-
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
-<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
 
-<!-- LOGIN -->
+<!-- ═══════════ LOGIN ═══════════ -->
 <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4 login-bg">
-  <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
+  <div class="bg-white rounded shadow-2xl p-10 w-full max-w-md fade-in">
     <div class="flex justify-center mb-6">
-      <div class="w-16 h-16 rounded-2xl bg-[#0078D4] flex items-center justify-center shadow-lg">
+      <div class="w-16 h-16 rounded bg-[#0078D4] flex items-center justify-center">
         <i data-lucide="mail" class="w-8 h-8 text-white"></i>
       </div>
     </div>
-    <h1 class="text-2xl font-bold text-center mb-1 text-slate-800">Mail System</h1>
-    <p class="text-center text-slate-500 text-sm mb-8">سجّل دخولك للمتابعة</p>
+    <h1 class="text-2xl font-bold text-center mb-1 text-gray-900">Mail System</h1>
+    <p class="text-center text-gray-500 text-sm mb-8">سجّل دخولك للمتابعة</p>
 
     <div class="space-y-4">
       <div>
-        <label class="block text-sm font-semibold mb-1.5 text-slate-700">اسم المستخدم أو الإيميل</label>
+        <label class="block text-sm font-semibold mb-1 text-gray-700">اسم المستخدم أو الإيميل</label>
         <div class="relative">
           <i data-lucide="user" class="w-4 h-4 input-icon"></i>
           <input id="loginUser" type="text" placeholder="admin أو user@example.com" class="input-field pr-10" autocomplete="username" />
         </div>
       </div>
       <div>
-        <label class="block text-sm font-semibold mb-1.5 text-slate-700">كلمة السر</label>
+        <label class="block text-sm font-semibold mb-1 text-gray-700">كلمة السر</label>
         <div class="relative">
           <i data-lucide="lock" class="w-4 h-4 input-icon"></i>
           <input id="loginPass" type="password" placeholder="••••••" class="input-field pr-10 pl-10" autocomplete="current-password" />
-          <button type="button" id="togglePassBtn" class="absolute top-1/2 -translate-y-1/2 left-3 text-slate-400 hover:text-slate-600 transition" title="إظهار كلمة السر">
+          <button type="button" id="togglePassBtn" class="absolute top-1/2 -translate-y-1/2 left-3 text-gray-400 hover:text-gray-600 transition">
             <i data-lucide="eye" class="w-4 h-4" id="eyeIcon"></i>
           </button>
         </div>
       </div>
 
       <div class="flex items-center justify-between text-sm">
-        <label class="flex items-center gap-2 cursor-pointer text-slate-600">
+        <label class="flex items-center gap-2 cursor-pointer text-gray-600">
           <input type="checkbox" id="rememberMe" class="w-4 h-4 accent-[#0078D4]" />
           <span>تذكرني</span>
         </label>
@@ -69,7 +61,7 @@
       </div>
 
       <p id="loginError" class="text-red-600 text-sm hidden bg-red-50 p-2 rounded border border-red-200"></p>
-      <button id="loginBtn" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 transition flex items-center justify-center gap-2">
+      <button id="loginBtn" class="w-full bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded py-2.5 transition flex items-center justify-center gap-2">
         <i data-lucide="log-in" class="w-4 h-4"></i>
         <span>دخول</span>
       </button>
@@ -77,50 +69,51 @@
   </div>
 </div>
 
-<!-- FORGOT PASSWORD -->
+<!-- ═══════════ FORGOT PASSWORD ═══════════ -->
 <div id="forgotModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
-  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
+  <div class="bg-white rounded shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-4">
-      <h2 class="text-lg font-bold text-slate-800">استعادة كلمة السر</h2>
-      <button onclick="closeForgotModal()" class="p-1 rounded hover:bg-slate-100">
-        <i data-lucide="x" class="w-5 h-5 text-slate-500"></i>
+      <h2 class="text-lg font-bold text-gray-900">استعادة كلمة السر</h2>
+      <button onclick="closeForgotModal()" class="p-1 rounded hover:bg-gray-100">
+        <i data-lucide="x" class="w-5 h-5 text-gray-500"></i>
       </button>
     </div>
-    <p class="text-sm text-slate-500 mb-4">اكتب إيميلك وهيوصلك رابط إعادة تعيين كلمة السر.</p>
+    <p class="text-sm text-gray-500 mb-4">اكتب إيميلك وهيوصلك رابط إعادة تعيين كلمة السر.</p>
     <input id="forgotEmail" type="email" placeholder="your@email.com" class="input-field mb-3" />
     <p id="forgotStatus" class="text-sm mb-3 hidden"></p>
     <div class="flex gap-2">
-      <button onclick="sendPasswordReset()" class="flex-1 bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 transition">
+      <button onclick="sendPasswordReset()" class="flex-1 bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded py-2.5 transition">
         إرسال رابط الاستعادة
       </button>
-      <button onclick="closeForgotModal()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 rounded-lg transition">
+      <button onclick="closeForgotModal()" class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 rounded transition">
         إلغاء
       </button>
     </div>
   </div>
 </div>
 
-<!-- APP -->
+<!-- ═══════════ APP ═══════════ -->
 <div id="app" class="hidden h-screen flex flex-col">
 
+  <!-- HEADER - Outlook top bar -->
   <header class="app-header">
-    <button id="toggleSidebar" class="icon-btn" title="إظهار/إخفاء القائمة">
+    <button id="toggleSidebar" class="icon-btn" title="القائمة">
       <i data-lucide="menu" class="w-5 h-5"></i>
     </button>
 
-    <div class="flex items-center gap-2 text-white">
-      <i data-lucide="mail" class="w-5 h-5"></i>
-      <span class="font-bold hidden md:inline">Mail System</span>
+    <div class="flex items-center gap-2 text-white mr-1">
+      <i data-lucide="mail" class="w-6 h-6"></i>
+      <span class="font-semibold text-base hidden sm:inline">Mail System</span>
     </div>
 
-    <div class="flex-1 max-w-2xl relative hidden sm:block mx-3">
-      <i data-lucide="search" class="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-slate-500"></i>
+    <div class="flex-1 max-w-3xl relative hidden sm:block mx-2">
+      <i data-lucide="search" class="w-4 h-4 absolute top-1/2 -translate-y-1/2 right-3 text-gray-500"></i>
       <input id="globalSearch" type="text" placeholder="ابحث في الرسائل..." class="global-search" />
     </div>
 
     <div class="flex-1 sm:flex-none"></div>
 
-    <button id="themeToggle" class="icon-btn" title="تبديل الوضع الليلي">
+    <button id="themeToggle" class="icon-btn" title="الوضع الليلي">
       <i data-lucide="moon" class="w-5 h-5"></i>
     </button>
 
@@ -131,15 +124,15 @@
       </button>
       <div id="notifDropdown" class="notif-dropdown" style="display:none">
         <div class="notif-dropdown-header">
-          <div class="font-bold text-slate-800 text-sm">الإشعارات</div>
+          <div class="font-semibold text-gray-900 text-sm">الإشعارات</div>
           <button onclick="markAllRead()" class="text-xs text-[#0078D4] hover:underline font-medium">تحديد الكل كمقروء</button>
         </div>
-        <div id="notifList" class="max-h-96 overflow-y-auto"></div>
+        <div id="notifList" class="overflow-y-auto flex-1"></div>
       </div>
     </div>
 
     <div class="relative">
-      <button id="userMenuBtn" class="flex items-center gap-2 pl-2 md:pl-3 border-r border-white/20 pr-3 hover:bg-white/10 rounded transition">
+      <button id="userMenuBtn" class="flex items-center gap-2 px-2 py-1 hover:bg-white/10 rounded transition">
         <div class="text-right hidden md:block text-white">
           <div id="userName" class="text-xs font-semibold leading-tight"></div>
           <div id="userRole" class="text-[10px] opacity-80"></div>
@@ -148,8 +141,8 @@
       </button>
       <div id="userMenu" class="user-menu" style="display:none">
         <div class="user-menu-header">
-          <div id="menuUserName" class="font-bold text-slate-800 text-sm"></div>
-          <div id="menuUserEmail" class="text-xs text-slate-500 font-mono"></div>
+          <div id="menuUserName" class="font-semibold text-gray-900 text-sm"></div>
+          <div id="menuUserEmail" class="text-xs text-gray-500 font-mono mt-1"></div>
         </div>
         <button onclick="openProfile()" class="user-menu-item">
           <i data-lucide="user" class="w-4 h-4"></i>
@@ -159,7 +152,7 @@
           <i data-lucide="settings" class="w-4 h-4"></i>
           <span>الإعدادات</span>
         </button>
-        <div class="border-t border-slate-200 my-1"></div>
+        <div class="border-t border-gray-200 my-1"></div>
         <button id="logoutBtn" class="user-menu-item text-red-600 hover:bg-red-50">
           <i data-lucide="log-out" class="w-4 h-4"></i>
           <span>خروج</span>
@@ -170,55 +163,57 @@
 
   <div class="flex flex-1 overflow-hidden relative">
 
+    <!-- SIDEBAR - Folder List -->
     <aside id="sidebar" class="app-sidebar">
-      <div class="p-3 border-b border-slate-200 dark:border-slate-700">
+      <div class="p-3">
         <button onclick="openCompose()" class="btn-primary w-full">
           <i data-lucide="pencil" class="w-4 h-4"></i>
           <span>رسالة جديدة</span>
         </button>
       </div>
 
-      <nav class="flex-1 py-2" id="nav">
-        <button data-page="dashboard" class="nav-btn">
-          <i data-lucide="home" class="w-4 h-4"></i><span>الرئيسية</span>
-        </button>
+      <nav class="flex-1 pb-3" id="nav">
         <button data-page="inbox" class="nav-btn">
-          <i data-lucide="inbox" class="w-4 h-4"></i><span>صندوق الوارد</span>
+          <i data-lucide="inbox" class="w-4 h-4"></i>
+          <span>صندوق الوارد</span>
           <span id="inboxCount" class="nav-badge hidden">0</span>
         </button>
-        <button data-page="sent" class="nav-btn">
-          <i data-lucide="send" class="w-4 h-4"></i><span>المُرسلة</span>
-        </button>
         <button data-page="starred" class="nav-btn">
-          <i data-lucide="star" class="w-4 h-4"></i><span>المميزة</span>
+          <i data-lucide="star" class="w-4 h-4"></i>
+          <span>المميزة</span>
+        </button>
+        <button data-page="sent" class="nav-btn">
+          <i data-lucide="send" class="w-4 h-4"></i>
+          <span>المُرسلة</span>
         </button>
         <button data-page="trash" class="nav-btn">
-          <i data-lucide="trash-2" class="w-4 h-4"></i><span>سلة المهملات</span>
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+          <span>سلة المهملات</span>
         </button>
 
         <div class="pt-4 pb-1 px-4" data-manager-only>
           <div class="nav-section-title">الفريق</div>
         </div>
         <button data-page="myteam" data-manager-only class="nav-btn">
-          <i data-lucide="users-round" class="w-4 h-4"></i><span>فريقي</span>
+          <i data-lucide="users-round" class="w-4 h-4"></i>
+          <span>فريقي</span>
         </button>
 
         <div class="pt-4 pb-1 px-4" data-admin-only>
           <div class="nav-section-title">الإدارة</div>
         </div>
         <button data-page="users" data-admin-only class="nav-btn">
-          <i data-lucide="users" class="w-4 h-4"></i><span>المستخدمين</span>
+          <i data-lucide="users" class="w-4 h-4"></i>
+          <span>المستخدمين</span>
         </button>
         <button data-page="departments" data-admin-only class="nav-btn">
-          <i data-lucide="building-2" class="w-4 h-4"></i><span>الأقسام</span>
+          <i data-lucide="building-2" class="w-4 h-4"></i>
+          <span>الأقسام</span>
         </button>
       </nav>
-
-      <div class="p-3 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-400 text-center">
-        Mail System v5.2
-      </div>
     </aside>
 
+    <!-- MOBILE NAV -->
     <nav id="mobileNav" class="mobile-nav" style="display:none">
       <button data-page="dashboard" class="mnav-btn">
         <i data-lucide="home" class="w-5 h-5"></i><span>الرئيسية</span>
@@ -240,13 +235,14 @@
       </button>
     </nav>
 
+    <!-- MAIN -->
     <main id="mainContent" class="app-main">
       <div id="pageContent"></div>
     </main>
   </div>
 </div>
 
-<!-- COMPOSE -->
+<!-- ═══════════ COMPOSE ═══════════ -->
 <div id="composeModal" class="modal-fullscreen" style="display:none">
   <div class="compose-window">
     <div class="compose-header">
@@ -268,7 +264,6 @@
         <i data-lucide="save"></i>
         <span>مسودة</span>
       </button>
-      <div class="w-px h-8 bg-slate-300 mx-1"></div>
       <button onclick="closeCompose()" class="ribbon-btn">
         <i data-lucide="trash-2"></i>
         <span>إلغاء</span>
@@ -284,7 +279,7 @@
               <i data-lucide="megaphone" class="w-3.5 h-3.5"></i>
               <span>إرسال لجميع المستخدمين</span>
             </div>
-            <div class="text-xs text-amber-700">هتتبعت لـ <span id="broadcastCount">0</span> مستخدم نشط</div>
+            <div class="text-xs text-amber-700">هتتبعت لـ <span id="broadcastCount">0</span> مستخدم</div>
           </div>
         </label>
       </div>
@@ -314,7 +309,7 @@
 
       <div class="compose-field">
         <span class="compose-label">الأولوية</span>
-        <div class="flex items-center gap-3 text-sm">
+        <div class="flex items-center gap-4 text-sm">
           <label class="flex items-center gap-1 cursor-pointer">
             <input type="radio" name="priority" value="normal" checked class="accent-[#0078D4]" />
             <span>عادية</span>
@@ -335,11 +330,11 @@
     <input type="hidden" id="cDraftId" />
 
     <div class="compose-footer">
-      <p id="cStatus" class="text-xs text-slate-500"></p>
+      <p id="cStatus" class="text-xs text-gray-500"></p>
       <div class="flex items-center gap-2">
-        <button onclick="closeCompose()" class="btn-secondary text-xs">إلغاء</button>
-        <button onclick="sendMessage()" class="btn-primary text-xs">
-          <i data-lucide="send" class="w-3.5 h-3.5"></i>
+        <button onclick="closeCompose()" class="btn-secondary">إلغاء</button>
+        <button onclick="sendMessage()" class="btn-primary">
+          <i data-lucide="send" class="w-4 h-4"></i>
           <span>إرسال</span>
         </button>
       </div>
@@ -347,13 +342,13 @@
   </div>
 </div>
 
-<!-- PROFILE -->
+<!-- ═══════════ PROFILE ═══════════ -->
 <div id="profileModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
-  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
+  <div class="bg-white rounded shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-5">
-      <h2 class="text-lg font-bold text-slate-800">الملف الشخصي</h2>
-      <button onclick="closeProfile()" class="p-1 rounded hover:bg-slate-100">
-        <i data-lucide="x" class="w-5 h-5 text-slate-500"></i>
+      <h2 class="text-lg font-bold text-gray-900">الملف الشخصي</h2>
+      <button onclick="closeProfile()" class="p-1 rounded hover:bg-gray-100">
+        <i data-lucide="x" class="w-5 h-5 text-gray-500"></i>
       </button>
     </div>
 
@@ -363,43 +358,39 @@
 
     <div class="space-y-3">
       <div>
-        <label class="block text-xs font-semibold mb-1 text-slate-600">الاسم الكامل</label>
+        <label class="block text-xs font-semibold mb-1 text-gray-600">الاسم الكامل</label>
         <input id="profileName" class="input-field" />
       </div>
       <div>
-        <label class="block text-xs font-semibold mb-1 text-slate-600">اسم المستخدم</label>
-        <input id="profileUsername" class="input-field bg-slate-50 text-slate-500" disabled />
+        <label class="block text-xs font-semibold mb-1 text-gray-600">اسم المستخدم</label>
+        <input id="profileUsername" class="input-field" disabled />
       </div>
       <div>
-        <label class="block text-xs font-semibold mb-1 text-slate-600">الإيميل</label>
-        <input id="profileEmail" class="input-field bg-slate-50 text-slate-500" disabled />
+        <label class="block text-xs font-semibold mb-1 text-gray-600">الإيميل</label>
+        <input id="profileEmail" class="input-field" disabled />
       </div>
       <div>
-        <label class="block text-xs font-semibold mb-1 text-slate-600">الدور</label>
-        <input id="profileRole" class="input-field bg-slate-50 text-slate-500" disabled />
+        <label class="block text-xs font-semibold mb-1 text-gray-600">الدور</label>
+        <input id="profileRole" class="input-field" disabled />
       </div>
     </div>
 
     <p id="profileStatus" class="text-xs mt-3 hidden"></p>
 
     <div class="flex gap-2 mt-5">
-      <button onclick="saveProfile()" class="flex-1 bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 transition">
-        حفظ التعديلات
-      </button>
-      <button onclick="closeProfile()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 rounded-lg transition">
-        إلغاء
-      </button>
+      <button onclick="saveProfile()" class="flex-1 btn-primary">حفظ التعديلات</button>
+      <button onclick="closeProfile()" class="btn-secondary">إلغاء</button>
     </div>
   </div>
 </div>
 
-<!-- SETTINGS -->
+<!-- ═══════════ SETTINGS ═══════════ -->
 <div id="settingsModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
-  <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
+  <div class="bg-white rounded shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-5">
-      <h2 class="text-lg font-bold text-slate-800">الإعدادات</h2>
-      <button onclick="closeSettings()" class="p-1 rounded hover:bg-slate-100">
-        <i data-lucide="x" class="w-5 h-5 text-slate-500"></i>
+      <h2 class="text-lg font-bold text-gray-900">الإعدادات</h2>
+      <button onclick="closeSettings()" class="p-1 rounded hover:bg-gray-100">
+        <i data-lucide="x" class="w-5 h-5 text-gray-500"></i>
       </button>
     </div>
 
@@ -407,7 +398,7 @@
       <div class="flex items-center justify-between">
         <div>
           <div class="font-semibold text-sm">الوضع الليلي</div>
-          <div class="text-xs text-slate-500">تبديل بين الوضع الفاتح والغامق</div>
+          <div class="text-xs text-gray-500">تبديل بين الوضع الفاتح والغامق</div>
         </div>
         <label class="toggle-switch">
           <input type="checkbox" id="darkModeToggle" onchange="toggleDarkMode()" />
@@ -418,7 +409,7 @@
       <div class="flex items-center justify-between">
         <div>
           <div class="font-semibold text-sm">الإشعارات المدفوعة</div>
-          <div class="text-xs text-slate-500">Push notifications حتى والمتصفح مقفول</div>
+          <div class="text-xs text-gray-500">Push notifications</div>
         </div>
         <button id="enablePushBtn" onclick="enablePushNotifications()" class="text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded font-semibold">
           تفعيل
@@ -428,7 +419,7 @@
       <div class="flex items-center justify-between">
         <div>
           <div class="font-semibold text-sm">تثبيت التطبيق</div>
-          <div class="text-xs text-slate-500">ثبّت النظام كتطبيق على جهازك</div>
+          <div class="text-xs text-gray-500">ثبّت النظام كتطبيق</div>
         </div>
         <button id="installPwaBtn" onclick="installPWA()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded font-semibold hidden">
           تثبيت
@@ -438,7 +429,7 @@
       <div class="flex items-center justify-between">
         <div>
           <div class="font-semibold text-sm">تسجيل الخروج</div>
-          <div class="text-xs text-slate-500">خروج من هذا الجهاز</div>
+          <div class="text-xs text-gray-500">خروج من هذا الجهاز</div>
         </div>
         <button onclick="signOutApp()" class="text-xs bg-red-600 text-white px-3 py-1.5 rounded font-semibold">
           خروج
@@ -446,29 +437,23 @@
       </div>
     </div>
 
-    <button onclick="closeSettings()" class="w-full mt-5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg py-2.5 transition">
-      إغلاق
-    </button>
+    <button onclick="closeSettings()" class="w-full mt-5 btn-secondary">إغلاق</button>
   </div>
 </div>
 
-<!-- CONFIRM -->
+<!-- ═══════════ CONFIRM ═══════════ -->
 <div id="confirmModal" class="hidden fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4 modal-overlay">
-  <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm fade-in">
+  <div class="bg-white rounded shadow-2xl p-6 w-full max-w-sm fade-in">
     <div class="flex items-center gap-3 mb-4">
       <div class="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center">
         <i data-lucide="alert-triangle" class="w-5 h-5 text-red-600"></i>
       </div>
-      <h3 id="confirmTitle" class="text-lg font-bold text-slate-800">تأكيد</h3>
+      <h3 id="confirmTitle" class="text-lg font-bold text-gray-900">تأكيد</h3>
     </div>
-    <p id="confirmMessage" class="text-slate-600 mb-5 text-sm">هل أنت متأكد؟</p>
+    <p id="confirmMessage" class="text-gray-600 mb-5 text-sm">هل أنت متأكد؟</p>
     <div class="flex gap-2">
-      <button id="confirmYes" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg py-2 transition">
-        نعم
-      </button>
-      <button id="confirmNo" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg py-2 transition">
-        إلغاء
-      </button>
+      <button id="confirmYes" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-semibold rounded py-2 transition">نعم</button>
+      <button id="confirmNo" class="flex-1 btn-secondary">إلغاء</button>
     </div>
   </div>
 </div>
