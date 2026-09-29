@@ -1,18 +1,18 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v8.0 - Enterprise Application
-   Features: Avatars, CC/BCC, Reply All, Inline Reply,
-             Undo Send, Swipe Actions, Skeleton Loaders
+   Mail System v9.0 - Enterprise Application
+   New: Attachments, Tags, Instant Search, Image Viewer
    ═══════════════════════════════════════════════════════════ */
 
 import {
-  auth, db, messaging,
+  auth, db, storage, messaging,
   EMAIL_DOMAIN, VAPID_KEY, SW_PATH, APP_URL,
   createAuthUser, resetUserPassword,
   signInWithEmailAndPassword, signOut, onAuthStateChanged,
   setPersistence, browserLocalPersistence, browserSessionPersistence,
   getToken, onMessage,
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
-  query, where, serverTimestamp, onSnapshot, writeBatch
+  query, where, serverTimestamp, onSnapshot, writeBatch,
+  ref, uploadBytesResumable, getDownloadURL, deleteObject
 } from './firebase.js';
 
 import {
@@ -35,41 +35,74 @@ import {
 let deferredPrompt = null;
 let pendingSendTimeout = null;
 let lastSentData = null;
+let attachedFiles = [];       // { id, file, name, size, type, url, progress, status }
+let userTags = [];             // [{ id, name, color, count }]
+let selectedTags = [];         // Tag IDs selected in compose
+let currentTagFilter = null;   // For filtering inbox by tag
 
 /* ═══════════════════════════════════════════════════════
-   AVATAR COLOR HELPER (12 gradients)
+   HELPERS
    ═══════════════════════════════════════════════════════ */
 function getAvatarGradient(name) {
   let hash = 0;
   const str = name || '?';
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const idx = (Math.abs(hash) % 12) + 1;
-  return 'gradient-' + idx;
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return 'gradient-' + ((Math.abs(hash) % 12) + 1);
 }
 
 function applyAvatar(el, name) {
   if (!el) return;
-  // Remove all gradient classes
   el.className = el.className.replace(/gradient-\d+/g, '');
   el.classList.add(getAvatarGradient(name));
+}
+
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+function getFileIcon(type = '', name = '') {
+  if (type.startsWith('image/')) return 'image';
+  if (type === 'application/pdf' || name.endsWith('.pdf')) return 'pdf';
+  if (type.includes('word') || name.match(/\.(doc|docx)$/i)) return 'doc';
+  if (type.includes('excel') || name.match(/\.(xls|xlsx|csv)$/i)) return 'sheet';
+  if (type.includes('zip') || type.includes('rar')) return 'archive';
+  return 'file';
+}
+
+function getFileIconLucide(type = '', name = '') {
+  const cat = getFileIcon(type, name);
+  if (cat === 'image') return 'image';
+  if (cat === 'pdf') return 'file-text';
+  if (cat === 'doc') return 'file-type';
+  if (cat === 'sheet') return 'file-spreadsheet';
+  if (cat === 'archive') return 'file-archive';
+  return 'file';
+}
+
+function highlightText(text, query) {
+  if (!query || !text) return esc(text);
+  const safe = esc(text);
+  const q = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(${q})`, 'gi');
+  return safe.replace(regex, '<mark class="search-highlight">$1</mark>');
 }
 
 /* ═══════════════════════════════════════════════════════
    GLOBAL LOADER
    ═══════════════════════════════════════════════════════ */
 function showLoader() {
-  const loader = document.getElementById('globalLoader');
-  if (loader) loader.classList.remove('hidden');
+  const l = document.getElementById('globalLoader');
+  if (l) l.classList.remove('hidden');
 }
 function hideLoader() {
-  const loader = document.getElementById('globalLoader');
-  if (loader) loader.classList.add('hidden');
+  const l = document.getElementById('globalLoader');
+  if (l) l.classList.add('hidden');
 }
 
 /* ═══════════════════════════════════════════════════════
-   SKELETON LOADER
+   SKELETON LOADERS
    ═══════════════════════════════════════════════════════ */
 function renderSkeletonInbox() {
   let html = '';
@@ -91,31 +124,25 @@ function renderSkeletonInbox() {
 function renderSkeletonTable() {
   let html = '';
   for (let i = 0; i < 5; i++) {
-    html += `
-      <tr>
-        <td><div class="skeleton skeleton-line long"></div></td>
-        <td><div class="skeleton skeleton-line medium"></div></td>
-        <td><div class="skeleton skeleton-line short"></div></td>
-        <td><div class="skeleton skeleton-line short"></div></td>
-        <td><div class="skeleton skeleton-line short"></div></td>
-        <td><div class="skeleton skeleton-line short"></div></td>
-      </tr>
-    `;
+    html += `<tr>
+      <td><div class="skeleton skeleton-line long"></div></td>
+      <td><div class="skeleton skeleton-line medium"></div></td>
+      <td><div class="skeleton skeleton-line short"></div></td>
+      <td><div class="skeleton skeleton-line short"></div></td>
+      <td><div class="skeleton skeleton-line short"></div></td>
+      <td><div class="skeleton skeleton-line short"></div></td>
+    </tr>`;
   }
   return html;
 }
 
 /* ═══════════════════════════════════════════════════════
-   TOAST WITH ACTION
+   ADVANCED TOAST
    ═══════════════════════════════════════════════════════ */
 function showToastAdvanced(title, body, options = {}) {
   const {
-    type = 'info',
-    icon = 'mail',
-    actionLabel = null,
-    onAction = null,
-    duration = 5000,
-    onClick = null
+    type = 'info', icon = 'mail', actionLabel = null,
+    onAction = null, duration = 5000, onClick = null
   } = options;
 
   const container = document.getElementById('toastContainer');
@@ -127,49 +154,28 @@ function showToastAdvanced(title, body, options = {}) {
   const iconClass = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : '';
 
   toast.innerHTML = `
-    <div class="toast-icon ${iconClass}">
-      <i data-lucide="${icon}" class="w-4 h-4"></i>
-    </div>
+    <div class="toast-icon ${iconClass}"><i data-lucide="${icon}" class="w-4 h-4"></i></div>
     <div class="toast-content">
       <div class="toast-title">${esc(title)}</div>
       ${body ? `<div class="toast-body">${esc(body)}</div>` : ''}
     </div>
     ${actionLabel ? `<button class="toast-action">${esc(actionLabel)}</button>` : ''}
-    <button class="toast-close">
-      <i data-lucide="x" class="w-3.5 h-3.5"></i>
-    </button>
+    <button class="toast-close"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
   `;
 
-  const closeBtn = toast.querySelector('.toast-close');
-  closeBtn.onclick = (e) => {
-    e.stopPropagation();
-    toast.remove();
-  };
+  toast.querySelector('.toast-close').onclick = (e) => { e.stopPropagation(); toast.remove(); };
 
   const actionBtn = toast.querySelector('.toast-action');
   if (actionBtn && onAction) {
-    actionBtn.onclick = (e) => {
-      e.stopPropagation();
-      onAction();
-      toast.remove();
-    };
+    actionBtn.onclick = (e) => { e.stopPropagation(); onAction(); toast.remove(); };
   }
 
-  if (onClick) {
-    toast.onclick = () => {
-      onClick();
-      toast.remove();
-    };
-  }
+  if (onClick) toast.onclick = () => { onClick(); toast.remove(); };
 
   container.appendChild(toast);
   icons();
 
-  if (duration > 0) {
-    setTimeout(() => {
-      if (toast.parentElement) toast.remove();
-    }, duration);
-  }
+  if (duration > 0) setTimeout(() => { if (toast.parentElement) toast.remove(); }, duration);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -204,58 +210,46 @@ function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
       e.preventDefault();
-      const search = $('#globalSearch');
-      if (search && state.currentUser) {
-        search.focus();
-        search.select();
-      }
+      const s = $('#globalSearch');
+      if (s && state.currentUser) { s.focus(); s.select(); }
     }
     if ((e.metaKey || e.ctrlKey) && e.key === 'n') {
       e.preventDefault();
       if (state.currentUser) openCompose();
     }
     if (e.key === 'Escape') {
-      const composeModal = $('#composeModal');
-      if (composeModal && composeModal.style.display === 'flex') closeCompose();
+      const cm = $('#composeModal');
+      if (cm && cm.style.display === 'flex') closeCompose();
       hide($('#profileModal'));
       hide($('#settingsModal'));
       hide($('#forgotModal'));
+      hide($('#tagsModal'));
+      closeImageViewer();
     }
   });
 }
 
 /* ═══════════════════════════════════════════════════════
-   PWA HANDLERS
+   PWA
    ═══════════════════════════════════════════════════════ */
 function setupPWAHandlers() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
     console.log('📱 PWA Install prompt captured');
-    const installBtn = document.getElementById('installPwaBtn');
-    if (installBtn) installBtn.classList.remove('hidden');
+    const btn = document.getElementById('installPwaBtn');
+    if (btn) btn.classList.remove('hidden');
   });
 
   window.addEventListener('appinstalled', () => {
-    console.log('✅ PWA Installed');
     deferredPrompt = null;
-    const installBtn = document.getElementById('installPwaBtn');
-    if (installBtn) installBtn.classList.add('hidden');
+    const btn = document.getElementById('installPwaBtn');
+    if (btn) btn.classList.add('hidden');
     showToastAdvanced('تم التثبيت 🎉', 'التطبيق مثبّت على جهازك', { type: 'success', icon: 'check' });
   });
 
   if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
-    console.log('📱 Running as PWA');
     document.body.classList.add('pwa-mode');
-  }
-
-  const params = new URLSearchParams(window.location.search);
-  if (params.get('action') === 'compose') {
-    setTimeout(() => { if (state.currentUser) openCompose(); }, 2000);
-    window.history.replaceState({}, '', '/Email-system/');
-  } else if (params.get('page') === 'inbox') {
-    setTimeout(() => { if (state.currentUser) navigate('inbox'); }, 1500);
-    window.history.replaceState({}, '', '/Email-system/');
   }
 }
 
@@ -265,11 +259,10 @@ window.installPWA = async () => {
     return;
   }
   deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice;
-  console.log('📱 Install outcome:', outcome);
+  await deferredPrompt.userChoice;
   deferredPrompt = null;
-  const installBtn = document.getElementById('installPwaBtn');
-  if (installBtn) installBtn.classList.add('hidden');
+  const btn = document.getElementById('installPwaBtn');
+  if (btn) btn.classList.add('hidden');
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -280,11 +273,7 @@ function setupLoginUI() {
   if (loginBtn) loginBtn.onclick = handleLogin;
 
   const passInput = $('#loginPass');
-  if (passInput) {
-    passInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') handleLogin();
-    });
-  }
+  if (passInput) passInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleLogin(); });
 
   const togglePassBtn = $('#togglePassBtn');
   if (togglePassBtn) {
@@ -292,26 +281,16 @@ function setupLoginUI() {
       const inp = $('#loginPass');
       const eye = $('#eyeIcon');
       if (!inp) return;
-      if (inp.type === 'password') {
-        inp.type = 'text';
-        if (eye) eye.setAttribute('data-lucide', 'eye-off');
-      } else {
-        inp.type = 'password';
-        if (eye) eye.setAttribute('data-lucide', 'eye');
-      }
+      if (inp.type === 'password') { inp.type = 'text'; eye?.setAttribute('data-lucide', 'eye-off'); }
+      else { inp.type = 'password'; eye?.setAttribute('data-lucide', 'eye'); }
       icons();
     };
   }
 
   const forgotBtn = $('#forgotPassBtn');
-  if (forgotBtn) {
-    forgotBtn.onclick = () => { show($('#forgotModal')); icons(); };
-  }
+  if (forgotBtn) forgotBtn.onclick = () => { show($('#forgotModal')); icons(); };
 }
 
-/* ═══════════════════════════════════════════════════════
-   LOGIN
-   ═══════════════════════════════════════════════════════ */
 async function handleLogin() {
   const u = ($('#loginUser')?.value || '').trim().toLowerCase();
   const p = $('#loginPass')?.value || '';
@@ -319,11 +298,7 @@ async function handleLogin() {
   const btn = $('#loginBtn');
 
   hide(err);
-  if (!u || !p) {
-    err.textContent = 'املأ البيانات';
-    show(err);
-    return;
-  }
+  if (!u || !p) { err.textContent = 'املأ البيانات'; show(err); return; }
 
   const email = u.includes('@') ? u : `${u}@${EMAIL_DOMAIN}`;
   const remember = $('#rememberMe')?.checked;
@@ -332,9 +307,7 @@ async function handleLogin() {
   btn.querySelector('span').textContent = 'جاري الدخول...';
 
   try {
-    try {
-      await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
-    } catch (e) {}
+    try { await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence); } catch (e) {}
     await signInWithEmailAndPassword(auth, email, p);
   } catch (e) {
     const messages = {
@@ -354,35 +327,21 @@ async function handleLogin() {
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   FORGOT PASSWORD
-   ═══════════════════════════════════════════════════════ */
 window.closeForgotModal = () => {
   hide($('#forgotModal'));
-  const inp = $('#forgotEmail');
-  if (inp) inp.value = '';
-  const st = $('#forgotStatus');
-  if (st) { st.classList.add('hidden'); st.textContent = ''; }
+  const inp = $('#forgotEmail'); if (inp) inp.value = '';
+  const st = $('#forgotStatus'); if (st) { st.classList.add('hidden'); st.textContent = ''; }
 };
 
 window.sendPasswordReset = async () => {
   const email = ($('#forgotEmail')?.value || '').trim().toLowerCase();
   const status = $('#forgotStatus');
-  if (!email) {
-    status.className = 'alert alert-error';
-    status.textContent = 'اكتب الإيميل';
-    show(status);
-    return;
-  }
-  status.className = 'alert alert-info';
-  status.textContent = 'جاري الإرسال...';
-  show(status);
+  if (!email) { status.className = 'alert alert-error'; status.textContent = 'اكتب الإيميل'; show(status); return; }
+  status.className = 'alert alert-info'; status.textContent = 'جاري الإرسال...'; show(status);
 
   const result = await resetUserPassword(email);
-  if (result.success) {
-    status.className = 'alert alert-success';
-    status.textContent = '✅ تم إرسال رابط الاستعادة للإيميل';
-  } else {
+  if (result.success) { status.className = 'alert alert-success'; status.textContent = '✅ تم إرسال رابط الاستعادة'; }
+  else {
     status.className = 'alert alert-error';
     if (result.error === 'auth/user-not-found') status.textContent = 'الإيميل غير مسجل';
     else if (result.error === 'auth/invalid-email') status.textContent = 'الإيميل غير صحيح';
@@ -397,35 +356,24 @@ function checkAuthState() {
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
       state.currentUser = null;
-      if (state.unsubMessages) {
-        state.unsubMessages();
-        state.unsubMessages = null;
-      }
+      if (state.unsubMessages) { state.unsubMessages(); state.unsubMessages = null; }
       show($('#loginScreen'));
       hide($('#app'));
       return;
     }
 
     const snap = await getDoc(doc(db, 'users', user.uid));
-    if (!snap.exists()) {
-      alert('لا يوجد ملف مستخدم في Firestore لهذا الحساب\nUID: ' + user.uid);
-      await signOut(auth);
-      return;
-    }
+    if (!snap.exists()) { alert('لا يوجد ملف مستخدم في Firestore'); await signOut(auth); return; }
 
     state.currentUser = { uid: user.uid, ...snap.data() };
-
-    if (state.currentUser.isActive === false) {
-      alert('الحساب معطّل');
-      await signOut(auth);
-      return;
-    }
+    if (state.currentUser.isActive === false) { alert('الحساب معطّل'); await signOut(auth); return; }
 
     saveSession(state.currentUser);
     await loadUsersCache();
     await loadDepartmentsCache();
-    updateUIForRole();
+    await loadUserTags();
 
+    updateUIForRole();
     hide($('#loginScreen'));
     show($('#app'));
     icons();
@@ -437,43 +385,137 @@ function checkAuthState() {
   });
 }
 
-/* ═══════════════════════════════════════════════════════
-   UPDATE UI FOR ROLE
-   ═══════════════════════════════════════════════════════ */
 function updateUIForRole() {
+  const initial = initials(state.currentUser.name);
   const nameEl = $('#userName');
   const roleEl = $('#userRole');
   const avatarEl = $('#userAvatar');
   const menuName = $('#menuUserName');
   const menuEmail = $('#menuUserEmail');
   const menuAvatar = $('#menuUserAvatar');
-  const initial = initials(state.currentUser.name);
 
   if (nameEl) nameEl.textContent = state.currentUser.name;
   if (roleEl) roleEl.textContent = roleLabels[state.currentUser.role] || state.currentUser.role;
-  if (avatarEl) {
-    avatarEl.textContent = initial;
-    applyAvatar(avatarEl, state.currentUser.name);
-  }
+  if (avatarEl) { avatarEl.textContent = initial; applyAvatar(avatarEl, state.currentUser.name); }
   if (menuName) menuName.textContent = state.currentUser.name;
   if (menuEmail) menuEmail.textContent = state.currentUser.email || '';
-  if (menuAvatar) {
-    menuAvatar.textContent = initial;
-    applyAvatar(menuAvatar, state.currentUser.name);
-  }
+  if (menuAvatar) { menuAvatar.textContent = initial; applyAvatar(menuAvatar, state.currentUser.name); }
 
   const admin = isAdmin();
-  $$('[data-admin-only]').forEach(el => {
-    if (admin) el.classList.remove('hidden');
-    else el.classList.add('hidden');
-  });
+  $$('[data-admin-only]').forEach(el => admin ? el.classList.remove('hidden') : el.classList.add('hidden'));
 
   const manager = isManagerOrAbove();
-  $$('[data-manager-only]').forEach(el => {
-    if (manager) el.classList.remove('hidden');
-    else el.classList.add('hidden');
-  });
+  $$('[data-manager-only]').forEach(el => manager ? el.classList.remove('hidden') : el.classList.add('hidden'));
 }
+
+/* ═══════════════════════════════════════════════════════
+   TAGS SYSTEM
+   ═══════════════════════════════════════════════════════ */
+async function loadUserTags() {
+  try {
+    const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'tags'));
+    userTags = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderSidebarTags();
+  } catch (e) {
+    console.error('Tags load error:', e);
+    userTags = [];
+  }
+}
+
+function renderSidebarTags() {
+  const container = document.getElementById('sidebarTags');
+  if (!container) return;
+
+  if (userTags.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = userTags.map(tag => `
+    <button class="nav-tag ${currentTagFilter === tag.id ? 'active' : ''}"
+            style="--tag-color: ${tag.color};"
+            onclick="filterByTag('${tag.id}')">
+      <span class="nav-tag-color" style="background: ${tag.color};"></span>
+      <span class="nav-label">${esc(tag.name)}</span>
+    </button>
+  `).join('');
+}
+
+window.openTagsManager = () => {
+  show($('#tagsModal'));
+  renderTagsManager();
+  icons();
+};
+
+window.closeTagsManager = () => hide($('#tagsModal'));
+
+function renderTagsManager() {
+  const list = document.getElementById('tagsList');
+  if (!list) return;
+
+  if (userTags.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:20px;"><p style="font-size:13px;">لا توجد تصنيفات بعد</p></div>';
+    return;
+  }
+
+  list.innerHTML = userTags.map(tag => `
+    <div class="tag-manage-item">
+      <div class="tag-manage-color" style="background: ${tag.color};"></div>
+      <div class="tag-manage-name">${esc(tag.name)}</div>
+      <span class="tag-manage-count">${tag.count || 0}</span>
+      <button onclick="deleteTag('${tag.id}')" class="row-action danger" title="حذف">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+  `).join('');
+  icons();
+}
+
+window.createTag = async () => {
+  const name = $('#newTagName').value.trim();
+  const color = $('#newTagColor').value;
+  if (!name) { alert('اكتب اسم التصنيف'); return; }
+
+  if (userTags.length >= 20) { alert('أقصى عدد 20 تصنيف'); return; }
+
+  try {
+    const ref = await addDoc(collection(db, 'users', state.currentUser.uid, 'tags'), {
+      name, color, count: 0, createdAt: serverTimestamp()
+    });
+    userTags.push({ id: ref.id, name, color, count: 0 });
+    $('#newTagName').value = '';
+    $('#newTagColor').value = '#0078D4';
+    renderTagsManager();
+    renderSidebarTags();
+    showToastAdvanced('تم الإضافة ✅', `تصنيف "${name}" اتعمل`, { type: 'success', icon: 'tag', duration: 2500 });
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+window.deleteTag = async (tagId) => {
+  const tag = userTags.find(t => t.id === tagId);
+  if (!tag) return;
+
+  const ok = await confirmDialog('حذف التصنيف', `حذف "${tag.name}"؟ الرسائل مش هتتأثر.`);
+  if (!ok) return;
+
+  try {
+    await deleteDoc(doc(db, 'users', state.currentUser.uid, 'tags', tagId));
+    userTags = userTags.filter(t => t.id !== tagId);
+    renderTagsManager();
+    renderSidebarTags();
+    if (currentTagFilter === tagId) { currentTagFilter = null; navigate('inbox'); }
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+window.filterByTag = (tagId) => {
+  currentTagFilter = currentTagFilter === tagId ? null : tagId;
+  renderSidebarTags();
+  navigate('inbox');
+};
 
 /* ═══════════════════════════════════════════════════════
    SIDEBAR
@@ -481,11 +523,9 @@ function updateUIForRole() {
 function initSidebar() {
   const sidebar = $('#sidebar');
   const mobileNav = $('#mobileNav');
-  const main = $('#mainContent');
 
   try {
-    const saved = localStorage.getItem('sidebarCollapsed');
-    if (saved === '1') {
+    if (localStorage.getItem('sidebarCollapsed') === '1') {
       state.sidebarCollapsed = true;
       sidebar.classList.add('collapsed');
     }
@@ -507,11 +547,8 @@ function initSidebar() {
 window.toggleSidebar = function () {
   const sidebar = $('#sidebar');
   state.sidebarCollapsed = !state.sidebarCollapsed;
-  if (state.sidebarCollapsed) sidebar.classList.add('collapsed');
-  else sidebar.classList.remove('collapsed');
-  try {
-    localStorage.setItem('sidebarCollapsed', state.sidebarCollapsed ? '1' : '0');
-  } catch (e) {}
+  sidebar.classList.toggle('collapsed', state.sidebarCollapsed);
+  try { localStorage.setItem('sidebarCollapsed', state.sidebarCollapsed ? '1' : '0'); } catch (e) {}
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -528,7 +565,7 @@ function setupGlobalListeners() {
   if (nav) {
     nav.addEventListener('click', (e) => {
       const btn = e.target.closest('.nav-item');
-      if (btn) navigate(btn.dataset.page);
+      if (btn) { currentTagFilter = null; navigate(btn.dataset.page); }
     });
   }
 
@@ -545,8 +582,7 @@ function setupGlobalListeners() {
     notifBtn.onclick = (e) => {
       e.stopPropagation();
       const dd = $('#notifDropdown');
-      if (dd.style.display === 'block') hideStyle(dd);
-      else showStyle(dd);
+      dd.style.display = dd.style.display === 'block' ? 'none' : 'block';
     };
   }
 
@@ -555,8 +591,7 @@ function setupGlobalListeners() {
     userMenuBtn.onclick = (e) => {
       e.stopPropagation();
       const menu = $('#userMenu');
-      if (menu.style.display === 'block') hideStyle(menu);
-      else showStyle(menu);
+      menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
     };
   }
 
@@ -577,25 +612,14 @@ function setupGlobalListeners() {
     if (!e.target.closest('#userMenuBtn') && !e.target.closest('#userMenu')) {
       hideStyle($('#userMenu'));
     }
+    if (!e.target.closest('.header-search')) {
+      const sr = $('#searchResults');
+      if (sr) sr.style.display = 'none';
+    }
   });
 
-  const searchInput = $('#globalSearch');
-  if (searchInput) {
-    let searchTimer;
-    searchInput.addEventListener('input', (e) => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => {
-        const q = e.target.value.trim();
-        if (q) {
-          state.searchQuery = q;
-          navigate('inbox');
-        } else {
-          state.searchQuery = '';
-          if (state.currentFilter === 'search') navigate('inbox');
-        }
-      }, 400);
-    });
-  }
+  // INSTANT SEARCH
+  setupInstantSearch();
 
   const composeModal = $('#composeModal');
   if (composeModal) {
@@ -605,21 +629,115 @@ function setupGlobalListeners() {
   }
 }
 
+/* ═══════════════════════════════════════════════════════
+   INSTANT SEARCH
+   ═══════════════════════════════════════════════════════ */
+function setupInstantSearch() {
+  const input = $('#globalSearch');
+  const clearBtn = $('#clearSearchBtn');
+  const resultsBox = $('#searchResults');
+  if (!input || !resultsBox) return;
+
+  let searchDebounce;
+
+  input.addEventListener('input', (e) => {
+    const q = e.target.value.trim();
+    if (clearBtn) clearBtn.classList.toggle('hidden', !q);
+
+    clearTimeout(searchDebounce);
+    if (!q) {
+      resultsBox.style.display = 'none';
+      return;
+    }
+
+    searchDebounce = setTimeout(() => performInstantSearch(q), 250);
+  });
+
+  input.addEventListener('focus', () => {
+    if (input.value.trim() && resultsBox.innerHTML) {
+      resultsBox.style.display = 'block';
+    }
+  });
+
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      input.value = '';
+      clearBtn.classList.add('hidden');
+      resultsBox.style.display = 'none';
+      state.searchQuery = '';
+      if (state.currentFilter === 'search') navigate('inbox');
+    };
+  }
+}
+
+async function performInstantSearch(query) {
+  const resultsBox = $('#searchResults');
+  if (!resultsBox) return;
+
+  resultsBox.innerHTML = '<div class="search-empty"><div class="spinner" style="margin:0 auto;"></div></div>';
+  resultsBox.style.display = 'block';
+
+  try {
+    // Search incoming + outgoing messages
+    const q1 = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
+    const q2 = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
+    const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+
+    const all = new Map();
+    [...s1.docs, ...s2.docs].forEach(d => all.set(d.id, { id: d.id, ...d.data() }));
+
+    const matches = Array.from(all.values())
+      .filter(m => !m.deleted && matchesSearch(m, query))
+      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0))
+      .slice(0, 15);
+
+    if (matches.length === 0) {
+      resultsBox.innerHTML = '<div class="search-empty">لا نتائج</div>';
+      return;
+    }
+
+    resultsBox.innerHTML = matches.map(m => {
+      const isFromMe = m.fromUserId === state.currentUser.uid;
+      const otherName = isFromMe ? m.toUserName : m.fromUserName;
+      const avatarClass = getAvatarGradient(otherName);
+      const snippet = (m.body || '').slice(0, 80);
+
+      return `
+        <div class="search-result-item" onclick="goToSearchResult('${m.threadId || m.id}')">
+          <div class="msg-avatar ${avatarClass}" style="width:32px;height:32px;font-size:11px;">${initials(otherName)}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
+              <span style="font-weight:600;font-size:12.5px;">${highlightText(otherName, query)}</span>
+              <span style="font-size:10.5px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
+            </div>
+            <div style="font-size:12.5px;font-weight:600;margin-top:2px;">${highlightText(m.subject, query)}</div>
+            <div style="font-size:11.5px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${highlightText(snippet, query)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (e) {
+    resultsBox.innerHTML = '<div class="search-empty">خطأ في البحث</div>';
+  }
+}
+
+window.goToSearchResult = (threadId) => {
+  const resultsBox = $('#searchResults');
+  if (resultsBox) resultsBox.style.display = 'none';
+  navigate('inbox');
+  setTimeout(() => window.openThread(threadId), 300);
+};
+
 async function handleLogout() {
-  const ok = await confirmDialog('تسجيل الخروج', 'هل أنت متأكد إنك عايز تسجل خروج؟');
+  const ok = await confirmDialog('تسجيل الخروج', 'هل أنت متأكد؟');
   if (!ok) return;
 
   try {
     if (messaging && state.currentUser) {
       const reg = await navigator.serviceWorker.getRegistration('/Email-system/');
       if (reg) {
-        const token = await getToken(messaging, {
-          vapidKey: VAPID_KEY,
-          serviceWorkerRegistration: reg
-        }).catch(() => null);
-        if (token) {
-          await deleteDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token));
-        }
+        const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg }).catch(() => null);
+        if (token) await deleteDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token));
       }
     }
   } catch (e) {}
@@ -645,14 +763,8 @@ const ROUTES = {
 export function navigate(page) {
   state.currentFilter = page;
 
-  $$('.nav-item').forEach(b => {
-    const active = b.dataset.page === page;
-    b.classList.toggle('active', active);
-  });
-  $$('.mnav-item').forEach(b => {
-    const active = b.dataset.page === page;
-    b.classList.toggle('active', active);
-  });
+  $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
+  $$('.mnav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
 
   const route = ROUTES[page];
   if (route) route();
@@ -673,9 +785,7 @@ async function renderMyTeam() {
 
   const byDept = {};
   myDepts.forEach(d => byDept[d.id] = []);
-  team.forEach(u => {
-    if (u.departmentId && byDept[u.departmentId]) byDept[u.departmentId].push(u);
-  });
+  team.forEach(u => { if (u.departmentId && byDept[u.departmentId]) byDept[u.departmentId].push(u); });
 
   const deptSections = myDepts.map(d => {
     const members = byDept[d.id] || [];
@@ -720,7 +830,6 @@ async function renderMyTeam() {
         <h1 class="dashboard-title">فريقي</h1>
         <p class="dashboard-date">${team.length} عضو · ${myDepts.length} قسم</p>
       </div>
-
       ${myDepts.length === 0 ? `
         <div class="section" style="text-align:center;padding:40px;">
           <i data-lucide="alert-circle" class="w-12 h-12" style="color:var(--warning);margin-bottom:12px;"></i>
@@ -728,7 +837,6 @@ async function renderMyTeam() {
           <div style="font-size:13px;color:var(--text-tertiary);">تواصل مع الأدمن لتعيينك مدير قسم</div>
         </div>
       ` : deptSections}
-
       ${team.length > 0 ? `
         <div class="section">
           <h3 class="section-title">إجراءات جماعية</h3>
@@ -745,28 +853,18 @@ async function renderMyTeam() {
 
 window.quickSendToUser = async (userId) => {
   await window.openCompose();
-  const sel = $('#cTo');
-  if (sel) sel.value = userId;
+  const sel = $('#cTo'); if (sel) sel.value = userId;
 };
 
 window.quickSendToDept = async (deptId) => {
   await window.openCompose();
-  const deptCheckbox = $('#cDept');
-  const deptSelect = $('#deptSelect');
-  if (deptCheckbox && deptSelect) {
-    deptSelect.value = deptId;
-    deptCheckbox.checked = true;
-    window.toggleDeptSend();
-  }
+  const cb = $('#cDept'); const sel = $('#deptSelect');
+  if (cb && sel) { sel.value = deptId; cb.checked = true; window.toggleDeptSend(); }
 };
 
 window.quickSendToTeam = async () => {
   await window.openCompose();
-  const deptCheckbox = $('#cDept');
-  if (deptCheckbox) {
-    deptCheckbox.checked = true;
-    window.toggleDeptSend();
-  }
+  const cb = $('#cDept'); if (cb) { cb.checked = true; window.toggleDeptSend(); }
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -776,10 +874,7 @@ async function renderUsers() {
   $('#pageContent').innerHTML = `
     <div class="dashboard">
       <div class="page-header" style="padding:0 0 20px;border:none;">
-        <div>
-          <h1 class="dashboard-title">المستخدمين</h1>
-          <p class="dashboard-date">جاري التحميل...</p>
-        </div>
+        <div><h1 class="dashboard-title">المستخدمين</h1><p class="dashboard-date">جاري التحميل...</p></div>
       </div>
       <div class="data-table-wrapper">
         <div class="data-table-scroll">
@@ -797,7 +892,6 @@ async function renderUsers() {
 
   const rows = state.allUsersCache.map(u => {
     const uLabel = roleLabels[u.role] || u.role;
-    const roleClass = `role-${u.role}`;
     const dept = u.departmentId ? getDeptById(u.departmentId) : null;
     return `
       <tr>
@@ -810,17 +904,10 @@ async function renderUsers() {
             </div>
           </div>
         </td>
-        <td style="font-family:monospace;font-size:12.5px;color:var(--text-secondary);">${esc(u.username)}</td>
-        <td>
-          ${dept ? `<span style="font-size:11.5px;background:#E5F0FA;color:var(--brand-primary);padding:3px 8px;border-radius:4px;font-weight:600;">${esc(dept.name)}</span>` : '<span style="color:var(--text-disabled);">—</span>'}
-        </td>
-        <td><span class="role-badge ${roleClass}">${uLabel}</span></td>
-        <td>
-          <span class="status-cell ${u.isActive === false ? 'status-inactive' : 'status-active'}">
-            <span class="status-dot"></span>
-            ${u.isActive === false ? 'معطّل' : 'نشط'}
-          </span>
-        </td>
+        <td style="font-family:monospace;font-size:12.5px;">${esc(u.username)}</td>
+        <td>${dept ? `<span style="font-size:11.5px;background:#E5F0FA;color:var(--brand-primary);padding:3px 8px;border-radius:4px;font-weight:600;">${esc(dept.name)}</span>` : '—'}</td>
+        <td><span class="role-badge role-${u.role}">${uLabel}</span></td>
+        <td><span class="status-cell ${u.isActive === false ? 'status-inactive' : 'status-active'}"><span class="status-dot"></span>${u.isActive === false ? 'معطّل' : 'نشط'}</span></td>
         <td>
           <div class="row-actions">
             <button onclick="editUser('${u.id}')" class="row-action primary" title="تعديل"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
@@ -835,47 +922,24 @@ async function renderUsers() {
   $('#pageContent').innerHTML = `
     <div class="dashboard">
       <div class="page-header" style="padding:0 0 20px;border:none;">
-        <div>
-          <h1 class="dashboard-title">المستخدمين</h1>
-          <p class="dashboard-date">${state.allUsersCache.length} مستخدم</p>
-        </div>
-        <button onclick="openAddUser()" class="btn btn-primary">
-          <i data-lucide="user-plus" class="w-4 h-4"></i>
-          <span>إضافة مستخدم</span>
-        </button>
+        <div><h1 class="dashboard-title">المستخدمين</h1><p class="dashboard-date">${state.allUsersCache.length} مستخدم</p></div>
+        <button onclick="openAddUser()" class="btn btn-primary"><i data-lucide="user-plus" class="w-4 h-4"></i><span>إضافة مستخدم</span></button>
       </div>
 
       <div id="addUserForm" class="section hidden fade-in">
         <h3 class="section-title">مستخدم جديد</h3>
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-          <div class="form-group">
-            <label class="form-label">الاسم الكامل</label>
-            <input id="nuName" class="form-input" placeholder="محمد أحمد" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">اسم المستخدم</label>
-            <input id="nuUser" class="form-input" placeholder="mohamed" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">كلمة السر</label>
-            <input id="nuPass" type="text" class="form-input" placeholder="6 حروف على الأقل" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">الدور</label>
-            <select id="nuRole" class="form-input">
-              <option value="user">مستخدم عادي</option>
-              <option value="manager">مدير قسم</option>
-              ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">القسم</label>
-            <select id="nuDept" class="form-input"><option value="">— بدون قسم —</option></select>
-          </div>
+          <div class="form-group"><label class="form-label">الاسم</label><input id="nuName" class="form-input" placeholder="محمد أحمد" /></div>
+          <div class="form-group"><label class="form-label">اسم المستخدم</label><input id="nuUser" class="form-input" placeholder="mohamed" /></div>
+          <div class="form-group"><label class="form-label">كلمة السر</label><input id="nuPass" type="text" class="form-input" placeholder="6+ حروف" /></div>
+          <div class="form-group"><label class="form-label">الدور</label><select id="nuRole" class="form-input">
+            <option value="user">مستخدم</option>
+            <option value="manager">مدير قسم</option>
+            ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
+          </select></div>
+          <div class="form-group"><label class="form-label">القسم</label><select id="nuDept" class="form-input"><option value="">— بدون قسم —</option></select></div>
         </div>
-        <p style="font-size:12px;color:var(--text-tertiary);margin:12px 0 0;">
-          الإيميل: <span style="font-family:monospace;">username@${EMAIL_DOMAIN}</span>
-        </p>
+        <p style="font-size:12px;color:var(--text-tertiary);margin:12px 0 0;">الإيميل: <span style="font-family:monospace;">username@${EMAIL_DOMAIN}</span></p>
         <p id="nuErr" class="alert hidden" style="margin-top:12px;"></p>
         <div style="display:flex;gap:8px;margin-top:16px;">
           <button onclick="createNewUser()" class="btn btn-primary"><i data-lucide="save" class="w-4 h-4"></i><span>حفظ</span></button>
@@ -887,26 +951,14 @@ async function renderUsers() {
         <h3 class="section-title">تعديل مستخدم</h3>
         <input type="hidden" id="euId" />
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
-          <div class="form-group">
-            <label class="form-label">الاسم</label>
-            <input id="euName" class="form-input" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">اسم المستخدم</label>
-            <input id="euUser" class="form-input form-input-disabled" disabled />
-          </div>
-          <div class="form-group">
-            <label class="form-label">الدور</label>
-            <select id="euRole" class="form-input">
-              <option value="user">مستخدم عادي</option>
-              <option value="manager">مدير قسم</option>
-              ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
-            </select>
-          </div>
-          <div class="form-group">
-            <label class="form-label">القسم</label>
-            <select id="euDept" class="form-input"><option value="">— بدون قسم —</option></select>
-          </div>
+          <div class="form-group"><label class="form-label">الاسم</label><input id="euName" class="form-input" /></div>
+          <div class="form-group"><label class="form-label">اسم المستخدم</label><input id="euUser" class="form-input form-input-disabled" disabled /></div>
+          <div class="form-group"><label class="form-label">الدور</label><select id="euRole" class="form-input">
+            <option value="user">مستخدم</option>
+            <option value="manager">مدير قسم</option>
+            ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
+          </select></div>
+          <div class="form-group"><label class="form-label">القسم</label><select id="euDept" class="form-input"><option value="">— بدون قسم —</option></select></div>
         </div>
         <p id="euErr" class="alert hidden" style="margin-top:12px;"></p>
         <div style="display:flex;gap:8px;margin-top:16px;">
@@ -918,23 +970,15 @@ async function renderUsers() {
       <div class="data-table-wrapper">
         <div class="data-table-scroll">
           <table class="data-table">
-            <thead>
-              <tr>
-                <th>المستخدم</th>
-                <th>اسم المستخدم</th>
-                <th>القسم</th>
-                <th>الدور</th>
-                <th>الحالة</th>
-                <th style="text-align:left;">إجراءات</th>
-              </tr>
-            </thead>
+            <thead><tr>
+              <th>المستخدم</th><th>اسم المستخدم</th><th>القسم</th><th>الدور</th><th>الحالة</th><th style="text-align:left;">إجراءات</th>
+            </tr></thead>
             <tbody>${rows || '<tr><td colspan="6" style="text-align:center;padding:48px;color:var(--text-tertiary);">لا يوجد مستخدمين</td></tr>'}</tbody>
           </table>
         </div>
       </div>
     </div>
   `;
-
   fillDeptSelects();
   icons();
 }
@@ -943,9 +987,7 @@ function fillDeptSelects() {
   const opts = state.allDeptsCache.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
   ['nuDept', 'euDept'].forEach(id => {
     const sel = document.getElementById(id);
-    if (sel && sel.options.length === 1) {
-      sel.innerHTML = '<option value="">— بدون قسم —</option>' + opts;
-    }
+    if (sel && sel.options.length === 1) sel.innerHTML = '<option value="">— بدون قسم —</option>' + opts;
   });
 }
 
@@ -962,26 +1004,22 @@ window.createNewUser = async () => {
   hide(err);
 
   if (!name || !user || !pass) { err.className = 'alert alert-error'; err.textContent = 'املأ كل البيانات'; show(err); return; }
-  if (!validateUsername(user)) { err.className = 'alert alert-error'; err.textContent = 'اسم المستخدم بحروف إنجليزية (3-30 حرف)'; show(err); return; }
-  if (!validatePassword(pass)) { err.className = 'alert alert-error'; err.textContent = 'كلمة السر 6 حروف على الأقل'; show(err); return; }
+  if (!validateUsername(user)) { err.className = 'alert alert-error'; err.textContent = 'اسم المستخدم غير صالح'; show(err); return; }
+  if (!validatePassword(pass)) { err.className = 'alert alert-error'; err.textContent = 'كلمة السر 6 حروف'; show(err); return; }
 
   err.className = 'alert alert-info'; err.textContent = 'جاري الإنشاء...'; show(err);
 
   try {
     const email = `${user}@${EMAIL_DOMAIN}`;
     const uid = await createAuthUser(email, pass);
-    await setDoc(doc(db, 'users', uid), {
-      name, username: user, email, role,
-      departmentId: deptId || null,
-      isActive: true, createdAt: serverTimestamp()
-    });
-    err.className = 'alert alert-success'; err.textContent = `✅ تم إنشاء ${user} بنجاح!`;
+    await setDoc(doc(db, 'users', uid), { name, username: user, email, role, departmentId: deptId || null, isActive: true, createdAt: serverTimestamp() });
+    err.className = 'alert alert-success'; err.textContent = `✅ تم إنشاء ${user}`;
+    showToastAdvanced('تم الإنشاء ✅', `${user} أضيف`, { type: 'success', icon: 'user-check', duration: 2500 });
     $('#nuName').value = ''; $('#nuUser').value = ''; $('#nuPass').value = '';
-    showToastAdvanced('تم الإنشاء ✅', `${user} أضيف للنظام بنجاح`, { type: 'success', icon: 'user-check', duration: 3000 });
     setTimeout(() => { hide($('#addUserForm')); renderUsers(); }, 1200);
   } catch (e) {
     err.className = 'alert alert-error';
-    err.textContent = e.code === 'auth/email-already-in-use' ? 'اسم المستخدم مستخدم قبل كده' : e.message;
+    err.textContent = e.code === 'auth/email-already-in-use' ? 'اسم المستخدم مستخدم' : e.message;
     show(err);
   }
 };
@@ -995,8 +1033,7 @@ window.editUser = async (uid) => {
   $('#euRole').value = u.role || 'user';
   fillDeptSelects();
   $('#euDept').value = u.departmentId || '';
-  show($('#editUserForm'));
-  hide($('#addUserForm'));
+  show($('#editUserForm')); hide($('#addUserForm'));
   $('#editUserForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 window.closeEditUser = () => hide($('#editUserForm'));
@@ -1012,17 +1049,14 @@ window.saveEditUser = async () => {
   try {
     await updateDoc(doc(db, 'users', uid), { name, role, departmentId: deptId || null });
     hide($('#editUserForm'));
-    showToastAdvanced('تم الحفظ ✅', 'التعديلات اتحفظت', { type: 'success', icon: 'check', duration: 2000 });
+    showToastAdvanced('تم الحفظ ✅', '', { type: 'success', icon: 'check', duration: 2000 });
     renderUsers();
   } catch (e) {
     err.className = 'alert alert-error'; err.textContent = e.message; show(err);
   }
 };
 
-window.toggleUser = async (uid, activate) => {
-  await updateDoc(doc(db, 'users', uid), { isActive: activate });
-  renderUsers();
-};
+window.toggleUser = async (uid, activate) => { await updateDoc(doc(db, 'users', uid), { isActive: activate }); renderUsers(); };
 
 window.deleteUserDoc = async (uid) => {
   const ok = await confirmDialog('حذف المستخدم', 'هيتحذف من Firestore فقط. متأكد؟');
@@ -1044,9 +1078,7 @@ async function renderDepartments() {
     return `
       <div class="dept-card">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;">
-          <div class="dept-card-icon">
-            <i data-lucide="building-2" class="w-5 h-5"></i>
-          </div>
+          <div class="dept-card-icon"><i data-lucide="building-2" class="w-5 h-5"></i></div>
           <div style="display:flex;gap:4px;">
             <button onclick="editDept('${d.id}')" class="row-action primary" title="تعديل"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
             <button onclick="deleteDept('${d.id}')" class="row-action danger" title="حذف"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
@@ -1055,20 +1087,8 @@ async function renderDepartments() {
         <div class="dept-card-name">${esc(d.name)}</div>
         <div class="dept-card-desc">${esc(d.description || 'بدون وصف')}</div>
         <div class="dept-card-footer">
-          <div style="display:flex;align-items:center;gap:6px;">
-            <i data-lucide="users" class="w-3.5 h-3.5"></i>
-            <span>${members.length} عضو</span>
-          </div>
-          ${manager ? `
-            <div style="display:flex;align-items:center;gap:6px;">
-              <div style="width:22px;height:22px;border-radius:50%;background:#8764B8;color:white;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;">${initials(manager.name)}</div>
-              <span style="font-size:11.5px;color:#8764B8;font-weight:600;">${esc(manager.name)}</span>
-            </div>
-          ` : `
-            <button onclick="editDept('${d.id}')" style="background:none;border:none;color:#E8A100;font-size:11.5px;cursor:pointer;font-weight:600;">
-              ⚠ بدون مدير
-            </button>
-          `}
+          <div style="display:flex;align-items:center;gap:6px;"><i data-lucide="users" class="w-3.5 h-3.5"></i><span>${members.length} عضو</span></div>
+          ${manager ? `<div style="display:flex;align-items:center;gap:6px;"><div style="width:22px;height:22px;border-radius:50%;background:#8764B8;color:white;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;">${initials(manager.name)}</div><span style="font-size:11.5px;color:#8764B8;font-weight:600;">${esc(manager.name)}</span></div>` : `<button onclick="editDept('${d.id}')" style="background:none;border:none;color:#E8A100;font-size:11.5px;cursor:pointer;font-weight:600;">⚠ بدون مدير</button>`}
         </div>
       </div>
     `;
@@ -1077,46 +1097,24 @@ async function renderDepartments() {
   $('#pageContent').innerHTML = `
     <div class="dashboard">
       <div class="page-header" style="padding:0 0 20px;border:none;">
-        <div>
-          <h1 class="dashboard-title">الأقسام</h1>
-          <p class="dashboard-date">${state.allDeptsCache.length} قسم</p>
-        </div>
+        <div><h1 class="dashboard-title">الأقسام</h1><p class="dashboard-date">${state.allDeptsCache.length} قسم</p></div>
       </div>
-
       <div class="section">
         <h3 class="section-title">إضافة قسم جديد</h3>
         <div class="form-grid" style="grid-template-columns:1fr 1fr 1fr auto;align-items:end;">
-          <div class="form-group">
-            <label class="form-label">اسم القسم</label>
-            <input id="dName" class="form-input" placeholder="تكنولوجيا المعلومات" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">وصف (اختياري)</label>
-            <input id="dDesc" class="form-input" placeholder="وصف مختصر" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">مدير القسم</label>
-            <select id="dManager" class="form-input"><option value="">— بدون مدير —</option></select>
-          </div>
-          <button onclick="addDept()" class="btn btn-primary" style="height:36px;">
-            <i data-lucide="plus" class="w-4 h-4"></i>
-            <span>إضافة</span>
-          </button>
+          <div class="form-group"><label class="form-label">اسم القسم</label><input id="dName" class="form-input" placeholder="تكنولوجيا المعلومات" /></div>
+          <div class="form-group"><label class="form-label">وصف (اختياري)</label><input id="dDesc" class="form-input" placeholder="وصف مختصر" /></div>
+          <div class="form-group"><label class="form-label">مدير القسم</label><select id="dManager" class="form-input"><option value="">— بدون مدير —</option></select></div>
+          <button onclick="addDept()" class="btn btn-primary" style="height:36px;"><i data-lucide="plus" class="w-4 h-4"></i><span>إضافة</span></button>
         </div>
       </div>
-
-      <div class="dept-grid">
-        ${cards || '<div class="empty-state" style="grid-column:1/-1;"><i data-lucide="building-2"></i><p>لا يوجد أقسام بعد</p></div>'}
-      </div>
+      <div class="dept-grid">${cards || '<div class="empty-state" style="grid-column:1/-1;"><i data-lucide="building-2"></i><p>لا يوجد أقسام بعد</p></div>'}</div>
     </div>
   `;
 
-  const managerOpts = state.allUsersCache
-    .filter(u => u.isActive !== false)
-    .map(u => `<option value="${u.id}">${esc(u.name)} (@${esc(u.username)})</option>`)
-    .join('');
-  const dManager = document.getElementById('dManager');
-  if (dManager) dManager.innerHTML = '<option value="">— بدون مدير —</option>' + managerOpts;
+  const managerOpts = state.allUsersCache.filter(u => u.isActive !== false).map(u => `<option value="${u.id}">${esc(u.name)} (@${esc(u.username)})</option>`).join('');
+  const dm = document.getElementById('dManager');
+  if (dm) dm.innerHTML = '<option value="">— بدون مدير —</option>' + managerOpts;
 
   icons();
 }
@@ -1126,10 +1124,8 @@ window.addDept = async () => {
   const description = $('#dDesc').value.trim();
   const managerId = $('#dManager').value;
   if (!name) return alert('اكتب اسم القسم');
-  await addDoc(collection(db, 'departments'), {
-    name, description, managerId: managerId || null, createdAt: serverTimestamp()
-  });
-  showToastAdvanced('تم الإضافة ✅', `قسم ${name} اتعمل`, { type: 'success', icon: 'building-2', duration: 2500 });
+  await addDoc(collection(db, 'departments'), { name, description, managerId: managerId || null, createdAt: serverTimestamp() });
+  showToastAdvanced('تم الإضافة ✅', `قسم ${name}`, { type: 'success', icon: 'building-2', duration: 2500 });
   renderDepartments();
 };
 
@@ -1137,10 +1133,7 @@ window.editDept = async (id) => {
   const d = state.allDeptsCache.find(x => x.id === id);
   if (!d) return;
 
-  const managerOpts = state.allUsersCache
-    .filter(u => u.isActive !== false)
-    .map(u => `<option value="${u.id}" ${u.id === d.managerId ? 'selected' : ''}>${esc(u.name)} (@${esc(u.username)})</option>`)
-    .join('');
+  const managerOpts = state.allUsersCache.filter(u => u.isActive !== false).map(u => `<option value="${u.id}" ${u.id === d.managerId ? 'selected' : ''}>${esc(u.name)} (@${esc(u.username)})</option>`).join('');
 
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
@@ -1148,30 +1141,13 @@ window.editDept = async (id) => {
   modal.innerHTML = `
     <div class="modal-panel modal-md fade-in">
       <div class="modal-header">
-        <div>
-          <h2 class="modal-title">تعديل القسم</h2>
-          <p class="modal-subtitle">${esc(d.name)}</p>
-        </div>
-        <button onclick="document.getElementById('deptEditModal').remove()" class="icon-btn icon-btn-ghost">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
+        <div><h2 class="modal-title">تعديل القسم</h2><p class="modal-subtitle">${esc(d.name)}</p></div>
+        <button onclick="document.getElementById('deptEditModal').remove()" class="icon-btn icon-btn-ghost"><i data-lucide="x" class="w-4 h-4"></i></button>
       </div>
       <div class="modal-body">
-        <div class="form-group">
-          <label class="form-label">اسم القسم</label>
-          <input id="editDeptName" class="form-input" value="${esc(d.name)}" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">الوصف</label>
-          <input id="editDeptDesc" class="form-input" value="${esc(d.description || '')}" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">مدير القسم</label>
-          <select id="editDeptManager" class="form-input">
-            <option value="">— بدون مدير —</option>
-            ${managerOpts}
-          </select>
-        </div>
+        <div class="form-group"><label class="form-label">اسم القسم</label><input id="editDeptName" class="form-input" value="${esc(d.name)}" /></div>
+        <div class="form-group"><label class="form-label">الوصف</label><input id="editDeptDesc" class="form-input" value="${esc(d.description || '')}" /></div>
+        <div class="form-group"><label class="form-label">مدير القسم</label><select id="editDeptManager" class="form-input"><option value="">— بدون مدير —</option>${managerOpts}</select></div>
       </div>
       <div class="modal-footer">
         <button onclick="document.getElementById('deptEditModal').remove()" class="btn btn-ghost">إلغاء</button>
@@ -1189,31 +1165,32 @@ window.saveEditDept = async (id) => {
   const managerId = $('#editDeptManager').value;
   if (!name) { alert('اكتب اسم القسم'); return; }
   await updateDoc(doc(db, 'departments', id), { name, description, managerId: managerId || null });
-  const modal = document.getElementById('deptEditModal');
-  if (modal) modal.remove();
+  const m = document.getElementById('deptEditModal');
+  if (m) m.remove();
   renderDepartments();
 };
 
 window.deleteDept = async (id) => {
-  const ok = await confirmDialog('حذف القسم', 'متأكد من حذف القسم؟');
+  const ok = await confirmDialog('حذف القسم', 'متأكد؟');
   if (!ok) return;
   await deleteDoc(doc(db, 'departments', id));
   renderDepartments();
 };
 
 /* ═══════════════════════════════════════════════════════
-   INBOX (Threads)
+   INBOX
    ═══════════════════════════════════════════════════════ */
 async function renderInbox() {
-  // Show skeleton immediately
   const filter = state.currentFilter;
-  const title = {
-    inbox: 'صندوق الوارد',
-    sent: 'المُرسلة',
-    starred: 'المميزة',
-    trash: 'سلة المهملات',
-    search: 'نتائج البحث'
-  }[filter] || 'صندوق الوارد';
+  const title = currentTagFilter
+    ? (userTags.find(t => t.id === currentTagFilter)?.name || 'التصنيف')
+    : {
+        inbox: 'صندوق الوارد',
+        sent: 'المُرسلة',
+        starred: 'المميزة',
+        trash: 'سلة المهملات',
+        search: 'نتائج البحث'
+      }[filter] || 'صندوق الوارد';
 
   $('#pageContent').innerHTML = `
     <div class="inbox-shell fade-in">
@@ -1227,10 +1204,7 @@ async function renderInbox() {
         <div class="inbox-list-body">${renderSkeletonInbox()}</div>
       </div>
       <div id="inboxReading" class="reading-pane">
-        <div class="empty-state" style="flex:1;min-height:400px;">
-          <i data-lucide="mail-open"></i>
-          <p>جاري التحميل...</p>
-        </div>
+        <div class="empty-state" style="flex:1;min-height:400px;"><i data-lucide="mail-open"></i><p>جاري التحميل...</p></div>
       </div>
     </div>
   `;
@@ -1238,12 +1212,10 @@ async function renderInbox() {
 
   const q1 = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
   const q2 = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
-  const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+  const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
 
   const all = new Map();
-  [...snap1.docs, ...snap2.docs].forEach(d => {
-    all.set(d.id, { id: d.id, ...d.data() });
-  });
+  [...s1.docs, ...s2.docs].forEach(d => all.set(d.id, { id: d.id, ...d.data() }));
 
   const visible = Array.from(all.values()).filter(m => {
     if (state.currentFilter === 'trash') return m.deleted;
@@ -1253,9 +1225,7 @@ async function renderInbox() {
   const threadsMap = {};
   visible.forEach(m => {
     const tid = m.threadId || m.id;
-    if (!threadsMap[tid]) {
-      threadsMap[tid] = { threadId: tid, messages: [], subject: m.subject, firstAt: Infinity };
-    }
+    if (!threadsMap[tid]) threadsMap[tid] = { threadId: tid, messages: [], subject: m.subject, firstAt: Infinity };
     threadsMap[tid].messages.push(m);
     if (m.createdAt?.seconds && m.createdAt.seconds < threadsMap[tid].firstAt) {
       threadsMap[tid].subject = m.subject;
@@ -1271,11 +1241,18 @@ async function renderInbox() {
     t.lastMsg = t.messages[t.messages.length - 1];
     t.lastAt = t.lastMsg.createdAt?.seconds || 0;
     t.isFromMe = t.lastMsg.fromUserId === state.currentUser.uid;
+    t.tags = t.lastMsg.tags || [];
     return t;
   }).sort((a, b) => b.lastAt - a.lastAt);
 
+  // Apply search filter
   if (state.searchQuery) {
     threads = threads.filter(t => t.messages.some(m => matchesSearch(m, state.searchQuery)));
+  }
+
+  // Apply tag filter
+  if (currentTagFilter) {
+    threads = threads.filter(t => t.tags.includes(currentTagFilter) || t.messages.some(m => (m.tags || []).includes(currentTagFilter)));
   }
 
   state.threadsCache = threads;
@@ -1284,35 +1261,44 @@ async function renderInbox() {
 
 function renderThreadList() {
   const filter = state.currentFilter;
-  const title = {
-    inbox: 'صندوق الوارد',
-    sent: 'المُرسلة',
-    starred: 'المميزة',
-    trash: 'سلة المهملات',
-    search: 'نتائج البحث'
-  }[filter] || 'صندوق الوارد';
+  const title = currentTagFilter
+    ? (userTags.find(t => t.id === currentTagFilter)?.name || 'التصنيف')
+    : {
+        inbox: 'صندوق الوارد',
+        sent: 'المُرسلة',
+        starred: 'المميزة',
+        trash: 'سلة المهملات',
+        search: 'نتائج البحث'
+      }[filter] || 'صندوق الوارد';
 
   const listHtml = state.threadsCache.map(t => {
     const last = t.lastMsg;
     const otherName = t.isFromMe ? last.toUserName : last.fromUserName;
-    const otherInitial = initials(otherName);
     const unreadClass = t.unread > 0 ? 'unread' : '';
     const avatarClass = getAvatarGradient(otherName);
+
+    const tagsHtml = (t.tags || []).length > 0 ? `
+      <div class="msg-tags">
+        ${(t.tags || []).slice(0, 3).map(tagId => {
+          const tag = userTags.find(x => x.id === tagId);
+          if (!tag) return '';
+          return `<span class="msg-tag" style="--tag-color: ${tag.color};">${esc(tag.name)}</span>`;
+        }).join('')}
+      </div>
+    ` : '';
 
     return `
       <div class="msg-item ${t.threadId === state.selectedThreadId ? 'active' : ''} ${unreadClass}" data-thread="${t.threadId}">
         <div class="msg-swipe-actions right">
           <button class="swipe-action star" onclick="event.stopPropagation(); swipeStar('${t.threadId}')">
-            <i data-lucide="star" class="w-5 h-5"></i>
-            <span>تمييز</span>
+            <i data-lucide="star" class="w-5 h-5"></i><span>تمييز</span>
           </button>
           <button class="swipe-action delete" onclick="event.stopPropagation(); swipeDelete('${t.threadId}')">
-            <i data-lucide="trash-2" class="w-5 h-5"></i>
-            <span>حذف</span>
+            <i data-lucide="trash-2" class="w-5 h-5"></i><span>حذف</span>
           </button>
         </div>
         <div class="msg-item-inner" onclick="openThread('${t.threadId}')">
-          <div class="msg-avatar ${avatarClass}">${otherInitial}</div>
+          <div class="msg-avatar ${avatarClass}">${initials(otherName)}</div>
           <div class="msg-content">
             <div class="msg-row-1">
               <span class="msg-from">${esc(otherName || '')}</span>
@@ -1323,9 +1309,8 @@ function renderThreadList() {
               ${last.priority === 'urgent' ? '🔴 ' : ''}
               ${esc(t.subject)}
             </div>
-            <div class="msg-preview">
-              ${t.isFromMe ? 'أنت: ' : ''}${esc((last.body || '').slice(0, 60))}
-            </div>
+            <div class="msg-preview">${t.isFromMe ? 'أنت: ' : ''}${esc((last.body || '').slice(0, 60))}</div>
+            ${tagsHtml}
             <div class="msg-meta">
               ${t.messages.length > 1 ? `<span class="msg-thread-count">💬 ${t.messages.length}</span>` : ''}
               ${t.unread ? `<span class="msg-unread-badge">${t.unread}</span>` : ''}
@@ -1344,9 +1329,7 @@ function renderThreadList() {
             <div class="inbox-list-title">${title}</div>
             <div class="inbox-list-meta">${state.threadsCache.length} محادثة${state.searchQuery ? ` · "${esc(state.searchQuery)}"` : ''}</div>
           </div>
-          <button onclick="renderInbox()" class="icon-btn icon-btn-ghost" title="تحديث">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-          </button>
+          <button onclick="renderInbox()" class="icon-btn icon-btn-ghost" title="تحديث"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button>
         </div>
         <div class="inbox-list-body" id="inboxListBody">
           ${listHtml || '<div class="empty-state"><i data-lucide="mail-open"></i><p>لا رسائل</p></div>'}
@@ -1362,74 +1345,39 @@ function renderThreadList() {
   setupSwipeGestures();
 }
 
-/* ═══════════════════════════════════════════════════════
-   SWIPE GESTURES (Mobile)
-   ═══════════════════════════════════════════════════════ */
 function setupSwipeGestures() {
-  if (window.innerWidth >= 768) return; // Desktop only no swipe
+  if (window.innerWidth >= 768) return;
 
   document.querySelectorAll('.msg-item').forEach(item => {
     const inner = item.querySelector('.msg-item-inner');
     if (!inner) return;
 
-    let startX = 0;
-    let currentX = 0;
-    let isDragging = false;
+    let startX = 0, currentX = 0, isDragging = false;
 
-    const onStart = (e) => {
-      startX = e.touches ? e.touches[0].clientX : e.clientX;
-      currentX = 0;
-      isDragging = true;
-      inner.style.transition = 'none';
-    };
-
+    const onStart = (e) => { startX = e.touches ? e.touches[0].clientX : e.clientX; currentX = 0; isDragging = true; inner.style.transition = 'none'; };
     const onMove = (e) => {
       if (!isDragging) return;
       const x = e.touches ? e.touches[0].clientX : e.clientX;
-      currentX = x - startX;
-
-      // Only allow left swipe (RTL: shows actions on right)
-      if (currentX > 0) currentX = 0;
-      if (currentX < -160) currentX = -160;
-
+      currentX = Math.max(-160, Math.min(0, x - startX));
       inner.style.transform = `translateX(${currentX}px)`;
     };
-
     const onEnd = () => {
       if (!isDragging) return;
       isDragging = false;
       inner.style.transition = 'transform 0.2s ease';
-
-      if (currentX < -80) {
-        inner.style.transform = 'translateX(-160px)';
-      } else {
-        inner.style.transform = 'translateX(0)';
-      }
+      inner.style.transform = currentX < -80 ? 'translateX(-160px)' : 'translateX(0)';
     };
 
     inner.addEventListener('touchstart', onStart, { passive: true });
     inner.addEventListener('touchmove', onMove, { passive: true });
     inner.addEventListener('touchend', onEnd);
-
-    // Close on outside touch
-    document.addEventListener('touchstart', (e) => {
-      if (!item.contains(e.target)) {
-        inner.style.transition = 'transform 0.2s ease';
-        inner.style.transform = 'translateX(0)';
-      }
-    }, { passive: true });
   });
 }
 
-window.swipeStar = async (threadId) => {
-  await window.toggleStar(threadId);
-  showToastAdvanced('تم التمييز ⭐', '', { type: 'success', icon: 'star', duration: 1500 });
-};
+window.swipeStar = async (threadId) => { await window.toggleStar(threadId); showToastAdvanced('تم التمييز ⭐', '', { type: 'success', icon: 'star', duration: 1500 }); };
 
 window.swipeDelete = async (threadId) => {
-  const t = state.threadsCache.find(x => x.threadId === threadId);
-  if (!t) return;
-  const ok = await confirmDialog('حذف المحادثة', 'هيتم نقل الرسائل للسلة. متأكد؟');
+  const ok = await confirmDialog('حذف المحادثة', 'متأكد؟');
   if (!ok) return;
   await window.trashThread(threadId, false);
   showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 1500 });
@@ -1461,11 +1409,7 @@ function renderThreadReading() {
   if (!content) return;
 
   if (!t) {
-    content.innerHTML = `
-      <div class="empty-state" style="flex:1;min-height:400px;">
-        <i data-lucide="mail-open"></i>
-        <p>اختر رسالة لعرضها</p>
-      </div>`;
+    content.innerHTML = `<div class="empty-state" style="flex:1;min-height:400px;"><i data-lucide="mail-open"></i><p>اختر رسالة لعرضها</p></div>`;
     icons();
     return;
   }
@@ -1485,6 +1429,40 @@ function renderThreadReading() {
     const senderEmail = m.fromUserUsername ? `${m.fromUserUsername}@${EMAIL_DOMAIN}` : '';
     const dateStr = formatDate(m.createdAt);
     const avatarClass = getAvatarGradient(m.fromUserName);
+
+    const msgTagsHtml = (m.tags || []).length > 0 ? `
+      <div class="msg-tags" style="margin-top:8px;">
+        ${(m.tags || []).map(tagId => {
+          const tag = userTags.find(x => x.id === tagId);
+          if (!tag) return '';
+          return `<span class="msg-tag" style="--tag-color: ${tag.color};">${esc(tag.name)}</span>`;
+        }).join('')}
+      </div>
+    ` : '';
+
+    const attachmentsHtml = (m.attachments || []).length > 0 ? `
+      <div class="message-attachments">
+        <div class="message-attachments-title">📎 ${m.attachments.length} مرفق</div>
+        <div class="message-attachments-grid">
+          ${m.attachments.map(att => {
+            const isImage = (att.type || '').startsWith('image/');
+            const iconName = getFileIconLucide(att.type, att.name);
+            return `
+              <div class="message-attachment" onclick="${isImage ? `openImageViewer('${att.url}')` : `window.open('${att.url}', '_blank')`}">
+                ${isImage
+                  ? `<img src="${att.url}" class="message-attachment-thumb" loading="lazy" />`
+                  : `<div class="message-attachment-thumb-icon"><i data-lucide="${iconName}" class="w-5 h-5"></i></div>`}
+                <div class="message-attachment-info">
+                  <div class="message-attachment-name">${esc(att.name)}</div>
+                  <div class="message-attachment-size">${formatFileSize(att.size || 0)}</div>
+                </div>
+                <i data-lucide="download" class="message-attachment-download w-4 h-4"></i>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    ` : '';
 
     return `
       <div class="email-message">
@@ -1506,7 +1484,11 @@ function renderThreadReading() {
           </div>
         </div>
         ${open ? `
-          <div class="email-message-body">${esc(m.body || '')}</div>
+          <div class="email-message-body">
+            ${esc(m.body || '')}
+            ${msgTagsHtml}
+            ${attachmentsHtml}
+          </div>
         ` : ''}
       </div>
     `;
@@ -1514,20 +1496,18 @@ function renderThreadReading() {
 
   const threadStarred = t.messages.some(m => m.starred);
 
-  // Inline reply box
   const inlineReplyHtml = !isTrash ? `
-    <div class="inline-reply" id="inlineReplyBox">
+    <div class="inline-reply">
       <div class="inline-reply-header" onclick="toggleInlineReply()">
         <i data-lucide="reply" class="w-4 h-4"></i>
         <span>رد سريع على ${esc(replyUserName)}</span>
         <i data-lucide="chevron-down" class="w-4 h-4" style="margin-right:auto;" id="inlineReplyChevron"></i>
       </div>
       <div class="inline-reply-body" id="inlineReplyBody" style="display:none;">
-        <textarea id="inlineReplyText" class="inline-reply-input" placeholder="اكتب ردك هنا..."></textarea>
+        <textarea id="inlineReplyText" class="inline-reply-input" placeholder="اكتب ردك..."></textarea>
         <div class="inline-reply-actions">
           <button onclick="sendInlineReply('${replyUserId}', '${t.threadId}', '${esc(t.subject).replace(/'/g, "\\'")}')" class="btn-send-primary">
-            <i data-lucide="send" class="w-4 h-4"></i>
-            <span>إرسال الرد</span>
+            <i data-lucide="send" class="w-4 h-4"></i><span>إرسال الرد</span>
           </button>
           <button onclick="toggleInlineReply()" class="btn-text">إلغاء</button>
         </div>
@@ -1538,75 +1518,53 @@ function renderThreadReading() {
 
   content.innerHTML = `
     <div class="reading-toolbar">
-      <button onclick="backToList()" class="toolbar-btn" style="display:none;" id="mobileBackBtn">
-        <i data-lucide="arrow-right" class="w-4 h-4"></i>
-      </button>
+      <button onclick="backToList()" class="toolbar-btn" style="display:none;" id="mobileBackBtn"><i data-lucide="arrow-right" class="w-4 h-4"></i></button>
 
       ${!isTrash ? `
-        <button onclick="replyToThread('${replyUserId}', '${esc(replyUserName).replace(/'/g, "\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g, "\\'")}')" class="toolbar-btn primary">
-          <i data-lucide="reply" class="w-4 h-4"></i>
-          <span>رد</span>
-        </button>
-        <button onclick="replyAllToThread('${t.threadId}')" class="toolbar-btn primary">
-          <i data-lucide="reply-all" class="w-4 h-4"></i>
-          <span>رد على الكل</span>
-        </button>
-        <button onclick="toggleStar('${t.threadId}')" class="toolbar-btn ${threadStarred ? 'primary' : ''}">
-          <i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i>
-          <span>${threadStarred ? 'مميزة' : 'تمييز'}</span>
-        </button>
+        <button onclick="replyToThread('${replyUserId}', '${esc(replyUserName).replace(/'/g, "\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g, "\\'")}')" class="toolbar-btn primary"><i data-lucide="reply" class="w-4 h-4"></i><span>رد</span></button>
+        <button onclick="replyAllToThread('${t.threadId}')" class="toolbar-btn primary"><i data-lucide="reply-all" class="w-4 h-4"></i><span>رد على الكل</span></button>
+        <button onclick="toggleStar('${t.threadId}')" class="toolbar-btn ${threadStarred ? 'primary' : ''}"><i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i><span>${threadStarred ? 'مميزة' : 'تمييز'}</span></button>
       ` : ''}
 
       <button onclick="trashThread('${t.threadId}', ${isTrash})" class="toolbar-btn ${isTrash ? 'primary' : 'danger'}">
-        <i data-lucide="${isTrash ? 'rotate-ccw' : 'trash-2'}" class="w-4 h-4"></i>
-        <span>${isTrash ? 'استعادة' : 'حذف'}</span>
+        <i data-lucide="${isTrash ? 'rotate-ccw' : 'trash-2'}" class="w-4 h-4"></i><span>${isTrash ? 'استعادة' : 'حذف'}</span>
       </button>
 
-      ${isTrash ? `
-        <button onclick="permanentDelete('${t.threadId}')" class="toolbar-btn danger">
-          <i data-lucide="x-circle" class="w-4 h-4"></i>
-          <span>حذف نهائي</span>
-        </button>
-      ` : ''}
+      ${isTrash ? `<button onclick="permanentDelete('${t.threadId}')" class="toolbar-btn danger"><i data-lucide="x-circle" class="w-4 h-4"></i><span>حذف نهائي</span></button>` : ''}
 
       <div class="toolbar-spacer"></div>
 
-      <button onclick="toggleAllMsgs()" class="toolbar-btn" title="فتح/طي الكل">
-        <i data-lucide="chevrons-down-up" class="w-4 h-4"></i>
-      </button>
+      <button onclick="toggleAllMsgs()" class="toolbar-btn" title="فتح/طي الكل"><i data-lucide="chevrons-down-up" class="w-4 h-4"></i></button>
     </div>
 
     <div class="reading-body">
       <h1 class="reading-subject">${esc(t.subject)}</h1>
       <div class="reading-meta">
         <span><i data-lucide="message-square" class="w-3 h-3 inline"></i> ${t.messages.length} رسالة</span>
-        <span><i data-lucide="clock" class="w-3 h-3 inline"></i> آخر تحديث ${timeAgo(t.lastMsg.createdAt)}</span>
+        <span><i data-lucide="clock" class="w-3 h-3 inline"></i> ${timeAgo(t.lastMsg.createdAt)}</span>
       </div>
       ${messagesHtml}
       ${inlineReplyHtml}
     </div>
   `;
 
-  // Show mobile back button
   const mobileBackBtn = document.getElementById('mobileBackBtn');
-  if (mobileBackBtn && window.innerWidth < 768) {
-    mobileBackBtn.style.display = 'inline-flex';
-  }
+  if (mobileBackBtn && window.innerWidth < 768) mobileBackBtn.style.display = 'inline-flex';
 
   icons();
 }
 
 window.toggleInlineReply = () => {
   const body = document.getElementById('inlineReplyBody');
-  const chevron = document.getElementById('inlineReplyChevron');
+  const ch = document.getElementById('inlineReplyChevron');
   if (!body) return;
   if (body.style.display === 'none') {
     body.style.display = 'flex';
-    if (chevron) chevron.setAttribute('data-lucide', 'chevron-up');
+    ch?.setAttribute('data-lucide', 'chevron-up');
     setTimeout(() => document.getElementById('inlineReplyText')?.focus(), 100);
   } else {
     body.style.display = 'none';
-    if (chevron) chevron.setAttribute('data-lucide', 'chevron-down');
+    ch?.setAttribute('data-lucide', 'chevron-down');
   }
   icons();
 };
@@ -1614,40 +1572,29 @@ window.toggleInlineReply = () => {
 window.sendInlineReply = async (toUserId, threadId, subject) => {
   const text = document.getElementById('inlineReplyText')?.value.trim();
   const status = document.getElementById('inlineReplyStatus');
-  if (!text) {
-    if (status) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب رد'; }
-    return;
-  }
+  if (!text) { if (status) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب رد'; } return; }
 
   try {
     const toUser = state.allUsersCache.find(u => u.id === toUserId);
     const msgRef = doc(collection(db, 'messages'));
     await setDoc(msgRef, {
       subject: subject.startsWith('رد:') ? subject : 'رد: ' + subject,
-      body: text,
-      priority: 'normal',
+      body: text, priority: 'normal',
       fromUserId: state.currentUser.uid,
       fromUserName: state.currentUser.name,
       fromUserUsername: state.currentUser.username,
-      toUserId,
-      toUserName: toUser?.name || '',
-      read: false,
-      threadId,
+      toUserId, toUserName: toUser?.name || '',
+      read: false, threadId,
       parentId: state._currentThreadLastMsgId,
-      notified: false,
-      starred: false, deleted: false,
+      notified: false, starred: false, deleted: false,
+      attachments: [], tags: [],
       createdAt: serverTimestamp()
     });
 
-    if (status) { status.style.color = 'var(--success)'; status.textContent = '✅ تم إرسال الرد!'; }
-    showToastAdvanced('تم الإرسال ✅', 'الرد اتبعت بنجاح', { type: 'success', icon: 'send', duration: 2000 });
-
-    // Clear + close
+    if (status) { status.style.color = 'var(--success)'; status.textContent = '✅ تم الإرسال!'; }
+    showToastAdvanced('تم الإرسال ✅', '', { type: 'success', icon: 'send', duration: 2000 });
     document.getElementById('inlineReplyText').value = '';
-    setTimeout(() => {
-      toggleInlineReply();
-      renderInbox();
-    }, 800);
+    setTimeout(() => { toggleInlineReply(); renderInbox(); }, 800);
   } catch (e) {
     if (status) { status.style.color = 'var(--danger)'; status.textContent = e.message; }
   }
@@ -1657,7 +1604,6 @@ window.replyAllToThread = async (threadId) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
 
-  // Collect all unique participants
   const participants = new Set();
   t.messages.forEach(m => {
     if (m.fromUserId && m.fromUserId !== state.currentUser.uid) participants.add(m.fromUserId);
@@ -1668,20 +1614,14 @@ window.replyAllToThread = async (threadId) => {
   $('#cThreadId').value = threadId;
   $('#cSubject').value = t.subject.startsWith('رد:') ? t.subject : 'رد: ' + t.subject;
 
-  // Show CC field and put extra participants there
   const ccbccFields = $('#ccbccFields');
   if (ccbccFields) ccbccFields.classList.remove('hidden');
 
-  // Set first participant as primary "To", rest as CC
   const list = Array.from(participants);
   if (list.length > 0) {
     $('#cTo').value = list[0];
-    if (list.length > 1 && $('#cCC')) {
-      // Put first extra in CC (single select limitation)
-      $('#cCC').value = list[1];
-    }
+    if (list.length > 1 && $('#cCC')) $('#cCC').value = list[1];
   }
-
   $('#composeTitle').textContent = 'رد على الكل';
 };
 
@@ -1697,11 +1637,9 @@ window.toggleAllMsgs = () => {
   if (!t) return;
   const lastIdx = t.messages.length - 1;
   let allOpen = true;
-  for (let i = 0; i < lastIdx; i++) {
-    if (!state.expandedMsgs.has(i)) { allOpen = false; break; }
-  }
+  for (let i = 0; i < lastIdx; i++) if (!state.expandedMsgs.has(i)) { allOpen = false; break; }
   if (allOpen) state.expandedMsgs.clear();
-  else { for (let i = 0; i < lastIdx; i++) state.expandedMsgs.add(i); }
+  else for (let i = 0; i < lastIdx; i++) state.expandedMsgs.add(i);
   renderThreadReading();
 };
 
@@ -1713,14 +1651,10 @@ window.backToList = () => {
   renderThreadList();
 };
 
-/* ═══════════════════════════════════════════════════════
-   STAR / TRASH
-   ═══════════════════════════════════════════════════════ */
 window.toggleStar = async (threadId) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
-  const anyStarred = t.messages.some(m => m.starred);
-  const newVal = !anyStarred;
+  const newVal = !t.messages.some(m => m.starred);
   for (const m of t.messages) {
     if (m.toUserId === state.currentUser.uid || m.fromUserId === state.currentUser.uid) {
       await updateDoc(doc(db, 'messages', m.id), { starred: newVal }).catch(() => {});
@@ -1735,10 +1669,7 @@ window.trashThread = async (threadId, isTrash) => {
   if (!t) return;
   const newVal = !isTrash;
   for (const m of t.messages) {
-    await updateDoc(doc(db, 'messages', m.id), {
-      deleted: newVal,
-      deletedAt: newVal ? serverTimestamp() : null
-    }).catch(() => {});
+    await updateDoc(doc(db, 'messages', m.id), { deleted: newVal, deletedAt: newVal ? serverTimestamp() : null }).catch(() => {});
     m.deleted = newVal;
   }
   if (state.currentFilter === 'trash' && !newVal) renderInbox();
@@ -1747,29 +1678,25 @@ window.trashThread = async (threadId, isTrash) => {
 };
 
 window.permanentDelete = async (threadId) => {
-  const ok = await confirmDialog('حذف نهائي', 'هيتم حذف الرسائل نهائيًا. متأكد؟');
+  const ok = await confirmDialog('حذف نهائي', 'متأكد؟');
   if (!ok) return;
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
-  for (const m of t.messages) await deleteDoc(doc(db, 'messages', m.id));
+  for (const m of t.messages) {
+    // Delete attachments from storage first
+    if (m.attachments?.length) {
+      for (const att of m.attachments) {
+        try { await deleteObject(ref(storage, att.path)); } catch (e) {}
+      }
+    }
+    await deleteDoc(doc(db, 'messages', m.id));
+  }
   state.selectedThreadId = null;
   renderInbox();
 };
 
-/* ═══════════════════════════════════════════════════════
-   STARRED & TRASH
-   ═══════════════════════════════════════════════════════ */
-async function renderStarred() {
-  state.currentFilter = 'starred';
-  state.searchQuery = '';
-  await renderInbox();
-}
-
-async function renderTrash() {
-  state.currentFilter = 'trash';
-  state.searchQuery = '';
-  await renderInbox();
-}
+async function renderStarred() { state.currentFilter = 'starred'; state.searchQuery = ''; await renderInbox(); }
+async function renderTrash() { state.currentFilter = 'trash'; state.searchQuery = ''; await renderInbox(); }
 
 /* ═══════════════════════════════════════════════════════
    SENT
@@ -1777,10 +1704,7 @@ async function renderTrash() {
 async function renderSent() {
   const q = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
   const snap = await getDocs(q);
-  const list = snap.docs
-    .map(d => ({ id: d.id, ...d.data() }))
-    .filter(m => !m.deleted)
-    .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => !m.deleted).sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 
   const grouped = {};
   const unique = [];
@@ -1813,10 +1737,7 @@ async function renderSent() {
   $('#pageContent').innerHTML = `
     <div class="dashboard" style="max-width:900px;">
       <div class="page-header" style="padding:0 0 20px;border:none;">
-        <div>
-          <h1 class="dashboard-title">الرسائل المُرسلة</h1>
-          <p class="dashboard-date">${list.length} رسالة</p>
-        </div>
+        <div><h1 class="dashboard-title">الرسائل المُرسلة</h1><p class="dashboard-date">${list.length} رسالة</p></div>
       </div>
       <div class="data-table-wrapper" style="padding:0;">
         ${rows || '<div class="empty-state"><i data-lucide="send"></i><p>لا رسائل مُرسلة</p></div>'}
@@ -1827,30 +1748,26 @@ async function renderSent() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   COMPOSE v8.0 (with CC/BCC + Undo Send)
+   COMPOSE v9.0
    ═══════════════════════════════════════════════════════ */
 window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  const others = state.allUsersCache.filter(u =>
-    u.id !== state.currentUser.uid && u.isActive !== false
-  );
+  const others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
 
-  const userOptions = (includeEmpty = true) => {
-    return (includeEmpty ? '<option value="">— اختر —</option>' : '') + others.map(u => {
+  const userOptions = () =>
+    '<option value="">— اختر —</option>' + others.map(u => {
       const roleTag = u.role === 'owner' ? ' 👑' : u.role === 'admin' ? ' 🛡️' : u.role === 'manager' ? ' 👔' : '';
       const deptName = u.departmentId ? (getDeptById(u.departmentId)?.name || '') : '';
       const deptTag = deptName ? ` · ${deptName}` : '';
       return `<option value="${u.id}">${esc(u.name)}${roleTag} (${esc(u.username)}${deptTag})</option>`;
     }).join('');
-  };
 
   $('#cTo').innerHTML = userOptions();
   if ($('#cCC')) $('#cCC').innerHTML = userOptions();
   if ($('#cBCC')) $('#cBCC').innerHTML = userOptions();
 
-  // Hide CC/BCC by default
   const ccbccFields = $('#ccbccFields');
   if (ccbccFields) ccbccFields.classList.add('hidden');
   const ccbccIcon = $('#ccbccIcon');
@@ -1860,24 +1777,14 @@ window.openCompose = async () => {
   const deptBox = $('#deptBox');
 
   if (isAdmin()) {
-    if (deptSel) {
-      deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d =>
-        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`
-      ).join('');
-    }
+    if (deptSel) deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d => `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`).join('');
     if (deptBox) deptBox.style.display = 'flex';
-    const label = $('#deptSendLabel');
-    if (label) label.textContent = 'إرسال لكل موظفي قسم';
+    const label = $('#deptSendLabel'); if (label) label.textContent = 'إرسال لكل موظفي قسم';
   } else if (isDeptManager()) {
     const myDepts = getMyManagedDepts();
-    if (deptSel) {
-      deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + myDepts.map(d =>
-        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`
-      ).join('');
-    }
+    if (deptSel) deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + myDepts.map(d => `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`).join('');
     if (deptBox) deptBox.style.display = 'flex';
-    const label = $('#deptSendLabel');
-    if (label) label.textContent = 'إرسال لكل فريقي';
+    const label = $('#deptSendLabel'); if (label) label.textContent = 'إرسال لكل فريقي';
   } else {
     if (deptBox) deptBox.style.display = 'none';
   }
@@ -1893,6 +1800,12 @@ window.openCompose = async () => {
   const statusEl = $('#cStatus');
   statusEl.textContent = '';
   statusEl.style.color = '';
+
+  // Reset attachments & tags
+  attachedFiles = [];
+  selectedTags = [];
+  renderAttachments();
+  renderComposeTagsPicker();
 
   document.querySelectorAll('input[name="priority"]').forEach(r => r.checked = r.value === 'normal');
 
@@ -1912,47 +1825,196 @@ window.openCompose = async () => {
 window.closeCompose = () => {
   $('#composeModal').style.display = 'none';
   $('#composeTitle').textContent = 'رسالة جديدة';
+  attachedFiles = [];
+  selectedTags = [];
 };
 
 window.toggleCCBCC = () => {
-  const fields = $('#ccbccFields');
-  const icon = $('#ccbccIcon');
-  if (!fields) return;
-  if (fields.classList.contains('hidden')) {
-    fields.classList.remove('hidden');
-    if (icon) icon.setAttribute('data-lucide', 'chevron-up');
-  } else {
-    fields.classList.add('hidden');
-    if (icon) icon.setAttribute('data-lucide', 'chevron-down');
-  }
+  const f = $('#ccbccFields');
+  const i = $('#ccbccIcon');
+  if (!f) return;
+  f.classList.toggle('hidden');
+  i?.setAttribute('data-lucide', f.classList.contains('hidden') ? 'chevron-down' : 'chevron-up');
   icons();
 };
 
 window.toggleBroadcast = () => {
   const checked = $('#cBroadcast').checked;
-  if (checked) {
-    hide($('#toBox'));
-    hide($('#deptBox'));
-    $('#cDept').checked = false;
-  } else {
-    show($('#toBox'));
-    if (isAdmin() || isDeptManager()) show($('#deptBox'));
-  }
+  if (checked) { hide($('#toBox')); hide($('#deptBox')); $('#cDept').checked = false; }
+  else { show($('#toBox')); if (isAdmin() || isDeptManager()) show($('#deptBox')); }
 };
 
 window.toggleDeptSend = () => {
   const checked = $('#cDept').checked;
-  if (checked) {
-    hide($('#toBox'));
-    hide($('#broadcastBox'));
-    $('#cBroadcast').checked = false;
-  } else {
-    show($('#toBox'));
-  }
+  if (checked) { hide($('#toBox')); hide($('#broadcastBox')); $('#cBroadcast').checked = false; }
+  else { show($('#toBox')); }
 };
 
 /* ═══════════════════════════════════════════════════════
-   SEND with UNDO (5 seconds)
+   TAGS IN COMPOSE
+   ═══════════════════════════════════════════════════════ */
+function renderComposeTagsPicker() {
+  const container = document.getElementById('composeTags');
+  if (!container) return;
+
+  if (userTags.length === 0) {
+    container.innerHTML = '<span class="tags-empty">لا يوجد تصنيفات — <button onclick="openTagsManager()" class="link-btn-sm">أنشئ واحد</button></span>';
+    return;
+  }
+
+  container.innerHTML = userTags.map(tag => `
+    <button type="button" class="tag-chip ${selectedTags.includes(tag.id) ? 'selected' : ''}"
+            style="--tag-color: ${tag.color};"
+            onclick="toggleComposeTag('${tag.id}')">
+      <span class="tag-chip-dot"></span>
+      <span>${esc(tag.name)}</span>
+    </button>
+  `).join('');
+}
+
+window.toggleComposeTag = (tagId) => {
+  if (selectedTags.includes(tagId)) selectedTags = selectedTags.filter(t => t !== tagId);
+  else selectedTags.push(tagId);
+  renderComposeTagsPicker();
+};
+
+/* ═══════════════════════════════════════════════════════
+   FILE UPLOAD
+   ═══════════════════════════════════════════════════════ */
+window.handleFiles = async (event) => {
+  const files = Array.from(event.target.files || []);
+  if (files.length === 0) return;
+
+  const maxSize = 10 * 1024 * 1024; // 10MB
+  const maxFiles = 10;
+
+  for (const file of files) {
+    if (attachedFiles.length >= maxFiles) {
+      showToastAdvanced('تجاوزت الحد الأقصى', `أقصى عدد ${maxFiles} ملفات`, { type: 'warning', icon: 'alert-triangle' });
+      break;
+    }
+    if (file.size > maxSize) {
+      showToastAdvanced('الملف كبير', `${file.name} أكبر من 10MB`, { type: 'error', icon: 'alert-circle' });
+      continue;
+    }
+
+    const fileObj = {
+      id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      progress: 0,
+      status: 'pending',
+      url: null,
+      path: null
+    };
+    attachedFiles.push(fileObj);
+    renderAttachments();
+    uploadFile(fileObj);
+  }
+
+  event.target.value = '';
+};
+
+async function uploadFile(fileObj) {
+  try {
+    fileObj.status = 'uploading';
+    renderAttachments();
+
+    const safeName = fileObj.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `attachments/${state.currentUser.uid}/${Date.now()}_${safeName}`;
+    const storageRef = ref(storage, path);
+
+    const uploadTask = uploadBytesResumable(storageRef, fileObj.file);
+
+    await new Promise((resolve, reject) => {
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          fileObj.progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          updateAttachmentProgress(fileObj.id, fileObj.progress);
+        },
+        reject,
+        resolve
+      );
+    });
+
+    const url = await getDownloadURL(storageRef);
+    fileObj.url = url;
+    fileObj.path = path;
+    fileObj.status = 'done';
+    fileObj.progress = 100;
+    renderAttachments();
+  } catch (e) {
+    console.error('Upload error:', e);
+    fileObj.status = 'error';
+    renderAttachments();
+    showToastAdvanced('فشل الرفع', fileObj.name, { type: 'error', icon: 'alert-circle' });
+  }
+}
+
+function updateAttachmentProgress(fileId, progress) {
+  const bar = document.querySelector(`[data-file-id="${fileId}"] .attachment-progress-bar`);
+  if (bar) bar.style.width = progress + '%';
+}
+
+function renderAttachments() {
+  const section = document.getElementById('attachmentsSection');
+  const list = document.getElementById('attachmentsList');
+  const count = document.getElementById('attachmentsCount');
+
+  if (!section || !list) return;
+
+  if (attachedFiles.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  if (count) count.textContent = attachedFiles.length;
+
+  list.innerHTML = attachedFiles.map(f => {
+    const cat = getFileIcon(f.type, f.name);
+    const iconName = getFileIconLucide(f.type, f.name);
+    const sizeText = f.status === 'uploading' ? `جاري الرفع... ${f.progress}%` : formatFileSize(f.size);
+    return `
+      <div class="attachment-item ${f.status === 'uploading' ? 'uploading' : ''} ${f.status === 'error' ? 'error' : ''}" data-file-id="${f.id}">
+        <div class="attachment-icon ${cat}"><i data-lucide="${iconName}" class="w-4 h-4"></i></div>
+        <div class="attachment-info">
+          <div class="attachment-name">${esc(f.name)}</div>
+          <div class="attachment-size">${sizeText}</div>
+          ${f.status === 'uploading' ? `<div class="attachment-progress"><div class="attachment-progress-bar" style="width: ${f.progress}%;"></div></div>` : ''}
+        </div>
+        <button type="button" class="attachment-remove" onclick="removeAttachment('${f.id}')" title="حذف">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+    `;
+  }).join('');
+  icons();
+}
+
+window.removeAttachment = async (fileId) => {
+  const idx = attachedFiles.findIndex(f => f.id === fileId);
+  if (idx === -1) return;
+  const f = attachedFiles[idx];
+
+  // If uploaded, delete from storage
+  if (f.path) {
+    try { await deleteObject(ref(storage, f.path)); } catch (e) {}
+  }
+
+  attachedFiles.splice(idx, 1);
+  renderAttachments();
+};
+
+window.clearAttachments = () => {
+  attachedFiles = [];
+  renderAttachments();
+};
+
+/* ═══════════════════════════════════════════════════════
+   SEND with Undo + Attachments + Tags
    ═══════════════════════════════════════════════════════ */
 window.sendMessage = async () => {
   const broadcast = isOwner() && $('#cBroadcast').checked;
@@ -1966,22 +2028,23 @@ window.sendMessage = async () => {
   const replyToThread = $('#cThreadId')?.value || null;
   const priority = document.querySelector('input[name="priority"]:checked')?.value || 'normal';
   const status = $('#cStatus');
-  const sendBtn = $('#sendBtn');
 
   status.style.color = '';
   status.textContent = '';
 
-  if (!broadcast && !deptSend && !toUserId) {
-    status.style.color = 'var(--danger)'; status.textContent = 'اختر المستلم'; return;
-  }
-  if (deptSend && !deptId) {
-    status.style.color = 'var(--danger)'; status.textContent = 'اختر القسم'; return;
-  }
-  if (!subject) {
-    status.style.color = 'var(--danger)'; status.textContent = 'اكتب الموضوع'; return;
-  }
+  if (!broadcast && !deptSend && !toUserId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر المستلم'; return; }
+  if (deptSend && !deptId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر القسم'; return; }
+  if (!subject) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب الموضوع'; return; }
 
-  // Prepare email data
+  // Check uploads
+  const uploading = attachedFiles.some(f => f.status === 'uploading');
+  if (uploading) { status.style.color = 'var(--danger)'; status.textContent = 'استنى لحد ما المرفقات ترفع'; return; }
+
+  // Prepare attachments data
+  const attachmentsData = attachedFiles.filter(f => f.status === 'done').map(f => ({
+    name: f.name, size: f.size, type: f.type, url: f.url, path: f.path
+  }));
+
   const emailData = {
     subject, body, priority,
     toUserId: toUserId || null,
@@ -1991,33 +2054,30 @@ window.sendMessage = async () => {
     isBroadcast: broadcast,
     fromUserId: state.currentUser.uid,
     fromUserName: state.currentUser.name,
-    fromUserUsername: state.currentUser.username
+    fromUserUsername: state.currentUser.username,
+    attachments: attachmentsData,
+    tags: selectedTags.slice()
   };
 
-  // Close compose immediately
   closeCompose();
 
-  // Show UNDO toast (5 seconds)
+  // UNDO toast
   const undoToast = document.createElement('div');
   undoToast.className = 'toast toast-warning';
   undoToast.id = 'undoSendToast';
   undoToast.innerHTML = `
-    <div class="toast-icon warning">
-      <i data-lucide="clock" class="w-4 h-4"></i>
-    </div>
+    <div class="toast-icon warning"><i data-lucide="clock" class="w-4 h-4"></i></div>
     <div class="toast-content">
       <div class="toast-title">جاري الإرسال...</div>
-      <div class="toast-body">اضغط "تراجع" لإلغاء الإرسال</div>
+      <div class="toast-body">اضغط "تراجع" لإلغاء</div>
     </div>
     <button class="toast-action" onclick="undoSend()">تراجع</button>
   `;
   document.getElementById('toastContainer').appendChild(undoToast);
   icons();
 
-  // Store for undo
   lastSentData = emailData;
 
-  // Actually send after 5 seconds
   pendingSendTimeout = setTimeout(async () => {
     await performSend(emailData);
     const t = document.getElementById('undoSendToast');
@@ -2030,9 +2090,8 @@ window.undoSend = () => {
     clearTimeout(pendingSendTimeout);
     pendingSendTimeout = null;
     lastSentData = null;
-    const t = document.getElementById('undoSendToast');
-    if (t) t.remove();
-    showToastAdvanced('تم الإلغاء ⏹️', 'الرسالة ملغية', { type: 'info', icon: 'x-circle', duration: 2500 });
+    document.getElementById('undoSendToast')?.remove();
+    showToastAdvanced('تم الإلغاء ⏹️', '', { type: 'info', icon: 'x-circle', duration: 2500 });
   }
 };
 
@@ -2050,14 +2109,14 @@ async function performSend(data) {
           toUserId: u.id, toUserName: u.name,
           read: false, isBroadcast: true,
           threadId: msgRef.id,
-          notified: false,
-          starred: false, deleted: false,
+          notified: false, starred: false, deleted: false,
+          attachments: data.attachments || [],
+          tags: data.tags || [],
           createdAt: serverTimestamp()
         });
       }
-      showToastAdvanced('تم الإرسال ✅', `الرسالة وصلت لـ ${recipients.length} مستخدم`, { type: 'success', icon: 'check-circle', duration: 3500 });
-    }
-    else if (data.deptSend) {
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} مستخدم`, { type: 'success', icon: 'check-circle', duration: 3500 });
+    } else if (data.deptSend) {
       const recipients = getUsersByDept(data.deptId).filter(u => u.id !== state.currentUser.uid);
       for (const u of recipients) {
         const msgRef = doc(collection(db, 'messages'));
@@ -2069,14 +2128,14 @@ async function performSend(data) {
           toUserId: u.id, toUserName: u.name,
           read: false, isBroadcast: false,
           threadId: msgRef.id,
-          notified: false,
-          starred: false, deleted: false,
+          notified: false, starred: false, deleted: false,
+          attachments: data.attachments || [],
+          tags: data.tags || [],
           createdAt: serverTimestamp()
         });
       }
-      showToastAdvanced('تم الإرسال ✅', `الرسالة وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
-    }
-    else {
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
+    } else {
       const toUser = state.allUsersCache.find(u => u.id === data.toUserId);
       const ccUser = data.ccUserId ? state.allUsersCache.find(u => u.id === data.ccUserId) : null;
       const bccUser = data.bccUserId ? state.allUsersCache.find(u => u.id === data.bccUserId) : null;
@@ -2095,21 +2154,21 @@ async function performSend(data) {
         read: false,
         threadId: data.replyToThread || msgRef.id,
         parentId: data.replyToThread ? (state._currentThreadLastMsgId || null) : null,
-        notified: false,
-        starred: false, deleted: false,
+        notified: false, starred: false, deleted: false,
+        attachments: data.attachments || [],
+        tags: data.tags || [],
         createdAt: serverTimestamp()
       });
 
-      showToastAdvanced('تم الإرسال ✅', `الرسالة وصلت لـ ${toUser?.name || ''}`, { type: 'success', icon: 'check-circle', duration: 3000 });
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${toUser?.name || ''}`, { type: 'success', icon: 'check-circle', duration: 3000 });
     }
 
     if (document.getElementById('inboxList')) renderInbox();
   } catch (e) {
     console.error('SEND ERROR:', e);
     showToastAdvanced('خطأ في الإرسال', e.message, {
-      type: 'error',
-      icon: 'alert-circle',
-      actionLabel: 'إعادة المحاولة',
+      type: 'error', icon: 'alert-circle',
+      actionLabel: 'إعادة',
       onAction: () => performSend(data),
       duration: 8000
     });
@@ -2122,29 +2181,21 @@ window.saveDraft = async () => {
   const body = $('#cBody').value.trim();
   const status = $('#cStatus');
 
-  if (!subject && !body) {
-    status.style.color = 'var(--danger)';
-    status.textContent = 'اكتب حاجة الأول';
-    return;
-  }
+  if (!subject && !body) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب حاجة'; return; }
 
   try {
     const draftId = $('#cDraftId').value;
     const draftData = { toUserId: toUserId || null, subject, body, updatedAt: serverTimestamp() };
-    if (draftId) {
-      await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
-    } else {
+    if (draftId) await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
+    else {
       draftData.createdAt = serverTimestamp();
-      const ref = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
-      $('#cDraftId').value = ref.id;
+      const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
+      $('#cDraftId').value = r.id;
     }
-    status.style.color = 'var(--success)';
-    status.textContent = '✅ تم حفظ المسودة';
     showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة', { type: 'success', icon: 'file-text', duration: 2000 });
-    setTimeout(() => { closeCompose(); }, 1000);
+    setTimeout(() => closeCompose(), 1000);
   } catch (e) {
-    status.style.color = 'var(--danger)';
-    status.textContent = 'خطأ: ' + e.message;
+    status.style.color = 'var(--danger)'; status.textContent = e.message;
   }
 };
 
@@ -2161,7 +2212,26 @@ window.replyToThread = async (userId, userName, threadId, subject) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   PROFILE
+   IMAGE VIEWER
+   ═══════════════════════════════════════════════════════ */
+window.openImageViewer = (url) => {
+  const viewer = document.getElementById('imageViewer');
+  const img = document.getElementById('imageViewerImg');
+  if (!viewer || !img) return;
+  img.src = url;
+  viewer.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  icons();
+};
+
+window.closeImageViewer = () => {
+  const viewer = document.getElementById('imageViewer');
+  if (viewer) viewer.style.display = 'none';
+  document.body.style.overflow = '';
+};
+
+/* ═══════════════════════════════════════════════════════
+   PROFILE / SETTINGS
    ═══════════════════════════════════════════════════════ */
 window.openProfile = () => {
   const u = state.currentUser;
@@ -2171,10 +2241,7 @@ window.openProfile = () => {
   $('#profileEmail').value = u.email || '';
   $('#profileRole').value = roleLabels[u.role] || u.role;
   const avatarEl = $('#profileAvatar');
-  if (avatarEl) {
-    avatarEl.textContent = initials(u.name);
-    applyAvatar(avatarEl, u.name);
-  }
+  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
   hideStyle($('#userMenu'));
   show($('#profileModal'));
   icons();
@@ -2185,12 +2252,7 @@ window.closeProfile = () => hide($('#profileModal'));
 window.saveProfile = async () => {
   const name = $('#profileName').value.trim();
   const status = $('#profileStatus');
-  if (!name) {
-    status.className = 'alert alert-error';
-    status.textContent = 'اكتب الاسم';
-    show(status);
-    return;
-  }
+  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
   try {
     await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
     state.currentUser.name = name;
@@ -2200,23 +2262,15 @@ window.saveProfile = async () => {
     showToastAdvanced('تم الحفظ ✅', 'الاسم اتحدّث', { type: 'success', icon: 'check', duration: 2000 });
     setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
   } catch (e) {
-    status.className = 'alert alert-error';
-    status.textContent = e.message;
-    show(status);
+    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
   }
 };
 
-/* ═══════════════════════════════════════════════════════
-   SETTINGS
-   ═══════════════════════════════════════════════════════ */
 window.openSettings = () => {
   hideStyle($('#userMenu'));
   $('#darkModeToggle').checked = state.settings.darkMode;
   const installBtn = $('#installPwaBtn');
-  if (installBtn) {
-    if (deferredPrompt) installBtn.classList.remove('hidden');
-    else installBtn.classList.add('hidden');
-  }
+  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
   show($('#settingsModal'));
   icons();
 };
@@ -2225,8 +2279,8 @@ window.closeSettings = () => hide($('#settingsModal'));
 
 window.toggleDarkMode = () => {
   const isDark = toggleDarkMode();
-  const themeIcon = $('#themeToggle i');
-  if (themeIcon) themeIcon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  const icon = $('#themeToggle i');
+  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
   icons();
 };
 
@@ -2234,30 +2288,18 @@ window.enablePushNotifications = async () => {
   const btn = $('#enablePushBtn');
   btn.disabled = true;
   btn.textContent = '...';
-
   try {
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') {
-      btn.textContent = 'مرفوض';
-      btn.className = 'btn btn-sm btn-danger';
-      return;
-    }
+    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
     const reg = await navigator.serviceWorker.register(SW_PATH);
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if (token) {
-      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), {
-        token, createdAt: serverTimestamp(), userAgent: navigator.userAgent
-      });
+      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
       btn.textContent = '✅ مفعّل';
       btn.className = 'btn btn-sm btn-success';
-    } else {
-      btn.textContent = 'فشل';
-      btn.className = 'btn btn-sm btn-danger';
-    }
+    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
   } catch (e) {
-    console.error(e);
-    btn.textContent = 'خطأ';
-    btn.className = 'btn btn-sm btn-danger';
+    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
   }
 };
 
@@ -2273,13 +2315,9 @@ async function registerFCMToken() {
     const reg = await navigator.serviceWorker.register(SW_PATH);
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if (!token) return;
-    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), {
-      token, createdAt: serverTimestamp(), userAgent: navigator.userAgent
-    });
+    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
     console.log('✅ FCM Token saved');
-  } catch (e) {
-    console.error('FCM error:', e);
-  }
+  } catch (e) { console.error('FCM error:', e); }
 }
 
 if (messaging) {
@@ -2287,35 +2325,21 @@ if (messaging) {
     const { title, body } = payload.notification || {};
     const data = payload.data || {};
     showToastAdvanced(title || 'رسالة جديدة', body || '', {
-      type: 'info',
-      icon: 'mail',
-      duration: 6000,
-      onClick: () => {
-        navigate('inbox');
-        if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300);
-      }
+      type: 'info', icon: 'mail', duration: 6000,
+      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
     });
   });
 }
 
 function setupServiceWorkerMessages() {
   if (!('serviceWorker' in navigator)) return;
-
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data && event.data.type === 'PLAY_SOUND') playNotifSound();
-  });
-
+  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (window.__refreshing) return;
     window.__refreshing = true;
     window.location.reload();
   });
-
-  navigator.serviceWorker.register(SW_PATH).then((reg) => {
-    console.log('✅ PWA Service Worker registered');
-  }).catch((err) => {
-    console.warn('SW registration failed:', err);
-  });
+  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
 }
 
 function startMessagesListener() {
@@ -2329,22 +2353,13 @@ function startMessagesListener() {
     updateNotificationUI();
 
     if (state.lastUnreadCount > 0 && state.unreadMessages.length > state.lastUnreadCount) {
-      const newMsg = state.unreadMessages[0];
-      if (newMsg && newMsg.fromUserId !== state.currentUser.uid) {
-        showToastAdvanced(
-          `رسالة جديدة من ${newMsg.fromUserName}`,
-          newMsg.subject,
-          {
-            type: 'info',
-            icon: 'mail',
-            actionLabel: 'فتح',
-            onAction: () => {
-              navigate('inbox');
-              setTimeout(() => window.openThread(newMsg.threadId || newMsg.id), 300);
-            },
-            duration: 6000
-          }
-        );
+      const m = state.unreadMessages[0];
+      if (m && m.fromUserId !== state.currentUser.uid) {
+        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
+          type: 'info', icon: 'mail', actionLabel: 'فتح',
+          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
+          duration: 6000
+        });
       }
     }
     state.lastUnreadCount = state.unreadMessages.length;
@@ -2362,10 +2377,7 @@ function updateNotificationUI() {
   if (count > 0) {
     if (el) { el.textContent = count; show(el); }
     if (elM) { elM.textContent = count; show(elM); }
-    if (notifBadge) {
-      notifBadge.textContent = count > 9 ? '9+' : count;
-      notifBadge.classList.remove('hidden');
-    }
+    if (notifBadge) { notifBadge.textContent = count > 9 ? '9+' : count; notifBadge.classList.remove('hidden'); }
   } else {
     if (el) hide(el);
     if (elM) hide(elM);
@@ -2379,30 +2391,23 @@ function renderNotifDropdown() {
   if (!list) return;
 
   if (state.unreadMessages.length === 0) {
-    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;">
-      <i data-lucide="bell-off" style="width:40px;height:40px;"></i>
-      <p style="font-size:13px;">لا إشعارات جديدة</p>
-    </div>`;
+    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><i data-lucide="bell-off" style="width:40px;height:40px;"></i><p style="font-size:13px;">لا إشعارات</p></div>`;
     icons();
     return;
   }
 
-  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => {
-    const avatarClass = getAvatarGradient(m.fromUserName);
-    return `
-      <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
-        <div class="msg-avatar ${avatarClass}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
-        <div style="flex:1;min-width:0;">
-          <div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;">
-            <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
-            <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
-          </div>
-          <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
-          <div style="font-size:11.5px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc((m.body || '').slice(0, 60))}</div>
+  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
+    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
+      <div class="msg-avatar ${getAvatarGradient(m.fromUserName)}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
+          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
         </div>
+        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
       </div>
-    `;
-  }).join('');
+    </div>
+  `).join('');
   icons();
 }
 
@@ -2420,4 +2425,4 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-console.log('🚀 Mail System v8.0 loaded (Professional Enterprise)');
+console.log('🚀 Mail System v9.0 loaded - Attachments + Tags + Search');
