@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v4.3 - Utilities & Helpers
-   Soft Notification Sound (Mac/iPhone style)
+   Mail System v4.4 - Utilities & Helpers
+   Sound Disabled
    ═══════════════════════════════════════════════════════════ */
 
 import { auth, db, doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from './firebase.js';
@@ -23,7 +23,7 @@ export const state = {
   searchQuery: '',
   settings: {
     darkMode: false,
-    soundEnabled: true
+    soundEnabled: false
   }
 };
 
@@ -166,8 +166,7 @@ export function toggleDarkMode() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SOUND - Soft Notification (Mac/iPhone style)
-   Cross-platform: PC, Android, iOS
+   SOUND - DISABLED
    ═══════════════════════════════════════════════════════ */
 
 let audioCtx = null;
@@ -188,25 +187,25 @@ function getAudioContext() {
   return audioCtx;
 }
 
+/**
+ * 🔇 الصوت متعطّل حالياً
+ * لتشغيله: امسح السطر `return;` اللي تحت
+ */
 export function playNotifSound() {
+  return; // 🔇 الصوت متعطّل
+
+  // الكود التالي مش هيتنفذ دلوقتي
   if (!state.settings.soundEnabled) return;
 
   try {
     const ctx = getAudioContext();
-    if (!ctx) {
-      playAudioFallback();
-      return;
-    }
+    if (!ctx) return;
 
     const now = ctx.currentTime;
-
-    // 🎵 نغمة ناعمة - Soft Chime (زي Mac/iPhone)
-    // C5 (دافئة) → E5 (هادية)
-playSoftTone(ctx, now, 523.25, 0.55, 0.09);      
-playSoftTone(ctx, now + 0.10, 659.25, 0.65, 0.07); 
+    playSoftTone(ctx, now, 523.25, 0.55, 0.03);
+    playSoftTone(ctx, now + 0.10, 659.25, 0.65, 0.02);
   } catch (e) {
     console.warn('Web Audio error:', e);
-    playAudioFallback();
   }
 }
 
@@ -214,11 +213,9 @@ function playSoftTone(ctx, startTime, freq, duration, volume) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
-  // sine = الصوت الأنعم والأهدى
   osc.type = 'sine';
   osc.frequency.value = freq;
 
-  // Envelope ناعم جداً
   gain.gain.setValueAtTime(0, startTime);
   gain.gain.linearRampToValueAtTime(volume, startTime + 0.03);
   gain.gain.setValueAtTime(volume, startTime + duration * 0.4);
@@ -229,16 +226,6 @@ function playSoftTone(ctx, startTime, freq, duration, volume) {
 
   osc.start(startTime);
   osc.stop(startTime + duration + 0.05);
-}
-
-function playAudioFallback() {
-  try {
-    const audio = document.getElementById('notifSound');
-    if (!audio) return;
-    audio.currentTime = 0;
-    audio.volume = 0.3;
-    audio.play().catch(e => console.warn('Sound blocked:', e));
-  } catch (e) {}
 }
 
 export function toggleSound() {
@@ -252,10 +239,8 @@ export function toggleSound() {
 }
 
 export function loadSoundSetting() {
-  try {
-    const saved = localStorage.getItem('soundEnabled');
-    if (saved === '0') state.settings.soundEnabled = false;
-  } catch (e) {}
+  // الصوت متعطّل — مش محتاجين نعمل أي حاجة
+  state.settings.soundEnabled = false;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -291,7 +276,8 @@ export function confirmDialog(title, message) {
 /* ═══════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════ */
-export function showToast(title, body, onClick, playSound = true) {
+export function showToast(title, body, onClick, playSound = false) {
+  // playSound بقت false افتراضيًا — مش بنشغل صوت
   if (playSound) playNotifSound();
 
   const container = document.getElementById('toastContainer');
@@ -492,39 +478,11 @@ export function getAvatarColor(name) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   UNLOCK AUDIO (First interaction)
+   UNLOCK AUDIO - DISABLED
    ═══════════════════════════════════════════════════════ */
 export function unlockAudioOnFirstClick() {
-  const unlock = () => {
-    try {
-      const ctx = getAudioContext();
-      if (ctx) {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        gain.gain.value = 0;
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.01);
-      }
-    } catch (e) {}
-
-    const audio = document.getElementById('notifSound');
-    if (audio) {
-      audio.play().then(() => {
-        audio.pause();
-        audio.currentTime = 0;
-      }).catch(() => {});
-    }
-
-    document.removeEventListener('click', unlock);
-    document.removeEventListener('touchstart', unlock);
-    document.removeEventListener('keydown', unlock);
-  };
-
-  document.addEventListener('click', unlock, { once: true });
-  document.addEventListener('touchstart', unlock, { once: true });
-  document.addEventListener('keydown', unlock, { once: true });
+  // 🔇 الصوت متعطّل — مش محتاجين نفتح AudioContext
+  return;
 }
 
-console.log('🛠️ Utils v4.3 loaded - Soft Sound');
+console.log('🛠️ Utils v4.4 loaded - Sound Disabled 🔇');
