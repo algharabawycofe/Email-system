@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v4.2 - Main Application
-   Supports: Owner, Admin, Dept Manager, User
+   Mail System v5.0 - Main Application
+   Features: PWA Support + Dept Manager + Full Mail System
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -29,6 +29,11 @@ import {
 } from './utils.js';
 
 /* ═══════════════════════════════════════════════════════
+   PWA STATE
+   ═══════════════════════════════════════════════════════ */
+let deferredPrompt = null;
+
+/* ═══════════════════════════════════════════════════════
    INIT
    ═══════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
@@ -38,6 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupLoginUI();
   setupGlobalListeners();
   setupServiceWorkerMessages();
+  setupPWAHandlers();
   icons();
 
   const lastUser = loadLastUser();
@@ -50,6 +56,73 @@ document.addEventListener('DOMContentLoaded', () => {
 
   checkAuthState();
 });
+
+/* ═══════════════════════════════════════════════════════
+   PWA HANDLERS
+   ═══════════════════════════════════════════════════════ */
+function setupPWAHandlers() {
+  // Capture install prompt
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredPrompt = e;
+    console.log('📱 PWA Install prompt captured');
+
+    // Show install button
+    const installBtn = document.getElementById('installPwaBtn');
+    if (installBtn) installBtn.classList.remove('hidden');
+  });
+
+  // App installed
+  window.addEventListener('appinstalled', () => {
+    console.log('✅ PWA Installed');
+    deferredPrompt = null;
+    const installBtn = document.getElementById('installPwaBtn');
+    if (installBtn) installBtn.classList.add('hidden');
+    showToast('تم التثبيت 🎉', 'التطبيق مثبّت على جهازك', null, false);
+  });
+
+  // Detect if already installed (standalone mode)
+  if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+    console.log('📱 Running as PWA');
+    document.body.classList.add('pwa-mode');
+  }
+
+  // Handle URL parameters (shortcuts)
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('action') === 'compose') {
+    setTimeout(() => {
+      if (state.currentUser) openCompose();
+    }, 2000);
+    // Clear URL
+    window.history.replaceState({}, '', '/Email-system/');
+  } else if (params.get('page') === 'inbox') {
+    setTimeout(() => {
+      if (state.currentUser) navigate('inbox');
+    }, 1500);
+    window.history.replaceState({}, '', '/Email-system/');
+  }
+}
+
+window.installPWA = async () => {
+  if (!deferredPrompt) {
+    showToast('التثبيت غير متاح', 'استخدم قائمة المتصفح للإضافة للشاشة الرئيسية', null, false);
+    return;
+  }
+
+  deferredPrompt.prompt();
+  const { outcome } = await deferredPrompt.userChoice;
+  console.log('📱 Install outcome:', outcome);
+
+  if (outcome === 'accepted') {
+    console.log('✅ User accepted install');
+  } else {
+    console.log('❌ User dismissed install');
+  }
+
+  deferredPrompt = null;
+  const installBtn = document.getElementById('installPwaBtn');
+  if (installBtn) installBtn.classList.add('hidden');
+};
 
 /* ═══════════════════════════════════════════════════════
    LOGIN UI
@@ -213,11 +286,9 @@ function checkAuthState() {
 
     saveSession(state.currentUser);
 
-    // Load caches first
     await loadUsersCache();
     await loadDepartmentsCache();
 
-    // UI
     updateUIForRole();
 
     hide($('#loginScreen'));
@@ -247,14 +318,12 @@ function updateUIForRole() {
   if (menuName) menuName.textContent = state.currentUser.name;
   if (menuEmail) menuEmail.textContent = state.currentUser.email || '';
 
-  // Admin-only
   const admin = isAdmin();
   $$('[data-admin-only]').forEach(el => {
     if (admin) el.classList.remove('hidden');
     else el.classList.add('hidden');
   });
 
-  // Manager-only (admin OR dept manager)
   const manager = isManagerOrAbove();
   $$('[data-manager-only]').forEach(el => {
     if (manager) el.classList.remove('hidden');
@@ -462,7 +531,6 @@ async function renderDashboard() {
   const today = todayArabic();
   const content = $('#pageContent');
 
-  // Admin Dashboard
   if (admin) {
     const [usersSnap, deptSnap] = await Promise.all([
       getDocs(collection(db, 'users')),
@@ -494,9 +562,7 @@ async function renderDashboard() {
         </div>
       </div>
     `;
-  }
-  // Dept Manager Dashboard
-  else if (manager) {
+  } else if (manager) {
     const myDepts = getMyManagedDepts();
     const team = getMyTeamMembers();
     const unreadCount = state.unreadMessages.length;
@@ -546,9 +612,7 @@ async function renderDashboard() {
         </div>
       </div>
     `;
-  }
-  // Regular User Dashboard
-  else {
+  } else {
     const snap = await getDocs(query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid)));
     const myDept = state.currentUser.departmentId ? getDeptById(state.currentUser.departmentId) : null;
 
@@ -595,7 +659,7 @@ function quickAction(icon, label, action) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   MY TEAM (Dept Manager)
+   MY TEAM
    ═══════════════════════════════════════════════════════ */
 async function renderMyTeam() {
   await loadUsersCache();
@@ -604,7 +668,6 @@ async function renderMyTeam() {
   const myDepts = getMyManagedDepts();
   const team = getMyTeamMembers();
 
-  // Group team by dept
   const byDept = {};
   myDepts.forEach(d => byDept[d.id] = []);
   team.forEach(u => {
@@ -1015,7 +1078,6 @@ async function renderDepartments() {
     </div>
   `;
 
-  // Fill manager select
   const managerOpts = state.allUsersCache
     .filter(u => u.isActive !== false)
     .map(u => `<option value="${u.id}">${esc(u.name)} (@${esc(u.username)})</option>`)
@@ -1516,16 +1578,12 @@ window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  // Individual recipients (filter by role)
   let others = [];
   if (isAdmin()) {
-    // Admin: everyone
     others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
   } else if (isDeptManager()) {
-    // Dept manager: only their team
     others = getMyTeamMembers();
   } else {
-    // Regular user: everyone
     others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
   }
 
@@ -1533,12 +1591,10 @@ window.openCompose = async () => {
     `<option value="${u.id}">${esc(u.name)} (${esc(u.username)})</option>`
   ).join('');
 
-  // Dept select
   const deptSel = $('#deptSelect');
   const deptBox = $('#deptBox');
 
   if (isAdmin()) {
-    // Admin sees all departments
     if (deptSel) {
       deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d =>
         `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length} مستخدم)</option>`
@@ -1548,7 +1604,6 @@ window.openCompose = async () => {
     const label = $('#deptSendLabel');
     if (label) label.textContent = 'إرسال لكل موظفي قسم';
   } else if (isDeptManager()) {
-    // Dept manager sees only their departments
     const myDepts = getMyManagedDepts();
     if (deptSel) {
       deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + myDepts.map(d =>
@@ -1641,7 +1696,6 @@ window.sendMessage = async () => {
     status.className = 'text-xs text-red-600'; status.textContent = 'اكتب الموضوع'; return;
   }
 
-  // Verify manager has permission
   if (deptSend && !isAdmin() && !isManagerOfDept(deptId)) {
     status.className = 'text-xs text-red-600'; status.textContent = 'مش مسموحلك تبعت لهذا القسم'; return;
   }
@@ -1825,7 +1879,14 @@ window.saveProfile = async () => {
 window.openSettings = () => {
   hideStyle($('#userMenu'));
   $('#darkModeToggle').checked = state.settings.darkMode;
-  $('#soundToggle').checked = state.settings.soundEnabled;
+
+  // Check PWA install availability
+  const installBtn = $('#installPwaBtn');
+  if (installBtn) {
+    if (deferredPrompt) installBtn.classList.remove('hidden');
+    else installBtn.classList.add('hidden');
+  }
+
   show($('#settingsModal'));
   icons();
 };
@@ -1837,10 +1898,6 @@ window.toggleDarkMode = () => {
   const themeIcon = $('#themeToggle i');
   if (themeIcon) themeIcon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
   icons();
-};
-
-window.toggleSound = () => {
-  toggleSound();
 };
 
 window.enablePushNotifications = async () => {
@@ -1912,22 +1969,46 @@ if (messaging) {
   onMessage(messaging, (payload) => {
     const { title, body } = payload.notification || {};
     const data = payload.data || {};
-    playNotifSound();
     showToast(title || 'رسالة جديدة', body || '', () => {
       navigate('inbox');
       if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300);
-    });
+    }, false);
   });
 }
 
 function setupServiceWorkerMessages() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      if (event.data && event.data.type === 'PLAY_SOUND') {
-        playNotifSound();
-      }
+  if (!('serviceWorker' in navigator)) return;
+
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'PLAY_SOUND') {
+      playNotifSound();
+    }
+  });
+
+  // ✅ PWA: Detect new SW + reload
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (window.__refreshing) return;
+    window.__refreshing = true;
+    window.location.reload();
+  });
+
+  // ✅ PWA: Register SW
+  navigator.serviceWorker.register(SW_PATH).then((reg) => {
+    console.log('✅ PWA Service Worker registered');
+
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+
+      newWorker.addEventListener('statechange', () => {
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+          console.log('🔄 New version available — will update on next visit');
+        }
+      });
     });
-  }
+  }).catch((err) => {
+    console.warn('SW registration failed:', err);
+  });
 }
 
 function startMessagesListener() {
@@ -1946,7 +2027,7 @@ function startMessagesListener() {
         showToast(`رسالة جديدة من ${newMsg.fromUserName}`, newMsg.subject, () => {
           navigate('inbox');
           setTimeout(() => window.openThread(newMsg.threadId || newMsg.id), 300);
-        });
+        }, false);
       }
     }
     state.lastUnreadCount = state.unreadMessages.length;
@@ -2019,4 +2100,4 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-console.log('🚀 Mail System v4.2 loaded');
+console.log('🚀 Mail System v5.0 loaded (PWA)');
