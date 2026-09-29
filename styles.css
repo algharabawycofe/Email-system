@@ -672,3 +672,99 @@ body.dark .star-btn:hover { background: #334155; }
   padding: 0.125rem 0.375rem;
   border-radius: 0.25rem;
 }
+/* ═══════════════════════════════════════════════════════════
+   iOS Performance Optimizations (v5.1)
+   ═══════════════════════════════════════════════════════════ */
+
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: none;
+}
+
+/* منع الـ zoom عند input focus على iOS */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* تحسين أداء الـ scroll */
+.app-main,
+#pageContent,
+.inbox-list > div:last-child,
+.overflow-y-auto {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* منع اهتزاز الـ fixed elements */
+.app-header,
+.mobile-nav,
+.notif-dropdown,
+.user-menu {
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* تخفيف الـ transitions على iOS */
+@media (max-width: 768px) {
+  * {
+    animation-duration: 0.15s !important;
+    transition-duration: 0.15s !important;
+  }
+  
+  .fade-in {
+    animation: none !important;
+  }
+  
+  .msg-item:hover,
+  .nav-btn:hover,
+  .btn-primary:hover,
+  .btn-secondary:hover {
+    background: inherit !important;
+  }
+}
+
+/* تحسين الـ modal على iOS */
+.modal-fullscreen,
+.modal-overlay {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Safe Area for iPhone notch */
+@supports (padding: env(safe-area-inset-top)) {
+  .app-header {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+  }
+  
+  .mobile-nav {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  
+  .app-main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* تقليل blur */
+.backdrop-blur,
+.backdrop-blur-sm {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Dark mode scrollbar */
+body.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
