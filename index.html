@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-<title>Mail System - نظام الرسائل</title>
+<title>Mail System</title>
 <meta name="description" content="نظام الرسائل الداخلي - إرسال واستقبال الرسائل والإشعارات" />
 <meta name="theme-color" content="#0078D4" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -15,7 +15,6 @@
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E" />
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E" />
 
-<!-- Preconnect for speed -->
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -102,7 +101,7 @@
 </div>
 
 <!-- APP -->
-<div id="app" class="hidden min-h-screen flex flex-col">
+<div id="app" class="hidden h-screen flex flex-col">
 
   <header class="app-header">
     <button id="toggleSidebar" class="icon-btn" title="إظهار/إخفاء القائمة">
@@ -216,7 +215,7 @@
       </nav>
 
       <div class="p-3 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-400 text-center">
-        Mail System v5.1
+        Mail System v5.2
       </div>
     </aside>
 
@@ -242,7 +241,7 @@
     </nav>
 
     <main id="mainContent" class="app-main">
-      <div id="pageContent" class="h-full overflow-y-auto"></div>
+      <div id="pageContent"></div>
     </main>
   </div>
 </div>
@@ -328,7 +327,7 @@
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto">
+    <div class="flex-1">
       <textarea id="cBody" placeholder="اكتب رسالتك هنا..." class="compose-textarea"></textarea>
     </div>
 
