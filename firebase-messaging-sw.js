@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System Service Worker v6.1
-   FCM Push + PWA Offline Cache (Safe Mode)
+   Mail System Service Worker v7.0
+   FCM Push + PWA Cache (Network-first for HTML/JS/CSS)
    ═══════════════════════════════════════════════════════════ */
 
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
@@ -19,41 +19,21 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 /* ═══════════════════════════════════════════════════════
-   PWA - Cache Configuration
+   CACHE CONFIG
    ═══════════════════════════════════════════════════════ */
-const CACHE_NAME = 'mail-system-v6.1';
+const CACHE_NAME = 'mail-system-v7.0';
 const BASE = '/Email-system/';
-
-const PRECACHE_URLS = [
-  BASE,
-  BASE + 'index.html',
-  BASE + 'styles.css',
-  BASE + 'app.js',
-  BASE + 'utils.js',
-  BASE + 'firebase.js',
-  BASE + 'manifest.json'
-];
 
 /* ───── Install ───── */
 self.addEventListener('install', (event) => {
-  console.log('📦 SW Install');
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return Promise.all(
-        PRECACHE_URLS.map(url =>
-          cache.add(url).catch(err => {
-            console.warn('⚠️ Failed to cache:', url, err.message);
-          })
-        )
-      );
-    }).catch(err => console.error('Cache open error:', err))
-  );
+  console.log('📦 SW Install v7.0');
+  // ⭐ مهم: فعّل الـ SW الجديد فوراً
   self.skipWaiting();
 });
 
 /* ───── Activate ───── */
 self.addEventListener('activate', (event) => {
-  console.log('✅ SW Activate');
+  console.log('✅ SW Activate v7.0');
   event.waitUntil(
     caches.keys().then((names) => {
       return Promise.all(
@@ -64,52 +44,45 @@ self.addEventListener('activate', (event) => {
       );
     })
   );
+  // ⭐ مهم: سيطر على كل الصفحات المفتوحة حالاً
   self.clients.claim();
 });
 
-/* ───── Fetch ───── */
+/* ───── Fetch - NETWORK FIRST for HTML/JS/CSS ───── */
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  if (event.request.method !== 'GET') return;
-
+  // تجاهل طلبات Firebase
   if (
     url.hostname.includes('firebase') ||
     url.hostname.includes('googleapis') ||
     url.hostname.includes('gstatic.com') ||
-    url.hostname.includes('firestore') ||
     url.pathname.startsWith('/v1/')
   ) {
     return;
   }
 
+  // تجاهل الطلبات الخارجية
   if (url.hostname !== location.hostname) return;
 
-  if (event.request.mode === 'navigate') {
-    event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const clone = response.clone();
-            caches.open(CACHE_NAME).then(c => c.put(event.request, clone)).catch(() => {});
-          }
-          return response;
-        })
-        .catch(() => caches.match(event.request).then(r => r || caches.match(BASE)))
-    );
-    return;
-  }
-
+  // ⭐ استراتيجية Network-First لكل الملفات المحلية
+  // (HTML, JS, CSS) — دايماً تجيب النسخة الجديدة
   event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200) return response;
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(c => c.put(event.request, clone)).catch(() => {});
+    fetch(event.request)
+      .then((response) => {
+        // خزّن النسخة الجديدة في الكاش
+        if (response && response.status === 200) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, clone)).catch(() => {});
+        }
         return response;
-      }).catch(() => cached);
-    })
+      })
+      .catch(() => {
+        // لو الشبكة فشلت، ارجع للكاش
+        return caches.match(event.request).then(cached => {
+          return cached || caches.match(BASE);
+        });
+      })
   );
 });
 
@@ -156,4 +129,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('🚀 SW v6.1 loaded');
+console.log('🚀 SW v7.0 loaded — Network-first strategy');
