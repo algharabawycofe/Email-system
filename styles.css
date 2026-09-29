@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v5.3 - Styles
-   iOS Optimized + Mobile Scroll Fixed
+   Mail System v5.4 - Styles
+   Complete Scroll Fix for All Devices
    ═══════════════════════════════════════════════════════════ */
 
 * {
@@ -9,17 +9,19 @@
 }
 
 /* ═══════════════════════════════════════════════════════
-   GLOBAL - HEIGHT & SCROLL FIX
+   BASE
    ═══════════════════════════════════════════════════════ */
-html, body {
+html {
   height: 100%;
-  overflow: hidden;
-  margin: 0;
-  padding: 0;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
-  -webkit-overflow-scrolling: touch;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
   overscroll-behavior-y: none;
 }
 
@@ -83,23 +85,26 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 }
 
 /* ═══════════════════════════════════════════════════════
-   APP CONTAINER - PRIMARY FIX
+   APP LAYOUT
    ═══════════════════════════════════════════════════════ */
 #app {
   height: 100vh;
-  height: 100dvh;
-  height: -webkit-fill-available;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  max-height: 100vh;
-  max-height: 100dvh;
+  overflow: hidden;
 }
 
-#app > div.flex.flex-1 {
-  flex: 1;
-  overflow: hidden;
+@supports (height: 100dvh) {
+  #app {
+    height: 100dvh;
+  }
+}
+
+/* الـ middle container (sidebar + main) */
+#app > .flex.flex-1 {
+  flex: 1 1 0%;
   min-height: 0;
+  overflow: hidden;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -167,12 +172,15 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   left: 0;
   margin-top: 0.5rem;
   width: 20rem;
+  max-height: 70vh;
   background: white;
   border-radius: 0.5rem;
   box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
   border: 1px solid #e2e8f0;
   overflow: hidden;
   z-index: 50;
+  display: flex;
+  flex-direction: column;
 }
 @media (min-width: 768px) {
   .notif-dropdown { width: 24rem; }
@@ -185,6 +193,7 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 
 .user-avatar {
@@ -335,10 +344,12 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   bottom: 0;
   left: 0;
   right: 0;
+  height: 60px;
   background: white;
   border-top: 1px solid #e2e8f0;
   display: flex;
-  z-index: 30;
+  z-index: 40;
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 .mnav-btn {
@@ -346,7 +357,8 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 0.5rem 0;
+  justify-content: center;
+  padding: 0.25rem 0;
   color: #64748b;
   font-size: 10px;
   gap: 0.125rem;
@@ -387,25 +399,26 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 }
 
 /* ═══════════════════════════════════════════════════════
-   MAIN CONTENT + SCROLL
+   MAIN CONTENT - ⭐ SCROLL FIX
    ═══════════════════════════════════════════════════════ */
 .app-main {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
   background: white;
-  min-height: 0;
-  min-width: 0;
 }
 
 #pageContent {
-  flex: 1;
+  flex: 1 1 0%;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  min-height: 0;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  position: relative;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -546,8 +559,6 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   outline: none;
   font-family: 'Cairo', 'Segoe UI', sans-serif;
   background: transparent;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
 }
 
 .compose-footer {
@@ -616,24 +627,13 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 }
 
 /* ═══════════════════════════════════════════════════════
-   INBOX LAYOUT + SCROLL
+   INBOX LAYOUT
    ═══════════════════════════════════════════════════════ */
 #inboxContainer {
   display: flex;
   height: 100%;
   overflow: hidden;
   min-height: 0;
-}
-
-.inbox-reading { display: none; }
-@media (min-width: 768px) {
-  .inbox-reading { display: flex; }
-  .inbox-list { display: flex; }
-}
-@media (max-width: 767px) {
-  .inbox-list { display: flex; }
-  .inbox-list.mobile-hidden { display: none !important; }
-  .inbox-reading.mobile-show { display: flex !important; }
 }
 
 .inbox-list {
@@ -644,6 +644,8 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   min-height: 0;
   border-left: 1px solid #e2e8f0;
   background: white;
+  width: 24rem;
+  flex-shrink: 0;
 }
 
 .inbox-list > .flex-1 {
@@ -656,7 +658,7 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 }
 
 .inbox-reading {
-  flex: 1;
+  flex: 1 1 0%;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
@@ -664,6 +666,19 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   background: white;
+  display: flex;
+  flex-direction: column;
+}
+
+@media (min-width: 768px) {
+  .inbox-reading { display: flex; }
+  .inbox-list { display: flex; width: 24rem; }
+}
+@media (max-width: 767px) {
+  .inbox-list { display: flex; width: 100%; }
+  .inbox-reading { display: none; }
+  .inbox-list.mobile-hidden { display: none !important; }
+  .inbox-reading.mobile-show { display: flex !important; }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -675,19 +690,6 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 /* ═══════════════════════════════════════════════════════
    STAR / PRIORITY
    ═══════════════════════════════════════════════════════ */
-.star-btn {
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0.25rem;
-  border-radius: 0.25rem;
-  transition: background 0.1s;
-  color: #94a3b8;
-}
-.star-btn:hover { background: #f1f5f9; color: #f59e0b; }
-.star-btn.starred { color: #f59e0b; }
-body.dark .star-btn:hover { background: #334155; }
-
 .priority-urgent {
   display: inline-flex;
   align-items: center;
@@ -700,17 +702,11 @@ body.dark .star-btn:hover { background: #334155; }
   border-radius: 0.25rem;
 }
 
-/* ═══════════════════════════════════════════════════════
-   TABLES OVERFLOW
-   ═══════════════════════════════════════════════════════ */
 .overflow-x-auto {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* ═══════════════════════════════════════════════════════
-   UNIVERSAL SCROLL CLASS
-   ═══════════════════════════════════════════════════════ */
 .overflow-y-auto {
   overflow-y: auto;
   min-height: 0;
@@ -730,8 +726,6 @@ body.dark .bg-white { background: #1e293b !important; }
 body.dark .bg-slate-50 { background: #0f172a !important; }
 body.dark .bg-slate-100 { background: #334155 !important; }
 body.dark .bg-slate-200 { background: #475569 !important; }
-body.dark .bg-\[\#f3f2f1\] { background: #0f172a !important; }
-body.dark .bg-\[\#faf9f8\] { background: #0f172a !important; }
 
 body.dark .text-slate-800 { color: #f1f5f9 !important; }
 body.dark .text-slate-700 { color: #e2e8f0 !important; }
@@ -748,28 +742,17 @@ body.dark .input-field {
   border-color: #475569;
   color: #f1f5f9;
 }
-body.dark .input-field:focus { box-shadow: 0 0 0 2px #0078D4; }
 
-body.dark .app-sidebar {
-  background: #1e293b;
-  border-color: #334155;
-}
+body.dark .app-sidebar { background: #1e293b; border-color: #334155; }
 body.dark .nav-btn { color: #cbd5e1; }
 body.dark .nav-btn:hover { background: #334155; }
-body.dark .nav-btn.active {
-  background: #1e3a5f;
-  color: #60a5fa;
-  border-right-color: #60a5fa;
-}
+body.dark .nav-btn.active { background: #1e3a5f; color: #60a5fa; border-right-color: #60a5fa; }
 
 body.dark .msg-item { border-bottom-color: #334155; }
 body.dark .msg-item:hover { background: #334155; }
 body.dark .msg-item.active { background: #1e3a5f; }
 
-body.dark .mobile-nav {
-  background: #1e293b;
-  border-color: #334155;
-}
+body.dark .mobile-nav { background: #1e293b; border-color: #334155; }
 
 body.dark .compose-window { background: #1e293b; }
 body.dark .compose-ribbon { background: #0f172a; border-color: #334155; }
@@ -783,7 +766,6 @@ body.dark .app-main { background: #0f172a; }
 body.dark #pageContent { background: #0f172a; }
 
 body.dark .email-card { background: #1e293b; border-color: #334155; }
-body.dark .email-card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.5); }
 
 body.dark .notif-dropdown { background: #1e293b; border-color: #334155; }
 body.dark .notif-dropdown-header { background: #0f172a; border-color: #334155; }
@@ -811,122 +793,63 @@ body.dark td, body.dark th { border-color: #334155 !important; }
 body.dark .inbox-list { background: #1e293b; border-color: #334155; }
 body.dark .inbox-reading { background: #1e293b; }
 
-body.dark .bg-blue-50 { background: rgba(59, 130, 246, 0.1) !important; }
-body.dark .bg-green-50 { background: rgba(34, 197, 94, 0.1) !important; }
-body.dark .bg-orange-50 { background: rgba(249, 115, 22, 0.1) !important; }
-body.dark .bg-purple-50 { background: rgba(168, 85, 247, 0.1) !important; }
-body.dark .bg-red-50 { background: rgba(239, 68, 68, 0.1) !important; }
-body.dark .bg-amber-50 { background: rgba(245, 158, 11, 0.1) !important; }
-body.dark .bg-amber-100 { background: rgba(245, 158, 11, 0.2) !important; }
-body.dark .bg-red-100 { background: rgba(239, 68, 68, 0.2) !important; }
-body.dark .bg-green-100 { background: rgba(34, 197, 94, 0.2) !important; }
-
 /* ═══════════════════════════════════════════════════════
-   iOS OPTIMIZATIONS
+   MOBILE SPECIFIC - SCROLL FIX ⭐
    ═══════════════════════════════════════════════════════ */
-@media screen and (max-width: 768px) {
-  input, select, textarea {
-    font-size: 16px !important;
+@media (max-width: 767px) {
+  /* نخفي الـ sidebar */
+  .app-sidebar {
+    display: none !important;
   }
-}
 
-@media (max-width: 768px) {
+  /* الـ main يأخذ كل المساحة */
+  .app-main {
+    flex: 1 1 0%;
+    padding-bottom: 60px; /* مساحة للـ mobile nav */
+  }
+
+  /* الـ page content يسكرول */
+  #pageContent {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    overscroll-behavior: contain;
+  }
+
+  /* الجداول تسكرول أفقي */
+  .overflow-x-auto {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* تخفيف animations */
   * {
     animation-duration: 0.15s !important;
     transition-duration: 0.15s !important;
   }
 
-  .fade-in {
-    animation: none !important;
-  }
-
-  .msg-item:hover,
-  .nav-btn:hover,
-  .btn-primary:hover,
-  .btn-secondary:hover {
-    background: inherit !important;
-  }
+  .fade-in { animation: none !important; }
 }
 
-/* Safe Area for iPhone notch */
+/* iPhone Notch */
 @supports (padding: env(safe-area-inset-top)) {
   .app-header {
-    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-top: max(0, env(safe-area-inset-top));
   }
-
   .mobile-nav {
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   REDUCED MOTION
-   ═══════════════════════════════════════════════════════ */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
 
 /* ═══════════════════════════════════════════════════════
-   ⭐ MOBILE SCROLL FIX v5.3 - الحل النهائي
-   ═══════════════════════════════════════════════════════ */
-
-/* على الموبايل: نثبّت body ونخلي #app يأخذ كامل الشاشة */
-@media (max-width: 768px) {
-  html, body {
-    position: fixed;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-    top: 0;
-    left: 0;
-  }
-
-  #app {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    height: auto;
-    max-height: none;
-  }
-
-  /* ✅ نجبر السكرول يشتغل على الموبايل */
-  #pageContent {
-    -webkit-overflow-scrolling: touch !important;
-    overflow-y: scroll !important;
-    touch-action: pan-y !important;
-  }
-
-  .inbox-list > .flex-1,
-  .inbox-reading,
-  .compose-window > .flex-1,
-  .app-sidebar,
-  .overflow-y-auto {
-    -webkit-overflow-scrolling: touch !important;
-    overflow-y: scroll !important;
-    touch-action: pan-y !important;
-  }
-
-  /* الـ main content */
-  .app-main {
-    height: calc(100% - 3rem);
-    padding-bottom: 4rem;
-  }
-
-  /* الـ header ثابت فوق */
-  .app-header {
-    position: sticky;
-    top: 0;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════
-   END - v5.3
+   END - v5.4
    ═══════════════════════════════════════════════════════ */
