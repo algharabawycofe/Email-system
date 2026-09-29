@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v5.2 - Styles
-   iOS Optimized + Full Scroll Fix
+   Mail System v5.3 - Styles
+   iOS Optimized + Mobile Scroll Fixed
    ═══════════════════════════════════════════════════════════ */
 
 * {
@@ -83,14 +83,17 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 }
 
 /* ═══════════════════════════════════════════════════════
-   APP CONTAINER
+   APP CONTAINER - PRIMARY FIX
    ═══════════════════════════════════════════════════════ */
 #app {
   height: 100vh;
   height: 100dvh;
+  height: -webkit-fill-available;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  max-height: 100vh;
+  max-height: 100dvh;
 }
 
 #app > div.flex.flex-1 {
@@ -870,5 +873,60 @@ body.dark .bg-green-100 { background: rgba(34, 197, 94, 0.2) !important; }
 }
 
 /* ═══════════════════════════════════════════════════════
-   END - v5.2
+   ⭐ MOBILE SCROLL FIX v5.3 - الحل النهائي
+   ═══════════════════════════════════════════════════════ */
+
+/* على الموبايل: نثبّت body ونخلي #app يأخذ كامل الشاشة */
+@media (max-width: 768px) {
+  html, body {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    top: 0;
+    left: 0;
+  }
+
+  #app {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: auto;
+    max-height: none;
+  }
+
+  /* ✅ نجبر السكرول يشتغل على الموبايل */
+  #pageContent {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-y: scroll !important;
+    touch-action: pan-y !important;
+  }
+
+  .inbox-list > .flex-1,
+  .inbox-reading,
+  .compose-window > .flex-1,
+  .app-sidebar,
+  .overflow-y-auto {
+    -webkit-overflow-scrolling: touch !important;
+    overflow-y: scroll !important;
+    touch-action: pan-y !important;
+  }
+
+  /* الـ main content */
+  .app-main {
+    height: calc(100% - 3rem);
+    padding-bottom: 4rem;
+  }
+
+  /* الـ header ثابت فوق */
+  .app-header {
+    position: sticky;
+    top: 0;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════
+   END - v5.3
    ═══════════════════════════════════════════════════════ */
