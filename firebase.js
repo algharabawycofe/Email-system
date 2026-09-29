@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v5.1 - Firebase Configuration & Core Services
-   iOS Optimized
+   Mail System v9.0 - Firebase Configuration & Core Services
+   Firebase: Auth + Firestore + Storage + Messaging
    ═══════════════════════════════════════════════════════════ */
 
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -36,6 +36,15 @@ import {
   enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
+  getStorage,
+  ref,
+  uploadBytes,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject,
+  listAll
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+import {
   getMessaging,
   getToken,
   onMessage,
@@ -65,23 +74,26 @@ export const APP_URL = "https://algharabawycofye.github.io/Email-system/";
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 
 export let messaging = null;
 try {
   messaging = getMessaging(app);
 } catch (e) {
-  console.warn("FCM not supported:", e);
+  console.warn("⚠️ FCM not supported:", e);
 }
 
-// ⚠️ Offline persistence بيبطّئ iOS — نلغيه على iPhone
+/* ═══════════════════════════════════════════════════════
+   PERSISTENCE (iOS Optimized)
+   ═══════════════════════════════════════════════════════ */
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
 if (!isIOS) {
   enableIndexedDbPersistence(db).catch((err) => {
     if (err.code === 'failed-precondition') {
-      console.warn('Persistence: multiple tabs open');
+      console.warn('⚠️ Firestore persistence: multiple tabs open');
     } else if (err.code === 'unimplemented') {
-      console.warn('Persistence not supported');
+      console.warn('⚠️ Firestore persistence not supported');
     }
   });
 } else {
@@ -129,6 +141,18 @@ export {
 };
 
 /* ═══════════════════════════════════════════════════════
+   EXPORTS - Storage ⭐ NEW
+   ═══════════════════════════════════════════════════════ */
+export {
+  ref,
+  uploadBytes,
+  uploadBytesResumable,
+  getDownloadURL,
+  deleteObject,
+  listAll
+};
+
+/* ═══════════════════════════════════════════════════════
    HELPER: Create Auth User (بدون طرد الأدمن)
    ═══════════════════════════════════════════════════════ */
 export async function createAuthUser(email, password) {
@@ -161,4 +185,44 @@ export async function resetUserPassword(email) {
   }
 }
 
-console.log('🔥 Firebase initialized:', firebaseConfig.projectId, isIOS ? '(iOS)' : '');
+/* ═══════════════════════════════════════════════════════
+   HELPER: Upload File with Progress
+   ═══════════════════════════════════════════════════════ */
+export function uploadFileWithProgress(file, path, onProgress) {
+  return new Promise((resolve, reject) => {
+    const storageRef = ref(storage, path);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on('state_changed',
+      (snapshot) => {
+        const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+        if (onProgress) onProgress(progress);
+      },
+      (error) => reject(error),
+      async () => {
+        try {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          resolve({ url, path });
+        } catch (e) {
+          reject(e);
+        }
+      }
+    );
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   HELPER: Delete File by Path
+   ═══════════════════════════════════════════════════════ */
+export async function deleteFileByPath(path) {
+  try {
+    const storageRef = ref(storage, path);
+    await deleteObject(storageRef);
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+console.log('🔥 Firebase v9.0 initialized:', firebaseConfig.projectId, isIOS ? '(iOS)' : '(Desktop)');
+console.log('📦 Services: Auth + Firestore + Storage + Messaging');
