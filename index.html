@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>Mail System </title>
+<title>Mail System</title>
 <meta name="description" content="نظام الرسائل الداخلي - إرسال واستقبال الرسائل والإشعارات" />
 <meta name="theme-color" content="#0078D4" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -11,9 +11,8 @@
 <meta name="apple-mobile-web-app-title" content="Mail System" />
 <meta name="mobile-web-app-capable" content="yes" />
 <link rel="manifest" href="manifest.json" />
-<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/192/561/561127.png" />
-<link rel="icon" type="image/png" sizes="192x192" href="https://cdn-icons-png.flaticon.com/192/561/561127.png" />
-<link rel="icon" type="image/png" sizes="512x512" href="https://cdn-icons-png.flaticon.com/512/561/561127.png" />
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3Cpath d='M100 180l156 112 156-112' fill='none' stroke='%230078D4' stroke-width='20' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3Cpath d='M100 180l156 112 156-112' fill='none' stroke='%230078D4' stroke-width='20' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E" />
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -96,7 +95,7 @@
 <!-- ============ APP ============ -->
 <div id="app" class="hidden min-h-screen flex flex-col">
 
-  <!-- ========== HEADER ========== -->
+  <!-- HEADER -->
   <header class="app-header">
     <button id="toggleSidebar" class="icon-btn" title="إظهار/إخفاء القائمة">
       <i data-lucide="menu" class="w-5 h-5"></i>
@@ -114,12 +113,10 @@
 
     <div class="flex-1 sm:flex-none"></div>
 
-    <!-- Dark mode toggle -->
     <button id="themeToggle" class="icon-btn" title="تبديل الوضع الليلي">
       <i data-lucide="moon" class="w-5 h-5"></i>
     </button>
 
-    <!-- Notifications -->
     <div class="relative">
       <button id="notifBtn" class="relative icon-btn" title="الإشعارات">
         <i data-lucide="bell" class="w-5 h-5"></i>
@@ -134,7 +131,6 @@
       </div>
     </div>
 
-    <!-- User menu -->
     <div class="relative">
       <button id="userMenuBtn" class="flex items-center gap-2 pl-2 md:pl-3 border-r border-white/20 pr-3 hover:bg-white/10 rounded transition">
         <div class="text-right hidden md:block text-white">
@@ -165,7 +161,7 @@
     </div>
   </header>
 
-  <!-- ========== BODY ========== -->
+  <!-- BODY -->
   <div class="flex flex-1 overflow-hidden relative">
 
     <!-- SIDEBAR -->
@@ -240,14 +236,13 @@
       </button>
     </nav>
 
-    <!-- MAIN CONTENT -->
     <main id="mainContent" class="app-main">
       <div id="pageContent" class="h-full overflow-y-auto"></div>
     </main>
   </div>
 </div>
 
-<!-- ============ COMPOSE MODAL ============ -->
+<!-- COMPOSE MODAL -->
 <div id="composeModal" class="modal-fullscreen" style="display:none">
   <div class="compose-window">
     <div class="compose-header">
@@ -348,7 +343,7 @@
   </div>
 </div>
 
-<!-- ============ PROFILE MODAL ============ -->
+<!-- PROFILE MODAL -->
 <div id="profileModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-5">
@@ -394,7 +389,7 @@
   </div>
 </div>
 
-<!-- ============ SETTINGS MODAL ============ -->
+<!-- SETTINGS MODAL -->
 <div id="settingsModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-5">
@@ -453,7 +448,7 @@
   </div>
 </div>
 
-<!-- ============ CONFIRM MODAL ============ -->
+<!-- CONFIRM MODAL -->
 <div id="confirmModal" class="hidden fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm fade-in">
     <div class="flex items-center gap-3 mb-4">
@@ -474,13 +469,13 @@
   </div>
 </div>
 
-<!-- ============ TOAST ============ -->
+<!-- TOAST -->
 <div id="toastContainer" class="fixed top-16 left-4 z-[100] space-y-2"></div>
 
-<!-- ============ AUDIO (Disabled) ============ -->
+<!-- AUDIO (Disabled) -->
 <audio id="notifSound" preload="none" style="display:none"></audio>
 
-<!-- ============ SCRIPTS ============ -->
+<!-- SCRIPTS -->
 <script type="module" src="firebase.js"></script>
 <script type="module" src="app.js"></script>
 
