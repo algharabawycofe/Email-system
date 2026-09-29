@@ -21,7 +21,7 @@ const messaging = firebase.messaging();
 /* ═══════════════════════════════════════════════════════
    PWA - Safe Cache Configuration
    ═══════════════════════════════════════════════════════ */
-const CACHE_NAME = 'mail-system-v5.0';
+const CACHE_NAME = 'mail-system-v5.1';
 const BASE = '/Email-system/';
 
 // ✅ ملفات محلية فقط - مفيش CDN
