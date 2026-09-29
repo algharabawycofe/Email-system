@@ -1,5 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v4.0 - Main Application
+   Mail System v4.2 - Main Application
+   Supports: Owner, Admin, Dept Manager, User
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -16,10 +17,12 @@ import {
 import {
   state, $, $$, show, hide, showStyle, hideStyle,
   esc, initials, truncate, timeAgo, formatDate, formatDateLong, todayArabic,
-  isOwner, isAdmin, roleLabels, roleColors, icons,
+  isOwner, isAdmin, isDeptManager, isManagerOrAbove,
+  roleLabels, roleColors, icons,
   applyTheme, loadTheme, toggleDarkMode, loadSoundSetting, toggleSound, playNotifSound,
   confirmDialog, showToast,
   loadUsersCache, loadDepartmentsCache, getUserById, getUserName, getUsersByDept, getDeptById,
+  getMyManagedDepts, isManagerOfDept, getMyTeamMembers,
   saveSession, loadLastUser, copyToClipboard,
   matchesSearch, sanitizeUsername, validateUsername, validatePassword,
   getAvatarColor, unlockAudioOnFirstClick
@@ -37,7 +40,6 @@ document.addEventListener('DOMContentLoaded', () => {
   setupServiceWorkerMessages();
   icons();
 
-  // Restore last user
   const lastUser = loadLastUser();
   if (lastUser) {
     const inp = $('#loginUser');
@@ -50,14 +52,12 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ═══════════════════════════════════════════════════════
-   LOGIN UI SETUP
+   LOGIN UI
    ═══════════════════════════════════════════════════════ */
 function setupLoginUI() {
-  // Login button
   const loginBtn = $('#loginBtn');
   if (loginBtn) loginBtn.onclick = handleLogin;
 
-  // Enter key
   const passInput = $('#loginPass');
   if (passInput) {
     passInput.addEventListener('keypress', (e) => {
@@ -65,7 +65,6 @@ function setupLoginUI() {
     });
   }
 
-  // Show/hide password
   const togglePassBtn = $('#togglePassBtn');
   if (togglePassBtn) {
     togglePassBtn.onclick = () => {
@@ -83,7 +82,6 @@ function setupLoginUI() {
     };
   }
 
-  // Forgot password
   const forgotBtn = $('#forgotPassBtn');
   if (forgotBtn) {
     forgotBtn.onclick = () => {
@@ -116,7 +114,6 @@ async function handleLogin() {
   btn.querySelector('span').textContent = 'جاري الدخول...';
 
   try {
-    // Set persistence based on remember me
     try {
       await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
     } catch (e) {}
@@ -214,40 +211,54 @@ function checkAuthState() {
       return;
     }
 
-    // Save session
     saveSession(state.currentUser);
 
-    // UI updates
-    const nameEl = $('#userName');
-    const roleEl = $('#userRole');
-    const avatarEl = $('#userAvatar');
-    if (nameEl) nameEl.textContent = state.currentUser.name;
-    if (roleEl) roleEl.textContent = roleLabels[state.currentUser.role] || state.currentUser.role;
-    if (avatarEl) avatarEl.textContent = initials(state.currentUser.name);
-
-    // Admin-only visibility
-    const admin = isAdmin();
-    $$('[data-admin-only]').forEach(el => {
-      if (admin) el.classList.remove('hidden');
-      else el.classList.add('hidden');
-    });
-
-    // Load caches
+    // Load caches first
     await loadUsersCache();
     await loadDepartmentsCache();
 
-    // Show app
+    // UI
+    updateUIForRole();
+
     hide($('#loginScreen'));
     show($('#app'));
     icons();
     initSidebar();
     navigate('dashboard');
 
-    // Start real-time
     startMessagesListener();
-
-    // FCM
     setTimeout(registerFCMToken, 1500);
+  });
+}
+
+/* ═══════════════════════════════════════════════════════
+   UPDATE UI BASED ON ROLE
+   ═══════════════════════════════════════════════════════ */
+function updateUIForRole() {
+  const nameEl = $('#userName');
+  const roleEl = $('#userRole');
+  const avatarEl = $('#userAvatar');
+  const menuName = $('#menuUserName');
+  const menuEmail = $('#menuUserEmail');
+
+  if (nameEl) nameEl.textContent = state.currentUser.name;
+  if (roleEl) roleEl.textContent = roleLabels[state.currentUser.role] || state.currentUser.role;
+  if (avatarEl) avatarEl.textContent = initials(state.currentUser.name);
+  if (menuName) menuName.textContent = state.currentUser.name;
+  if (menuEmail) menuEmail.textContent = state.currentUser.email || '';
+
+  // Admin-only
+  const admin = isAdmin();
+  $$('[data-admin-only]').forEach(el => {
+    if (admin) el.classList.remove('hidden');
+    else el.classList.add('hidden');
+  });
+
+  // Manager-only (admin OR dept manager)
+  const manager = isManagerOrAbove();
+  $$('[data-manager-only]').forEach(el => {
+    if (manager) el.classList.remove('hidden');
+    else el.classList.add('hidden');
   });
 }
 
@@ -296,15 +307,12 @@ window.toggleSidebar = function () {
    GLOBAL LISTENERS
    ═══════════════════════════════════════════════════════ */
 function setupGlobalListeners() {
-  // Sidebar toggle
   const toggleBtn = $('#toggleSidebar');
   if (toggleBtn) toggleBtn.onclick = window.toggleSidebar;
 
-  // Logout
   const logoutBtn = $('#logoutBtn');
   if (logoutBtn) logoutBtn.onclick = handleLogout;
 
-  // Nav buttons
   const nav = $('#nav');
   if (nav) {
     nav.addEventListener('click', (e) => {
@@ -313,7 +321,6 @@ function setupGlobalListeners() {
     });
   }
 
-  // Mobile nav
   const mobileNav = $('#mobileNav');
   if (mobileNav) {
     mobileNav.addEventListener('click', (e) => {
@@ -322,7 +329,6 @@ function setupGlobalListeners() {
     });
   }
 
-  // Notifications
   const notifBtn = $('#notifBtn');
   if (notifBtn) {
     notifBtn.onclick = (e) => {
@@ -333,7 +339,6 @@ function setupGlobalListeners() {
     };
   }
 
-  // User menu
   const userMenuBtn = $('#userMenuBtn');
   if (userMenuBtn) {
     userMenuBtn.onclick = (e) => {
@@ -344,20 +349,16 @@ function setupGlobalListeners() {
     };
   }
 
-  // Theme toggle
   const themeToggle = $('#themeToggle');
   if (themeToggle) {
     themeToggle.onclick = () => {
       const isDark = toggleDarkMode();
       const icon = themeToggle.querySelector('i');
-      if (icon) {
-        icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
-      }
+      if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
       icons();
     };
   }
 
-  // Click outside to close dropdowns
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#notifBtn') && !e.target.closest('#notifDropdown')) {
       hideStyle($('#notifDropdown'));
@@ -367,7 +368,6 @@ function setupGlobalListeners() {
     }
   });
 
-  // Global search
   const searchInput = $('#globalSearch');
   if (searchInput) {
     let searchTimer;
@@ -388,20 +388,10 @@ function setupGlobalListeners() {
     });
   }
 
-  // Compose modal click outside
   const composeModal = $('#composeModal');
   if (composeModal) {
     composeModal.addEventListener('click', (e) => {
       if (e.target.id === 'composeModal') closeCompose();
-    });
-  }
-
-  // Service worker message listener
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.addEventListener('message', (event) => {
-      if (event.data && event.data.type === 'PLAY_SOUND') {
-        playNotifSound();
-      }
     });
   }
 }
@@ -410,7 +400,6 @@ async function handleLogout() {
   const ok = await confirmDialog('تسجيل الخروج', 'هل أنت متأكد إنك عايز تسجل خروج؟');
   if (!ok) return;
 
-  // حذف FCM token
   try {
     if (messaging && state.currentUser) {
       const reg = await navigator.serviceWorker.getRegistration('/Email-system/');
@@ -440,6 +429,7 @@ const ROUTES = {
   sent: renderSent,
   starred: renderStarred,
   trash: renderTrash,
+  myteam: renderMyTeam,
   users: renderUsers,
   departments: renderDepartments
 };
@@ -468,9 +458,11 @@ window.navigate = navigate;
    ═══════════════════════════════════════════════════════ */
 async function renderDashboard() {
   const admin = isAdmin();
+  const manager = isDeptManager();
   const today = todayArabic();
   const content = $('#pageContent');
 
+  // Admin Dashboard
   if (admin) {
     const [usersSnap, deptSnap] = await Promise.all([
       getDocs(collection(db, 'users')),
@@ -502,13 +494,69 @@ async function renderDashboard() {
         </div>
       </div>
     `;
-  } else {
+  }
+  // Dept Manager Dashboard
+  else if (manager) {
+    const myDepts = getMyManagedDepts();
+    const team = getMyTeamMembers();
+    const unreadCount = state.unreadMessages.length;
+
+    const deptCards = myDepts.map(d => {
+      const members = getUsersByDept(d.id);
+      return `
+        <div class="bg-white rounded border border-slate-200 p-5 hover:shadow-md transition">
+          <div class="flex items-start justify-between mb-3">
+            <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+              <i data-lucide="building-2" class="w-5 h-5"></i>
+            </div>
+            <span class="text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full font-semibold">${members.length} عضو</span>
+          </div>
+          <div class="font-bold text-slate-800">${esc(d.name)}</div>
+          <div class="text-xs text-slate-500 mt-1">${esc(d.description || 'بدون وصف')}</div>
+        </div>
+      `;
+    }).join('');
+
+    content.innerHTML = `
+      <div class="p-4 md:p-8 max-w-7xl mx-auto fade-in">
+        <div class="mb-6 md:mb-8">
+          <h1 class="text-2xl md:text-3xl font-bold text-slate-800">أهلاً ${esc(state.currentUser.name)} 👋</h1>
+          <p class="text-slate-500 mt-1 text-sm">${today} · <span class="text-purple-600 font-semibold">مدير ${myDepts.length} قسم</span></p>
+        </div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 mb-6 md:mb-8">
+          ${statCard('users-round', 'أعضاء فريقي', team.length, 'bg-purple-50', 'text-purple-600', "navigate('myteam')")}
+          ${statCard('building-2', 'أقسامي', myDepts.length, 'bg-blue-50', 'text-blue-600', "navigate('myteam')")}
+          ${statCard('mail', 'غير مقروء', unreadCount, 'bg-orange-50', 'text-orange-600', "navigate('inbox')")}
+          ${statCard('send', 'مُرسلة', 0, 'bg-green-50', 'text-green-600', "navigate('sent')")}
+        </div>
+        <div class="mb-6">
+          <h2 class="font-bold text-lg mb-3 text-slate-800">أقسامي</h2>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            ${deptCards || '<div class="col-span-full text-center py-8 text-slate-400">لم يتم تعيينك مديرًا لأي قسم</div>'}
+          </div>
+        </div>
+        <div class="bg-white rounded border border-slate-200 p-5 md:p-6">
+          <h2 class="font-bold text-base mb-4 text-slate-800">إجراءات سريعة</h2>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            ${quickAction('pencil', 'رسالة جديدة', 'openCompose()')}
+            ${quickAction('users-round', 'فريقي', "navigate('myteam')")}
+            ${quickAction('megaphone', 'إرسال للفريق', "quickSendToTeam()")}
+            ${quickAction('inbox', 'الوارد', "navigate('inbox')")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+  // Regular User Dashboard
+  else {
     const snap = await getDocs(query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid)));
+    const myDept = state.currentUser.departmentId ? getDeptById(state.currentUser.departmentId) : null;
+
     content.innerHTML = `
       <div class="p-4 md:p-8 max-w-5xl mx-auto fade-in">
         <div class="mb-6 md:mb-8">
           <h1 class="text-2xl md:text-3xl font-bold text-slate-800">أهلاً ${esc(state.currentUser.name)} 👋</h1>
-          <p class="text-slate-500 mt-1 text-sm">${today}</p>
+          <p class="text-slate-500 mt-1 text-sm">${today}${myDept ? ` · <span class="text-blue-600 font-semibold">${esc(myDept.name)}</span>` : ''}</p>
         </div>
         <div class="grid grid-cols-2 gap-3 md:gap-4 mb-6 md:mb-8">
           ${statCard('inbox', 'رسائل الوارد', snap.size, 'bg-blue-50', 'text-blue-600', "navigate('inbox')")}
@@ -547,13 +595,131 @@ function quickAction(icon, label, action) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   MY TEAM (Dept Manager)
+   ═══════════════════════════════════════════════════════ */
+async function renderMyTeam() {
+  await loadUsersCache();
+  await loadDepartmentsCache();
+
+  const myDepts = getMyManagedDepts();
+  const team = getMyTeamMembers();
+
+  // Group team by dept
+  const byDept = {};
+  myDepts.forEach(d => byDept[d.id] = []);
+  team.forEach(u => {
+    if (u.departmentId && byDept[u.departmentId]) {
+      byDept[u.departmentId].push(u);
+    }
+  });
+
+  const deptSections = myDepts.map(d => {
+    const members = byDept[d.id] || [];
+    const memberRows = members.map(m => `
+      <div class="flex items-center gap-3 p-3 border-b border-slate-100 hover:bg-slate-50 transition">
+        <div class="w-9 h-9 rounded-full bg-[#0070c0] text-white flex items-center justify-center font-bold text-xs">${initials(m.name)}</div>
+        <div class="flex-1 min-w-0">
+          <div class="font-medium text-sm text-slate-800 truncate">${esc(m.name)}</div>
+          <div class="text-xs text-slate-400 font-mono truncate">@${esc(m.username)}</div>
+        </div>
+        <button onclick="quickSendToUser('${m.id}')" class="p-1.5 rounded hover:bg-blue-50 text-blue-600 transition" title="إرسال رسالة">
+          <i data-lucide="send" class="w-4 h-4"></i>
+        </button>
+      </div>
+    `).join('');
+
+    return `
+      <div class="bg-white rounded border border-slate-200 overflow-hidden mb-4">
+        <div class="px-4 py-3 bg-purple-50 border-b border-purple-200 flex items-center justify-between">
+          <div class="flex items-center gap-2">
+            <i data-lucide="building-2" class="w-4 h-4 text-purple-600"></i>
+            <h3 class="font-bold text-purple-900">${esc(d.name)}</h3>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs text-purple-700">${members.length} عضو</span>
+            ${members.length > 0 ? `
+              <button onclick="quickSendToDept('${d.id}')" class="text-xs bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded font-semibold flex items-center gap-1">
+                <i data-lucide="megaphone" class="w-3 h-3"></i>
+                إرسال للقسم
+              </button>
+            ` : ''}
+          </div>
+        </div>
+        <div>
+          ${memberRows || '<div class="text-center py-6 text-slate-400 text-sm">لا يوجد أعضاء في هذا القسم</div>'}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  $('#pageContent').innerHTML = `
+    <div class="p-4 md:p-8 max-w-5xl mx-auto fade-in">
+      <div class="mb-6">
+        <h1 class="text-2xl font-bold text-slate-800">فريقي</h1>
+        <p class="text-slate-500 text-sm mt-1">${team.length} عضو · ${myDepts.length} قسم</p>
+      </div>
+
+      ${myDepts.length === 0 ? `
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-6 text-center">
+          <i data-lucide="alert-circle" class="w-12 h-12 text-amber-500 mx-auto mb-3"></i>
+          <div class="font-bold text-amber-900 mb-1">لم يتم تعيينك مديرًا لأي قسم</div>
+          <div class="text-sm text-amber-700">تواصل مع الأدمن لتعيينك مدير قسم</div>
+        </div>
+      ` : deptSections}
+
+      ${team.length > 0 ? `
+        <div class="mt-6 bg-white rounded border border-slate-200 p-5">
+          <h3 class="font-bold text-slate-800 mb-3">إجراءات جماعية</h3>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="quickSendToTeam()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded text-sm font-semibold flex items-center gap-2">
+              <i data-lucide="megaphone" class="w-4 h-4"></i>
+              إرسال لكل فريقي (${team.length})
+            </button>
+          </div>
+        </div>
+      ` : ''}
+    </div>
+  `;
+  icons();
+}
+
+window.quickSendToUser = async (userId) => {
+  await window.openCompose();
+  const sel = $('#cTo');
+  if (sel) sel.value = userId;
+};
+
+window.quickSendToDept = async (deptId) => {
+  await window.openCompose();
+  const deptCheckbox = $('#cDept');
+  const deptSelect = $('#deptSelect');
+  if (deptCheckbox && deptSelect) {
+    deptSelect.value = deptId;
+    deptCheckbox.checked = true;
+    window.toggleDeptSend();
+  }
+};
+
+window.quickSendToTeam = async () => {
+  await window.openCompose();
+  const deptCheckbox = $('#cDept');
+  if (deptCheckbox) {
+    deptCheckbox.checked = true;
+    window.toggleDeptSend();
+  }
+};
+
+/* ═══════════════════════════════════════════════════════
    USERS MANAGEMENT
    ═══════════════════════════════════════════════════════ */
 async function renderUsers() {
   await loadUsersCache();
+  await loadDepartmentsCache();
+
   const rows = state.allUsersCache.map(u => {
     const uColor = roleColors[u.role] || roleColors.user;
     const uLabel = roleLabels[u.role] || u.role;
+    const dept = u.departmentId ? getDeptById(u.departmentId) : null;
     return `<tr class="border-b border-slate-100 hover:bg-slate-50 transition">
       <td class="px-4 py-3">
         <div class="flex items-center gap-3">
@@ -565,6 +731,9 @@ async function renderUsers() {
         </div>
       </td>
       <td class="px-4 py-3 font-mono text-sm text-slate-600 hidden md:table-cell">${esc(u.username)}</td>
+      <td class="px-4 py-3 hidden lg:table-cell">
+        ${dept ? `<span class="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded">${esc(dept.name)}</span>` : '<span class="text-xs text-slate-400">—</span>'}
+      </td>
       <td class="px-4 py-3"><span class="px-2.5 py-1 rounded text-xs font-semibold ${uColor} whitespace-nowrap">${uLabel}</span></td>
       <td class="px-4 py-3 hidden sm:table-cell">
         ${u.isActive === false
@@ -604,7 +773,7 @@ async function renderUsers() {
           <input id="nuPass" type="text" placeholder="كلمة السر (6+ حروف)" class="input-field" />
           <select id="nuRole" class="input-field">
             <option value="user">مستخدم عادي</option>
-            <option value="manager">مدير</option>
+            <option value="manager">مدير قسم</option>
             ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
           </select>
           <select id="nuDept" class="input-field">
@@ -627,7 +796,7 @@ async function renderUsers() {
           <input id="euUser" class="input-field bg-slate-50 text-slate-500" disabled />
           <select id="euRole" class="input-field">
             <option value="user">مستخدم عادي</option>
-            <option value="manager">مدير</option>
+            <option value="manager">مدير قسم</option>
             ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
           </select>
           <select id="euDept" class="input-field">
@@ -648,19 +817,19 @@ async function renderUsers() {
               <tr class="text-slate-500 text-xs font-semibold uppercase tracking-wider">
                 <th class="px-4 py-3 text-right">المستخدم</th>
                 <th class="px-4 py-3 text-right hidden md:table-cell">اسم المستخدم</th>
+                <th class="px-4 py-3 text-right hidden lg:table-cell">القسم</th>
                 <th class="px-4 py-3 text-right">الدور</th>
                 <th class="px-4 py-3 text-right hidden sm:table-cell">الحالة</th>
                 <th class="px-4 py-3 text-left">إجراءات</th>
               </tr>
             </thead>
-            <tbody>${rows || '<tr><td colspan="5" class="text-center py-12 text-slate-400">لا يوجد مستخدمين</td></tr>'}</tbody>
+            <tbody>${rows || '<tr><td colspan="6" class="text-center py-12 text-slate-400">لا يوجد مستخدمين</td></tr>'}</tbody>
           </table>
         </div>
       </div>
     </div>
   `;
 
-  // Fill dept selects
   fillDeptSelects();
   icons();
 }
@@ -707,7 +876,8 @@ window.createNewUser = async () => {
     const email = `${user}@${EMAIL_DOMAIN}`;
     const uid = await createAuthUser(email, pass);
     await setDoc(doc(db, 'users', uid), {
-      name, username: user, email, role, departmentId: deptId || null,
+      name, username: user, email, role,
+      departmentId: deptId || null,
       isActive: true, createdAt: serverTimestamp()
     });
     err.className = 'text-sm mt-3 text-green-600'; err.textContent = `✅ تم إنشاء ${user} بنجاح!`;
@@ -773,20 +943,49 @@ window.deleteUserDoc = async (uid) => {
    ═══════════════════════════════════════════════════════ */
 async function renderDepartments() {
   await loadDepartmentsCache();
-  const cards = state.allDeptsCache.map(d => `
-    <div class="bg-white rounded border border-slate-200 p-4 hover:shadow-md transition group">
-      <div class="flex items-start justify-between mb-2">
-        <div class="w-10 h-10 rounded bg-purple-50 text-purple-600 flex items-center justify-center">
-          <i data-lucide="building-2" class="w-5 h-5"></i>
+  await loadUsersCache();
+
+  const cards = state.allDeptsCache.map(d => {
+    const members = getUsersByDept(d.id);
+    const manager = d.managerId ? getUserById(d.managerId) : null;
+    return `
+      <div class="bg-white rounded border border-slate-200 p-4 hover:shadow-md transition group">
+        <div class="flex items-start justify-between mb-3">
+          <div class="w-11 h-11 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
+            <i data-lucide="building-2" class="w-5 h-5"></i>
+          </div>
+          <div class="flex items-center gap-1">
+            <button onclick="editDept('${d.id}')" class="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-blue-50 text-blue-600 transition" title="تعديل">
+              <i data-lucide="pencil" class="w-4 h-4"></i>
+            </button>
+            <button onclick="deleteDept('${d.id}')" class="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-50 text-red-600 transition" title="حذف">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
         </div>
-        <button onclick="deleteDept('${d.id}')" class="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-50 text-red-600 transition">
-          <i data-lucide="trash-2" class="w-4 h-4"></i>
-        </button>
+        <div class="font-bold text-slate-800">${esc(d.name)}</div>
+        <div class="text-xs text-slate-500 mt-1 mb-3">${esc(d.description || 'بدون وصف')}</div>
+        
+        <div class="flex items-center justify-between pt-3 border-t border-slate-100">
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="users" class="w-3.5 h-3.5 text-slate-400"></i>
+            <span class="text-xs text-slate-500">${members.length} عضو</span>
+          </div>
+          ${manager ? `
+            <div class="flex items-center gap-1.5">
+              <div class="w-5 h-5 rounded-full bg-purple-500 text-white flex items-center justify-center font-bold text-[9px]">${initials(manager.name)}</div>
+              <span class="text-xs text-purple-700 font-medium truncate max-w-[80px]">${esc(manager.name)}</span>
+            </div>
+          ` : `
+            <button onclick="editDept('${d.id}')" class="text-xs text-amber-600 hover:underline font-medium flex items-center gap-1">
+              <i data-lucide="alert-circle" class="w-3 h-3"></i>
+              بدون مدير
+            </button>
+          `}
+        </div>
       </div>
-      <div class="font-bold text-slate-800 text-sm">${esc(d.name)}</div>
-      <div class="text-xs text-slate-500 mt-1">${esc(d.description || 'بدون وصف')}</div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
   $('#pageContent').innerHTML = `
     <div class="p-4 md:p-8 max-w-7xl mx-auto fade-in">
@@ -794,29 +993,116 @@ async function renderDepartments() {
         <h1 class="text-2xl font-bold text-slate-800">الأقسام</h1>
         <p class="text-slate-500 text-sm mt-1">${state.allDeptsCache.length} قسم</p>
       </div>
+
       <div class="bg-white rounded border border-slate-200 p-4 mb-6">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <h3 class="font-bold text-sm mb-3">إضافة قسم جديد</h3>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input id="dName" placeholder="اسم القسم" class="input-field" />
           <input id="dDesc" placeholder="وصف (اختياري)" class="input-field" />
+          <select id="dManager" class="input-field">
+            <option value="">— بدون مدير —</option>
+          </select>
           <button onclick="addDept()" class="bg-[#0078D4] hover:bg-[#106EBE] text-white rounded px-4 py-2.5 text-sm font-semibold flex items-center justify-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i>
-            <span>إضافة قسم</span>
+            <span>إضافة</span>
           </button>
         </div>
       </div>
+
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         ${cards || '<div class="col-span-full text-center py-12 text-slate-400">لا يوجد أقسام بعد</div>'}
       </div>
     </div>
   `;
+
+  // Fill manager select
+  const managerOpts = state.allUsersCache
+    .filter(u => u.isActive !== false)
+    .map(u => `<option value="${u.id}">${esc(u.name)} (@${esc(u.username)})</option>`)
+    .join('');
+  const dManager = document.getElementById('dManager');
+  if (dManager) {
+    dManager.innerHTML = '<option value="">— بدون مدير —</option>' + managerOpts;
+  }
+
   icons();
 }
 
 window.addDept = async () => {
   const name = $('#dName').value.trim();
   const description = $('#dDesc').value.trim();
+  const managerId = $('#dManager').value;
   if (!name) return alert('اكتب اسم القسم');
-  await addDoc(collection(db, 'departments'), { name, description, createdAt: serverTimestamp() });
+  await addDoc(collection(db, 'departments'), {
+    name, description,
+    managerId: managerId || null,
+    createdAt: serverTimestamp()
+  });
+  renderDepartments();
+};
+
+window.editDept = async (id) => {
+  const d = state.allDeptsCache.find(x => x.id === id);
+  if (!d) return;
+
+  const managerOpts = state.allUsersCache
+    .filter(u => u.isActive !== false)
+    .map(u => `<option value="${u.id}" ${u.id === d.managerId ? 'selected' : ''}>${esc(u.name)} (@${esc(u.username)})</option>`)
+    .join('');
+
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/40 z-[80] flex items-center justify-center p-4 modal-overlay';
+  modal.id = 'deptEditModal';
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
+      <div class="flex items-center justify-between mb-5">
+        <h3 class="text-lg font-bold text-slate-800">تعديل القسم</h3>
+        <button onclick="document.getElementById('deptEditModal').remove()" class="p-1 rounded hover:bg-slate-100">
+          <i data-lucide="x" class="w-5 h-5 text-slate-500"></i>
+        </button>
+      </div>
+      <div class="space-y-3">
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-600">اسم القسم</label>
+          <input id="editDeptName" class="input-field" value="${esc(d.name)}" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-600">الوصف</label>
+          <input id="editDeptDesc" class="input-field" value="${esc(d.description || '')}" />
+        </div>
+        <div>
+          <label class="block text-xs font-semibold mb-1 text-slate-600">مدير القسم</label>
+          <select id="editDeptManager" class="input-field">
+            <option value="">— بدون مدير —</option>
+            ${managerOpts}
+          </select>
+        </div>
+      </div>
+      <div class="flex gap-2 mt-5">
+        <button onclick="saveEditDept('${id}')" class="flex-1 bg-[#0078D4] hover:bg-[#106EBE] text-white font-semibold rounded-lg py-2.5 transition">
+          حفظ
+        </button>
+        <button onclick="document.getElementById('deptEditModal').remove()" class="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 rounded-lg transition">
+          إلغاء
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  icons();
+};
+
+window.saveEditDept = async (id) => {
+  const name = $('#editDeptName').value.trim();
+  const description = $('#editDeptDesc').value.trim();
+  const managerId = $('#editDeptManager').value;
+  if (!name) { alert('اكتب اسم القسم'); return; }
+  await updateDoc(doc(db, 'departments', id), {
+    name, description,
+    managerId: managerId || null
+  });
+  const modal = document.getElementById('deptEditModal');
+  if (modal) modal.remove();
   renderDepartments();
 };
 
@@ -840,13 +1126,11 @@ async function renderInbox() {
     all.set(d.id, { id: d.id, ...d.data() });
   });
 
-  // Filter: not deleted
   const visible = Array.from(all.values()).filter(m => {
     if (state.currentFilter === 'trash') return m.deleted;
     return !m.deleted;
   });
 
-  // Group threads
   const threadsMap = {};
   visible.forEach(m => {
     const tid = m.threadId || m.id;
@@ -871,7 +1155,6 @@ async function renderInbox() {
     return t;
   }).sort((a, b) => b.lastAt - a.lastAt);
 
-  // Apply search filter
   if (state.searchQuery) {
     threads = threads.filter(t => t.messages.some(m => matchesSearch(m, state.searchQuery)));
   }
@@ -887,14 +1170,13 @@ function renderThreadList() {
     sent: 'المُرسلة',
     starred: 'المميزة',
     trash: 'سلة المهملات',
-    search: `نتائج البحث`
+    search: 'نتائج البحث'
   }[filter] || 'صندوق الوارد';
 
   const listHtml = state.threadsCache.map(t => {
     const last = t.lastMsg;
     const otherName = t.isFromMe ? last.toUserName : last.fromUserName;
     const otherInitial = initials(otherName);
-    const isTrash = filter === 'trash';
 
     return `
       <div onclick="openThread('${t.threadId}')" class="msg-item ${t.threadId === state.selectedThreadId ? 'active' : ''} px-4 py-3">
@@ -1158,7 +1440,7 @@ window.permanentDelete = async (threadId) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   STARRED & TRASH PAGES
+   STARRED & TRASH
    ═══════════════════════════════════════════════════════ */
 async function renderStarred() {
   state.currentFilter = 'starred';
@@ -1234,17 +1516,50 @@ window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  const others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
+  // Individual recipients (filter by role)
+  let others = [];
+  if (isAdmin()) {
+    // Admin: everyone
+    others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
+  } else if (isDeptManager()) {
+    // Dept manager: only their team
+    others = getMyTeamMembers();
+  } else {
+    // Regular user: everyone
+    others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
+  }
+
   $('#cTo').innerHTML = `<option value="">— اختر المستلم —</option>` + others.map(u =>
     `<option value="${u.id}">${esc(u.name)} (${esc(u.username)})</option>`
   ).join('');
 
   // Dept select
   const deptSel = $('#deptSelect');
-  if (deptSel) {
-    deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d =>
-      `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length} مستخدم)</option>`
-    ).join('');
+  const deptBox = $('#deptBox');
+
+  if (isAdmin()) {
+    // Admin sees all departments
+    if (deptSel) {
+      deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d =>
+        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length} مستخدم)</option>`
+      ).join('');
+    }
+    if (deptBox) deptBox.style.display = 'block';
+    const label = $('#deptSendLabel');
+    if (label) label.textContent = 'إرسال لكل موظفي قسم';
+  } else if (isDeptManager()) {
+    // Dept manager sees only their departments
+    const myDepts = getMyManagedDepts();
+    if (deptSel) {
+      deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + myDepts.map(d =>
+        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length} عضو)</option>`
+      ).join('');
+    }
+    if (deptBox) deptBox.style.display = 'block';
+    const label = $('#deptSendLabel');
+    if (label) label.textContent = 'إرسال لكل فريقي';
+  } else {
+    if (deptBox) deptBox.style.display = 'none';
   }
 
   $('#cSubject').value = '';
@@ -1261,21 +1576,12 @@ window.openCompose = async () => {
 
   document.querySelectorAll('input[name="priority"]').forEach(r => r.checked = r.value === 'normal');
 
-  // Broadcast for owner only
   const broadcastBox = $('#broadcastBox');
   if (isOwner()) {
     $('#broadcastCount').textContent = others.length;
     broadcastBox.style.display = 'block';
   } else {
     broadcastBox.style.display = 'none';
-  }
-
-  // Dept send visible for admin/manager
-  const deptBox = $('#deptBox');
-  if (isAdmin() || state.currentUser.role === 'manager') {
-    deptBox.style.display = 'block';
-  } else {
-    deptBox.style.display = 'none';
   }
 
   $('#composeModal').style.display = 'flex';
@@ -1295,7 +1601,7 @@ window.toggleBroadcast = () => {
     $('#cDept').checked = false;
   } else {
     show($('#toBox'));
-    if (isAdmin() || state.currentUser.role === 'manager') show($('#deptBox'));
+    if (isAdmin() || isDeptManager()) show($('#deptBox'));
   }
 };
 
@@ -1335,11 +1641,15 @@ window.sendMessage = async () => {
     status.className = 'text-xs text-red-600'; status.textContent = 'اكتب الموضوع'; return;
   }
 
+  // Verify manager has permission
+  if (deptSend && !isAdmin() && !isManagerOfDept(deptId)) {
+    status.className = 'text-xs text-red-600'; status.textContent = 'مش مسموحلك تبعت لهذا القسم'; return;
+  }
+
   sendBtn.disabled = true;
   sendBtn.querySelector('span').textContent = 'جاري الإرسال...';
 
   try {
-    // Broadcast
     if (broadcast) {
       const recipients = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
       let sent = 0;
@@ -1364,7 +1674,6 @@ window.sendMessage = async () => {
       status.className = 'text-xs text-green-600';
       status.textContent = `✅ تم إرسال الرسالة إلى ${recipients.length} مستخدم!`;
     }
-    // Send to department
     else if (deptSend) {
       const recipients = getUsersByDept(deptId).filter(u => u.id !== state.currentUser.uid);
       let sent = 0;
@@ -1389,7 +1698,6 @@ window.sendMessage = async () => {
       status.className = 'text-xs text-green-600';
       status.textContent = `✅ تم إرسال الرسالة إلى ${recipients.length} موظف!`;
     }
-    // Single recipient
     else {
       const toUser = state.allUsersCache.find(u => u.id === toUserId);
       const msgRef = doc(collection(db, 'messages'));
@@ -1572,7 +1880,7 @@ window.enablePushNotifications = async () => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   NOTIFICATIONS (FCM + Real-time)
+   NOTIFICATIONS
    ═══════════════════════════════════════════════════════ */
 async function registerFCMToken() {
   try {
@@ -1711,4 +2019,4 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-console.log('🚀 Mail System v4.0 loaded');
+console.log('🚀 Mail System v4.2 loaded');
