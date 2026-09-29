@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v5.4 - Styles
-   Complete Scroll Fix for All Devices
+   Mail System v6.0 - Styles
+   Complete Scroll Fix (Absolute Positioning)
    ═══════════════════════════════════════════════════════════ */
 
 * {
@@ -399,7 +399,7 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
 }
 
 /* ═══════════════════════════════════════════════════════
-   MAIN CONTENT - ⭐ SCROLL FIX
+   MAIN CONTENT - SCROLL FIX v6 (Absolute Positioning)
    ═══════════════════════════════════════════════════════ */
 .app-main {
   flex: 1 1 0%;
@@ -409,6 +409,7 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   flex-direction: column;
   overflow: hidden;
   background: white;
+  position: relative;
 }
 
 #pageContent {
@@ -418,7 +419,26 @@ body.dark ::-webkit-scrollbar-thumb:hover { background: #64748b; }
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  position: relative;
+}
+
+/* ⭐ على الموبايل: position absolute لحل مشكلة السكرول */
+@media (max-width: 767px) {
+  .app-main {
+    position: relative;
+    overflow: hidden;
+  }
+
+  #pageContent {
+    position: absolute !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+    padding-bottom: 70px;
+    flex: none;
+  }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -794,34 +814,13 @@ body.dark .inbox-list { background: #1e293b; border-color: #334155; }
 body.dark .inbox-reading { background: #1e293b; }
 
 /* ═══════════════════════════════════════════════════════
-   MOBILE SPECIFIC - SCROLL FIX ⭐
+   MOBILE SPECIFIC
    ═══════════════════════════════════════════════════════ */
 @media (max-width: 767px) {
-  /* نخفي الـ sidebar */
   .app-sidebar {
     display: none !important;
   }
 
-  /* الـ main يأخذ كل المساحة */
-  .app-main {
-    flex: 1 1 0%;
-    padding-bottom: 60px; /* مساحة للـ mobile nav */
-  }
-
-  /* الـ page content يسكرول */
-  #pageContent {
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch !important;
-    overscroll-behavior: contain;
-  }
-
-  /* الجداول تسكرول أفقي */
-  .overflow-x-auto {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  /* تخفيف animations */
   * {
     animation-duration: 0.15s !important;
     transition-duration: 0.15s !important;
@@ -851,5 +850,5 @@ body.dark .inbox-reading { background: #1e293b; }
 }
 
 /* ═══════════════════════════════════════════════════════
-   END - v5.4
+   END - v6.0
    ═══════════════════════════════════════════════════════ */
