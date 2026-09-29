@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v5.0 - Main Application
-   Features: PWA + Dept Manager + Full Mail System
+   Mail System v5.1 - Main Application
+   iOS Optimized + Dept Manager can send to ALL users
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -44,6 +44,7 @@ document.addEventListener('DOMContentLoaded', () => {
   setupGlobalListeners();
   setupServiceWorkerMessages();
   setupPWAHandlers();
+  setupIOSOptimizations();
   icons();
 
   const lastUser = loadLastUser();
@@ -56,6 +57,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   checkAuthState();
 });
+
+/* ═══════════════════════════════════════════════════════
+   iOS OPTIMIZATIONS
+   ═══════════════════════════════════════════════════════ */
+function setupIOSOptimizations() {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+  if (!isIOS) return;
+
+  // ✅ passive listeners للـ scroll
+  document.querySelectorAll('.overflow-y-auto').forEach(el => {
+    el.addEventListener('touchstart', () => {}, { passive: true });
+    el.addEventListener('touchmove', () => {}, { passive: true });
+  });
+
+  console.log('📱 iOS optimizations applied');
+}
 
 /* ═══════════════════════════════════════════════════════
    PWA HANDLERS
@@ -1566,22 +1583,22 @@ window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  let others = [];
-  if (isAdmin()) {
-    others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
-  } else if (isDeptManager()) {
-    others = getMyTeamMembers();
-  } else {
-    others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
-  }
+  // ✅ الكل يقدر يبعت للكل (بما فيهم مديرين الأقسام والأدمن)
+  const others = state.allUsersCache.filter(u =>
+    u.id !== state.currentUser.uid && u.isActive !== false
+  );
 
-  $('#cTo').innerHTML = `<option value="">— اختر المستلم —</option>` + others.map(u =>
-    `<option value="${u.id}">${esc(u.name)} (${esc(u.username)})</option>`
-  ).join('');
+  $('#cTo').innerHTML = `<option value="">— اختر المستلم —</option>` + others.map(u => {
+    const roleTag = u.role === 'owner' ? ' 👑' : u.role === 'admin' ? ' 🛡️' : u.role === 'manager' ? ' 👔' : '';
+    const deptName = u.departmentId ? (getDeptById(u.departmentId)?.name || '') : '';
+    const deptTag = deptName ? ` · ${deptName}` : '';
+    return `<option value="${u.id}">${esc(u.name)}${roleTag} (${esc(u.username)}${deptTag})</option>`;
+  }).join('');
 
   const deptSel = $('#deptSelect');
   const deptBox = $('#deptBox');
 
+  // ✅ الكل يقدر يبعت لقسم (الأدمن = كل الأقسام، مدير القسم = أقسامه، المستخدم = كل الأقسام)
   if (isAdmin()) {
     if (deptSel) {
       deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d =>
@@ -1602,7 +1619,13 @@ window.openCompose = async () => {
     const label = $('#deptSendLabel');
     if (label) label.textContent = 'إرسال لكل فريقي';
   } else {
-    if (deptBox) deptBox.style.display = 'none';
+    // مستخدم عادي — يقدر يبعت لقسم برضه
+    if (deptSel) {
+      deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d =>
+        `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length} مستخدم)</option>`
+      ).join('');
+    }
+    if (deptBox) deptBox.style.display = 'block';
   }
 
   $('#cSubject').value = '';
@@ -1644,7 +1667,7 @@ window.toggleBroadcast = () => {
     $('#cDept').checked = false;
   } else {
     show($('#toBox'));
-    if (isAdmin() || isDeptManager()) show($('#deptBox'));
+    show($('#deptBox'));
   }
 };
 
@@ -1682,10 +1705,6 @@ window.sendMessage = async () => {
   }
   if (!subject) {
     status.className = 'text-xs text-red-600'; status.textContent = 'اكتب الموضوع'; return;
-  }
-
-  if (deptSend && !isAdmin() && !isManagerOfDept(deptId)) {
-    status.className = 'text-xs text-red-600'; status.textContent = 'مش مسموحلك تبعت لهذا القسم'; return;
   }
 
   sendBtn.disabled = true;
@@ -2085,4 +2104,4 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-console.log('🚀 Mail System v5.0 loaded (PWA)');
+console.log('🚀 Mail System v5.1 loaded (iOS Optimized)');
