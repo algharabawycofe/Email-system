@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System Service Worker
-   Handles: FCM Push Notifications + PWA Offline Cache
+   Mail System Service Worker v5.0
+   FCM Push + PWA Offline Cache (Safe Mode)
    ═══════════════════════════════════════════════════════════ */
 
 importScripts('https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js');
@@ -19,11 +19,12 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 /* ═══════════════════════════════════════════════════════
-   PWA - Cache Configuration
+   PWA - Safe Cache Configuration
    ═══════════════════════════════════════════════════════ */
 const CACHE_NAME = 'mail-system-v5.0';
 const BASE = '/Email-system/';
 
+// ✅ ملفات محلية فقط - مفيش CDN
 const PRECACHE_URLS = [
   BASE,
   BASE + 'index.html',
@@ -31,28 +32,28 @@ const PRECACHE_URLS = [
   BASE + 'app.js',
   BASE + 'utils.js',
   BASE + 'firebase.js',
-  BASE + 'manifest.json',
-  'https://cdn.tailwindcss.com',
-  'https://unpkg.com/lucide@latest',
-  'https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap'
+  BASE + 'manifest.json'
 ];
 
-/* ───── Install: cache assets ───── */
+/* ───── Install ───── */
 self.addEventListener('install', (event) => {
   console.log('📦 SW Install');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Caching assets');
-      return cache.addAll(PRECACHE_URLS.map(url => new Request(url, { credentials: 'same-origin' })))
-        .catch((err) => {
-          console.warn('⚠️ Some assets failed to cache:', err);
-        });
-    })
+      console.log('📦 Caching local assets only');
+      return Promise.all(
+        PRECACHE_URLS.map(url =>
+          cache.add(url).catch(err => {
+            console.warn('⚠️ Failed to cache:', url, err.message);
+          })
+        )
+      );
+    }).catch(err => console.error('Cache open error:', err))
   );
   self.skipWaiting();
 });
 
-/* ───── Activate: cleanup old caches ───── */
+/* ───── Activate ───── */
 self.addEventListener('activate', (event) => {
   console.log('✅ SW Activate');
   event.waitUntil(
@@ -68,29 +69,39 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-/* ───── Fetch: cache-first for assets, network-first for API ───── */
+/* ───── Fetch ───── */
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip Firebase / Firestore / FCM / non-GET requests
+  // Skip non-GET
+  if (event.request.method !== 'GET') return;
+
+  // Skip Firebase, Firestore, FCM, external APIs
   if (
-    event.request.method !== 'GET' ||
     url.hostname.includes('firebase') ||
     url.hostname.includes('googleapis') ||
-    url.hostname.includes('gstatic.com/firebasejs/') ||
+    url.hostname.includes('gstatic.com') ||
     url.hostname.includes('firestore') ||
-    url.pathname.startsWith('/v1/')
+    url.pathname.startsWith('/v1/') ||
+    url.protocol !== 'http:' && url.protocol !== 'https:'
   ) {
     return;
   }
 
-  // For navigation requests (HTML pages) → network first, fallback to cache
+  // Skip non-GET and external CDN (let browser handle)
+  if (url.hostname !== location.hostname) {
+    return;
+  }
+
+  // Navigation requests → network first
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
+          if (response && response.status === 200) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(c => c.put(event.request, clone)).catch(() => {});
+          }
           return response;
         })
         .catch(() => caches.match(event.request).then(r => r || caches.match(BASE)))
@@ -98,16 +109,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For other assets → cache first, fallback network
+  // Local assets → cache first, then network
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
       return fetch(event.request).then((response) => {
-        if (!response || response.status !== 200 || response.type === 'opaque') {
-          return response;
-        }
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
+        if (!response || response.status !== 200) return response;
+        const clone = response.clone();
+        caches.open(CACHE_NAME).then(c => c.put(event.request, clone)).catch(() => {});
         return response;
       }).catch(() => cached);
     })
@@ -122,10 +131,8 @@ messaging.onBackgroundMessage((payload) => {
   const { title, body } = payload.notification || {};
   const data = payload.data || {};
 
-  self.registration.showNotification(title || 'رسالة جديدة', {
+  const options = {
     body: body || '',
-    icon: 'https://cdn-icons-png.flaticon.com/512/561/561127.png',
-    badge: 'https://cdn-icons-png.flaticon.com/192/561/561127.png',
     tag: data.threadId || data.messageId || 'msg',
     renotify: true,
     silent: true,
@@ -133,7 +140,9 @@ messaging.onBackgroundMessage((payload) => {
     dir: 'rtl',
     lang: 'ar',
     data: { url: 'https://algharabawycofye.github.io/Email-system/' }
-  });
+  };
+
+  self.registration.showNotification(title || 'رسالة جديدة', options);
 });
 
 /* ───── Notification Click ───── */
@@ -144,9 +153,7 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       for (const c of list) {
-        if (c.url.includes('Email-system') && 'focus' in c) {
-          return c.focus();
-        }
+        if (c.url.includes('Email-system') && 'focus' in c) return c.focus();
       }
       if (clients.openWindow) return clients.openWindow(url);
     })
@@ -160,4 +167,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('🚀 SW v5.0 loaded (PWA + FCM)');
+console.log('🚀 SW v5.0 loaded (Safe Mode)');
