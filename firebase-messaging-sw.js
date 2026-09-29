@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System Service Worker v5.0
+   Mail System Service Worker v6.1
    FCM Push + PWA Offline Cache (Safe Mode)
    ═══════════════════════════════════════════════════════════ */
 
@@ -19,12 +19,11 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 /* ═══════════════════════════════════════════════════════
-   PWA - Safe Cache Configuration
+   PWA - Cache Configuration
    ═══════════════════════════════════════════════════════ */
-const CACHE_NAME = 'mail-system-v5.1';
+const CACHE_NAME = 'mail-system-v6.1';
 const BASE = '/Email-system/';
 
-// ✅ ملفات محلية فقط - مفيش CDN
 const PRECACHE_URLS = [
   BASE,
   BASE + 'index.html',
@@ -40,7 +39,6 @@ self.addEventListener('install', (event) => {
   console.log('📦 SW Install');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('📦 Caching local assets only');
       return Promise.all(
         PRECACHE_URLS.map(url =>
           cache.add(url).catch(err => {
@@ -73,27 +71,20 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Skip non-GET
   if (event.request.method !== 'GET') return;
 
-  // Skip Firebase, Firestore, FCM, external APIs
   if (
     url.hostname.includes('firebase') ||
     url.hostname.includes('googleapis') ||
     url.hostname.includes('gstatic.com') ||
     url.hostname.includes('firestore') ||
-    url.pathname.startsWith('/v1/') ||
-    url.protocol !== 'http:' && url.protocol !== 'https:'
+    url.pathname.startsWith('/v1/')
   ) {
     return;
   }
 
-  // Skip non-GET and external CDN (let browser handle)
-  if (url.hostname !== location.hostname) {
-    return;
-  }
+  if (url.hostname !== location.hostname) return;
 
-  // Navigation requests → network first
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
@@ -109,7 +100,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Local assets → cache first, then network
   event.respondWith(
     caches.match(event.request).then((cached) => {
       if (cached) return cached;
@@ -135,8 +125,7 @@ messaging.onBackgroundMessage((payload) => {
     body: body || '',
     tag: data.threadId || data.messageId || 'msg',
     renotify: true,
-    silent: true,
-    vibrate: [100, 50, 100],
+    silent: false,
     dir: 'rtl',
     lang: 'ar',
     data: { url: 'https://algharabawycofye.github.io/Email-system/' }
@@ -167,4 +156,4 @@ self.addEventListener('message', (event) => {
   }
 });
 
-console.log('🚀 SW v5.0 loaded (Safe Mode)');
+console.log('🚀 SW v6.1 loaded');
