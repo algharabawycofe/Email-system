@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v4.0 - Utilities & Helpers
+   Mail System v4.1 - Utilities & Helpers
    ═══════════════════════════════════════════════════════════ */
 
 import { auth, db, doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from './firebase.js';
@@ -18,7 +18,7 @@ export const state = {
   selectedThreadId: null,
   threadsCache: [],
   expandedMsgs: new Set(),
-  currentFilter: 'inbox', // inbox | sent | starred | trash | search
+  currentFilter: 'inbox',
   searchQuery: '',
   settings: {
     darkMode: false,
@@ -101,11 +101,18 @@ export const todayArabic = () => {
    ═══════════════════════════════════════════════════════ */
 export const isOwner = () => state.currentUser?.role === 'owner';
 export const isAdmin = () => state.currentUser?.role === 'admin' || isOwner();
+export const isDeptManager = () => {
+  if (!state.currentUser) return false;
+  // إما دوره manager أو هو مدير قسم
+  return state.currentUser.role === 'manager' || 
+    state.allDeptsCache.some(d => d.managerId === state.currentUser.uid);
+};
+export const isManagerOrAbove = () => isAdmin() || isDeptManager();
 
 export const roleLabels = {
   owner: 'صاحب الشركة',
   admin: 'مدير النظام',
-  manager: 'مدير',
+  manager: 'مدير قسم',
   user: 'مستخدم'
 };
 
@@ -159,19 +166,78 @@ export function toggleDarkMode() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SOUND
+   SOUND - Web Audio API (Cross-platform: PC, Android, iOS)
    ═══════════════════════════════════════════════════════ */
+
+let audioCtx = null;
+
+function getAudioContext() {
+  if (!audioCtx) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    try {
+      audioCtx = new Ctx();
+    } catch (e) {
+      return null;
+    }
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+
 export function playNotifSound() {
   if (!state.settings.soundEnabled) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) {
+      playAudioFallback();
+      return;
+    }
+
+    // 🎵 نغمة Outlook-style: 3 تدرجات (E5 - G5 - C6)
+    const melody = [
+      { freq: 659.25,  start: 0.00, dur: 0.14 },
+      { freq: 783.99,  start: 0.14, dur: 0.14 },
+      { freq: 1046.50, start: 0.28, dur: 0.35 }
+    ];
+
+    const now = ctx.currentTime;
+
+    melody.forEach(note => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(note.freq, now + note.start);
+
+      gain.gain.setValueAtTime(0, now + note.start);
+      gain.gain.linearRampToValueAtTime(0.35, now + note.start + 0.015);
+      gain.gain.setValueAtTime(0.35, now + note.start + note.dur * 0.7);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + note.start + note.dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now + note.start);
+      osc.stop(now + note.start + note.dur + 0.05);
+    });
+  } catch (e) {
+    console.warn('Web Audio error:', e);
+    playAudioFallback();
+  }
+}
+
+function playAudioFallback() {
   try {
     const audio = document.getElementById('notifSound');
     if (!audio) return;
     audio.currentTime = 0;
-    audio.volume = 0.6;
+    audio.volume = 0.5;
     audio.play().catch(e => console.warn('Sound blocked:', e));
-  } catch (e) {
-    console.warn('Sound error:', e);
-  }
+  } catch (e) {}
 }
 
 export function toggleSound() {
@@ -313,6 +379,38 @@ export function getDeptById(id) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   DEPT MANAGER HELPERS
+   ═══════════════════════════════════════════════════════ */
+export function getMyManagedDepts() {
+  if (!state.currentUser) return [];
+  return state.allDeptsCache.filter(d => d.managerId === state.currentUser.uid);
+}
+
+export function isManagerOfDept(deptId) {
+  if (!state.currentUser) return false;
+  if (isOwner()) return true;
+  const dept = getDeptById(deptId);
+  return dept && dept.managerId === state.currentUser.uid;
+}
+
+export function getMyTeamMembers() {
+  if (!state.currentUser) return [];
+  // لو أدمن → كل المستخدمين
+  if (isAdmin()) return state.allUsersCache.filter(u => u.isActive !== false && u.id !== state.currentUser.uid);
+  
+  // لو مدير قسم → أعضاء أقسامه فقط
+  const myDepts = getMyManagedDepts();
+  if (myDepts.length === 0) return [];
+  
+  const myDeptIds = myDepts.map(d => d.id);
+  return state.allUsersCache.filter(u => 
+    myDeptIds.includes(u.departmentId) && 
+    u.isActive !== false && 
+    u.id !== state.currentUser.uid
+  );
+}
+
+/* ═══════════════════════════════════════════════════════
    SESSION
    ═══════════════════════════════════════════════════════ */
 export function saveSession(user) {
@@ -400,7 +498,20 @@ export function getAvatarColor(name) {
    UNLOCK AUDIO (First interaction)
    ═══════════════════════════════════════════════════════ */
 export function unlockAudioOnFirstClick() {
-  document.addEventListener('click', function unlock() {
+  const unlock = () => {
+    try {
+      const ctx = getAudioContext();
+      if (ctx) {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.01);
+      }
+    } catch (e) {}
+
     const audio = document.getElementById('notifSound');
     if (audio) {
       audio.play().then(() => {
@@ -408,8 +519,15 @@ export function unlockAudioOnFirstClick() {
         audio.currentTime = 0;
       }).catch(() => {});
     }
+
     document.removeEventListener('click', unlock);
-  }, { once: true });
+    document.removeEventListener('touchstart', unlock);
+    document.removeEventListener('keydown', unlock);
+  };
+
+  document.addEventListener('click', unlock, { once: true });
+  document.addEventListener('touchstart', unlock, { once: true });
+  document.addEventListener('keydown', unlock, { once: true });
 }
 
-console.log('🛠️ Utils loaded');
+console.log('🛠️ Utils v4.1 loaded');
