@@ -1,21 +1,50 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v4.0 - Firebase Configuration
+   Mail System v5.1 - Firebase Configuration & Core Services
+   iOS Optimized
    ═══════════════════════════════════════════════════════════ */
 
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import {
-  getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged,
-  createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail,
-  setPersistence, browserLocalPersistence, browserSessionPersistence
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import {
-  getFirestore, collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
-  query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch, enableIndexedDbPersistence
+  getFirestore,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  serverTimestamp,
+  onSnapshot,
+  writeBatch,
+  enableIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
-  getMessaging, getToken, onMessage, deleteToken
+  getMessaging,
+  getToken,
+  onMessage,
+  deleteToken
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js";
 
+/* ═══════════════════════════════════════════════════════
+   CONFIG
+   ═══════════════════════════════════════════════════════ */
 export const firebaseConfig = {
   apiKey: "AIzaSyAZTWVHsdv0U3XSEFyZG9RtVNJJwiTxPBA",
   authDomain: "email-system-51538.firebaseapp.com",
@@ -30,6 +59,9 @@ export const VAPID_KEY = "BBua7yXB4zAM7TpSFCbmw8reNoFDOCk-iI1lukpyaVWQ8jhIL-0Sxx
 export const SW_PATH = "/Email-system/firebase-messaging-sw.js";
 export const APP_URL = "https://algharabawycofye.github.io/Email-system/";
 
+/* ═══════════════════════════════════════════════════════
+   INITIALIZE
+   ═══════════════════════════════════════════════════════ */
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
@@ -41,19 +73,64 @@ try {
   console.warn("FCM not supported:", e);
 }
 
-enableIndexedDbPersistence(db).catch((err) => {
-  console.warn('Persistence:', err.code);
-});
+// ⚠️ Offline persistence بيبطّئ iOS — نلغيه على iPhone
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
+if (!isIOS) {
+  enableIndexedDbPersistence(db).catch((err) => {
+    if (err.code === 'failed-precondition') {
+      console.warn('Persistence: multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Persistence not supported');
+    }
+  });
+} else {
+  console.log('📱 iOS detected — offline persistence disabled for speed');
+}
+
+/* ═══════════════════════════════════════════════════════
+   EXPORTS - Auth
+   ═══════════════════════════════════════════════════════ */
 export {
-  signInWithEmailAndPassword, signOut, onAuthStateChanged,
-  createUserWithEmailAndPassword, updateProfile, sendPasswordResetEmail,
-  setPersistence, browserLocalPersistence, browserSessionPersistence,
-  deleteApp, getToken, onMessage, deleteToken,
-  collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
-  query, where, orderBy, limit, serverTimestamp, onSnapshot, writeBatch
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+  deleteApp,
+  getToken,
+  onMessage,
+  deleteToken
 };
 
+/* ═══════════════════════════════════════════════════════
+   EXPORTS - Firestore
+   ═══════════════════════════════════════════════════════ */
+export {
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  serverTimestamp,
+  onSnapshot,
+  writeBatch
+};
+
+/* ═══════════════════════════════════════════════════════
+   HELPER: Create Auth User (بدون طرد الأدمن)
+   ═══════════════════════════════════════════════════════ */
 export async function createAuthUser(email, password) {
   const secondaryApp = initializeApp(firebaseConfig, 'Sec-' + Date.now());
   const secondaryAuth = getAuth(secondaryApp);
@@ -69,13 +146,19 @@ export async function createAuthUser(email, password) {
   }
 }
 
+/* ═══════════════════════════════════════════════════════
+   HELPER: Send Password Reset
+   ═══════════════════════════════════════════════════════ */
 export async function resetUserPassword(email) {
   try {
-    await sendPasswordResetEmail(auth, email, { url: APP_URL, handleCodeInApp: false });
+    await sendPasswordResetEmail(auth, email, {
+      url: APP_URL,
+      handleCodeInApp: false
+    });
     return { success: true };
   } catch (e) {
     return { success: false, error: e.code, message: e.message };
   }
 }
 
-console.log('🔥 Firebase initialized:', firebaseConfig.projectId);
+console.log('🔥 Firebase initialized:', firebaseConfig.projectId, isIOS ? '(iOS)' : '');
