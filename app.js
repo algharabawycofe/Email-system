@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
    Mail System v9.0 - Enterprise Application
-   New: Attachments, Tags, Instant Search, Image Viewer
+   Features: Attachments, Tags, Instant Search, Image Viewer
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -35,10 +35,10 @@ import {
 let deferredPrompt = null;
 let pendingSendTimeout = null;
 let lastSentData = null;
-let attachedFiles = [];       // { id, file, name, size, type, url, progress, status }
-let userTags = [];             // [{ id, name, color, count }]
-let selectedTags = [];         // Tag IDs selected in compose
-let currentTagFilter = null;   // For filtering inbox by tag
+let attachedFiles = [];
+let userTags = [];
+let selectedTags = [];
+let currentTagFilter = null;
 
 /* ═══════════════════════════════════════════════════════
    HELPERS
@@ -150,7 +150,6 @@ function showToastAdvanced(title, body, options = {}) {
 
   const toast = document.createElement('div');
   toast.className = `toast toast-${type}`;
-
   const iconClass = type === 'success' ? 'success' : type === 'error' ? 'error' : type === 'warning' ? 'warning' : '';
 
   toast.innerHTML = `
@@ -164,17 +163,12 @@ function showToastAdvanced(title, body, options = {}) {
   `;
 
   toast.querySelector('.toast-close').onclick = (e) => { e.stopPropagation(); toast.remove(); };
-
   const actionBtn = toast.querySelector('.toast-action');
-  if (actionBtn && onAction) {
-    actionBtn.onclick = (e) => { e.stopPropagation(); onAction(); toast.remove(); };
-  }
-
+  if (actionBtn && onAction) actionBtn.onclick = (e) => { e.stopPropagation(); onAction(); toast.remove(); };
   if (onClick) toast.onclick = () => { onClick(); toast.remove(); };
 
   container.appendChild(toast);
   icons();
-
   if (duration > 0) setTimeout(() => { if (toast.parentElement) toast.remove(); }, duration);
 }
 
@@ -255,7 +249,7 @@ function setupPWAHandlers() {
 
 window.installPWA = async () => {
   if (!deferredPrompt) {
-    showToastAdvanced('التثبيت غير متاح', 'استخدم قائمة المتصفح للإضافة للشاشة الرئيسية', { type: 'warning', icon: 'alert-triangle' });
+    showToastAdvanced('التثبيت غير متاح', 'استخدم قائمة المتصفح', { type: 'warning', icon: 'alert-triangle' });
     return;
   }
   deferredPrompt.prompt();
@@ -315,9 +309,9 @@ async function handleLogin() {
       'auth/wrong-password': 'كلمة السر غلط',
       'auth/invalid-credential': 'بيانات الدخول غير صحيحة',
       'auth/invalid-email': 'الإيميل غير صحيح',
-      'auth/unauthorized-domain': 'الدومين غير مسموح في Firebase',
+      'auth/unauthorized-domain': 'الدومين غير مسموح',
       'auth/too-many-requests': 'محاولات كتير — استنى شوية',
-      'auth/network-request-failed': 'مشكلة في الاتصال بالإنترنت'
+      'auth/network-request-failed': 'مشكلة في الاتصال'
     };
     err.textContent = messages[e.code] || `خطأ: ${e.code}`;
     show(err);
@@ -345,7 +339,7 @@ window.sendPasswordReset = async () => {
     status.className = 'alert alert-error';
     if (result.error === 'auth/user-not-found') status.textContent = 'الإيميل غير مسجل';
     else if (result.error === 'auth/invalid-email') status.textContent = 'الإيميل غير صحيح';
-    else status.textContent = result.message || 'خطأ في الإرسال';
+    else status.textContent = result.message || 'خطأ';
   }
 };
 
@@ -425,11 +419,7 @@ async function loadUserTags() {
 function renderSidebarTags() {
   const container = document.getElementById('sidebarTags');
   if (!container) return;
-
-  if (userTags.length === 0) {
-    container.innerHTML = '';
-    return;
-  }
+  if (userTags.length === 0) { container.innerHTML = ''; return; }
 
   container.innerHTML = userTags.map(tag => `
     <button class="nav-tag ${currentTagFilter === tag.id ? 'active' : ''}"
@@ -441,12 +431,7 @@ function renderSidebarTags() {
   `).join('');
 }
 
-window.openTagsManager = () => {
-  show($('#tagsModal'));
-  renderTagsManager();
-  icons();
-};
-
+window.openTagsManager = () => { show($('#tagsModal')); renderTagsManager(); icons(); };
 window.closeTagsManager = () => hide($('#tagsModal'));
 
 function renderTagsManager() {
@@ -475,19 +460,18 @@ window.createTag = async () => {
   const name = $('#newTagName').value.trim();
   const color = $('#newTagColor').value;
   if (!name) { alert('اكتب اسم التصنيف'); return; }
-
-  if (userTags.length >= 20) { alert('أقصى عدد 20 تصنيف'); return; }
+  if (userTags.length >= 20) { alert('أقصى 20 تصنيف'); return; }
 
   try {
-    const ref = await addDoc(collection(db, 'users', state.currentUser.uid, 'tags'), {
+    const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'tags'), {
       name, color, count: 0, createdAt: serverTimestamp()
     });
-    userTags.push({ id: ref.id, name, color, count: 0 });
+    userTags.push({ id: r.id, name, color, count: 0 });
     $('#newTagName').value = '';
     $('#newTagColor').value = '#0078D4';
     renderTagsManager();
     renderSidebarTags();
-    showToastAdvanced('تم الإضافة ✅', `تصنيف "${name}" اتعمل`, { type: 'success', icon: 'tag', duration: 2500 });
+    showToastAdvanced('تم الإضافة ✅', `"${name}" اتعمل`, { type: 'success', icon: 'tag', duration: 2500 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -496,8 +480,7 @@ window.createTag = async () => {
 window.deleteTag = async (tagId) => {
   const tag = userTags.find(t => t.id === tagId);
   if (!tag) return;
-
-  const ok = await confirmDialog('حذف التصنيف', `حذف "${tag.name}"؟ الرسائل مش هتتأثر.`);
+  const ok = await confirmDialog('حذف التصنيف', `حذف "${tag.name}"؟`);
   if (!ok) return;
 
   try {
@@ -606,19 +589,14 @@ function setupGlobalListeners() {
   }
 
   document.addEventListener('click', (e) => {
-    if (!e.target.closest('#notifBtn') && !e.target.closest('#notifDropdown')) {
-      hideStyle($('#notifDropdown'));
-    }
-    if (!e.target.closest('#userMenuBtn') && !e.target.closest('#userMenu')) {
-      hideStyle($('#userMenu'));
-    }
+    if (!e.target.closest('#notifBtn') && !e.target.closest('#notifDropdown')) hideStyle($('#notifDropdown'));
+    if (!e.target.closest('#userMenuBtn') && !e.target.closest('#userMenu')) hideStyle($('#userMenu'));
     if (!e.target.closest('.header-search')) {
       const sr = $('#searchResults');
       if (sr) sr.style.display = 'none';
     }
   });
 
-  // INSTANT SEARCH
   setupInstantSearch();
 
   const composeModal = $('#composeModal');
@@ -643,20 +621,13 @@ function setupInstantSearch() {
   input.addEventListener('input', (e) => {
     const q = e.target.value.trim();
     if (clearBtn) clearBtn.classList.toggle('hidden', !q);
-
     clearTimeout(searchDebounce);
-    if (!q) {
-      resultsBox.style.display = 'none';
-      return;
-    }
-
+    if (!q) { resultsBox.style.display = 'none'; return; }
     searchDebounce = setTimeout(() => performInstantSearch(q), 250);
   });
 
   input.addEventListener('focus', () => {
-    if (input.value.trim() && resultsBox.innerHTML) {
-      resultsBox.style.display = 'block';
-    }
+    if (input.value.trim() && resultsBox.innerHTML) resultsBox.style.display = 'block';
   });
 
   if (clearBtn) {
@@ -678,7 +649,6 @@ async function performInstantSearch(query) {
   resultsBox.style.display = 'block';
 
   try {
-    // Search incoming + outgoing messages
     const q1 = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
     const q2 = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
     const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
@@ -722,8 +692,8 @@ async function performInstantSearch(query) {
 }
 
 window.goToSearchResult = (threadId) => {
-  const resultsBox = $('#searchResults');
-  if (resultsBox) resultsBox.style.display = 'none';
+  const sr = $('#searchResults');
+  if (sr) sr.style.display = 'none';
   navigate('inbox');
   setTimeout(() => window.openThread(threadId), 300);
 };
@@ -762,10 +732,8 @@ const ROUTES = {
 
 export function navigate(page) {
   state.currentFilter = page;
-
   $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
   $$('.mnav-item').forEach(b => b.classList.toggle('active', b.dataset.page === page));
-
   const route = ROUTES[page];
   if (route) route();
   icons();
@@ -796,7 +764,7 @@ async function renderMyTeam() {
           <div class="user-cell-name">${esc(m.name)}</div>
           <div class="user-cell-email">@${esc(m.username)}</div>
         </div>
-        <button onclick="quickSendToUser('${m.id}')" class="row-action primary" title="إرسال رسالة">
+        <button onclick="quickSendToUser('${m.id}')" class="row-action primary" title="إرسال">
           <i data-lucide="send" class="w-4 h-4"></i>
         </button>
       </div>
@@ -834,7 +802,6 @@ async function renderMyTeam() {
         <div class="section" style="text-align:center;padding:40px;">
           <i data-lucide="alert-circle" class="w-12 h-12" style="color:var(--warning);margin-bottom:12px;"></i>
           <div style="font-weight:700;margin-bottom:4px;">لم يتم تعيينك مديرًا لأي قسم</div>
-          <div style="font-size:13px;color:var(--text-tertiary);">تواصل مع الأدمن لتعيينك مدير قسم</div>
         </div>
       ` : deptSections}
       ${team.length > 0 ? `
@@ -1245,15 +1212,8 @@ async function renderInbox() {
     return t;
   }).sort((a, b) => b.lastAt - a.lastAt);
 
-  // Apply search filter
-  if (state.searchQuery) {
-    threads = threads.filter(t => t.messages.some(m => matchesSearch(m, state.searchQuery)));
-  }
-
-  // Apply tag filter
-  if (currentTagFilter) {
-    threads = threads.filter(t => t.tags.includes(currentTagFilter) || t.messages.some(m => (m.tags || []).includes(currentTagFilter)));
-  }
+  if (state.searchQuery) threads = threads.filter(t => t.messages.some(m => matchesSearch(m, state.searchQuery)));
+  if (currentTagFilter) threads = threads.filter(t => t.tags.includes(currentTagFilter) || t.messages.some(m => (m.tags || []).includes(currentTagFilter)));
 
   state.threadsCache = threads;
   renderThreadList();
@@ -1683,7 +1643,6 @@ window.permanentDelete = async (threadId) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
   for (const m of t.messages) {
-    // Delete attachments from storage first
     if (m.attachments?.length) {
       for (const att of m.attachments) {
         try { await deleteObject(ref(storage, att.path)); } catch (e) {}
@@ -1801,7 +1760,6 @@ window.openCompose = async () => {
   statusEl.textContent = '';
   statusEl.style.color = '';
 
-  // Reset attachments & tags
   attachedFiles = [];
   selectedTags = [];
   renderAttachments();
@@ -1885,7 +1843,7 @@ window.handleFiles = async (event) => {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
 
-  const maxSize = 10 * 1024 * 1024; // 10MB
+  const maxSize = 10 * 1024 * 1024;
   const maxFiles = 10;
 
   for (const file of files) {
@@ -1999,7 +1957,6 @@ window.removeAttachment = async (fileId) => {
   if (idx === -1) return;
   const f = attachedFiles[idx];
 
-  // If uploaded, delete from storage
   if (f.path) {
     try { await deleteObject(ref(storage, f.path)); } catch (e) {}
   }
@@ -2036,11 +1993,9 @@ window.sendMessage = async () => {
   if (deptSend && !deptId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر القسم'; return; }
   if (!subject) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب الموضوع'; return; }
 
-  // Check uploads
   const uploading = attachedFiles.some(f => f.status === 'uploading');
   if (uploading) { status.style.color = 'var(--danger)'; status.textContent = 'استنى لحد ما المرفقات ترفع'; return; }
 
-  // Prepare attachments data
   const attachmentsData = attachedFiles.filter(f => f.status === 'done').map(f => ({
     name: f.name, size: f.size, type: f.type, url: f.url, path: f.path
   }));
@@ -2061,7 +2016,6 @@ window.sendMessage = async () => {
 
   closeCompose();
 
-  // UNDO toast
   const undoToast = document.createElement('div');
   undoToast.className = 'toast toast-warning';
   undoToast.id = 'undoSendToast';
