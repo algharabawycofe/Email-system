@@ -2,8 +2,18 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Mail System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Mail System </title>
+<meta name="description" content="نظام الرسائل الداخلي - إرسال واستقبال الرسائل والإشعارات" />
+<meta name="theme-color" content="#0078D4" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Mail System" />
+<meta name="mobile-web-app-capable" content="yes" />
+<link rel="manifest" href="manifest.json" />
+<link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/192/561/561127.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="https://cdn-icons-png.flaticon.com/192/561/561127.png" />
+<link rel="icon" type="image/png" sizes="512x512" href="https://cdn-icons-png.flaticon.com/512/561/561127.png" />
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -11,7 +21,7 @@
 </head>
 <body>
 
-<!-- LOGIN -->
+<!-- ============ LOGIN SCREEN ============ -->
 <div id="loginScreen" class="min-h-screen flex items-center justify-center p-4 login-bg">
   <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md fade-in">
     <div class="flex justify-center mb-6">
@@ -60,7 +70,7 @@
   </div>
 </div>
 
-<!-- FORGOT PASSWORD -->
+<!-- ============ FORGOT PASSWORD MODAL ============ -->
 <div id="forgotModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-4">
@@ -83,9 +93,10 @@
   </div>
 </div>
 
-<!-- APP -->
+<!-- ============ APP ============ -->
 <div id="app" class="hidden min-h-screen flex flex-col">
 
+  <!-- ========== HEADER ========== -->
   <header class="app-header">
     <button id="toggleSidebar" class="icon-btn" title="إظهار/إخفاء القائمة">
       <i data-lucide="menu" class="w-5 h-5"></i>
@@ -103,10 +114,12 @@
 
     <div class="flex-1 sm:flex-none"></div>
 
+    <!-- Dark mode toggle -->
     <button id="themeToggle" class="icon-btn" title="تبديل الوضع الليلي">
       <i data-lucide="moon" class="w-5 h-5"></i>
     </button>
 
+    <!-- Notifications -->
     <div class="relative">
       <button id="notifBtn" class="relative icon-btn" title="الإشعارات">
         <i data-lucide="bell" class="w-5 h-5"></i>
@@ -121,6 +134,7 @@
       </div>
     </div>
 
+    <!-- User menu -->
     <div class="relative">
       <button id="userMenuBtn" class="flex items-center gap-2 pl-2 md:pl-3 border-r border-white/20 pr-3 hover:bg-white/10 rounded transition">
         <div class="text-right hidden md:block text-white">
@@ -151,8 +165,10 @@
     </div>
   </header>
 
+  <!-- ========== BODY ========== -->
   <div class="flex flex-1 overflow-hidden relative">
 
+    <!-- SIDEBAR -->
     <aside id="sidebar" class="app-sidebar">
       <div class="p-3 border-b border-slate-200 dark:border-slate-700">
         <button onclick="openCompose()" class="btn-primary w-full">
@@ -198,10 +214,11 @@
       </nav>
 
       <div class="p-3 border-t border-slate-200 dark:border-slate-700 text-xs text-slate-400 text-center">
-        Mail System v4.1
+        Mail System v5.0
       </div>
     </aside>
 
+    <!-- MOBILE NAV -->
     <nav id="mobileNav" class="mobile-nav" style="display:none">
       <button data-page="dashboard" class="mnav-btn">
         <i data-lucide="home" class="w-5 h-5"></i><span>الرئيسية</span>
@@ -223,13 +240,14 @@
       </button>
     </nav>
 
+    <!-- MAIN CONTENT -->
     <main id="mainContent" class="app-main">
       <div id="pageContent" class="h-full overflow-y-auto"></div>
     </main>
   </div>
 </div>
 
-<!-- COMPOSE -->
+<!-- ============ COMPOSE MODAL ============ -->
 <div id="composeModal" class="modal-fullscreen" style="display:none">
   <div class="compose-window">
     <div class="compose-header">
@@ -330,7 +348,7 @@
   </div>
 </div>
 
-<!-- PROFILE -->
+<!-- ============ PROFILE MODAL ============ -->
 <div id="profileModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-5">
@@ -376,7 +394,7 @@
   </div>
 </div>
 
-<!-- SETTINGS -->
+<!-- ============ SETTINGS MODAL ============ -->
 <div id="settingsModal" class="hidden fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md fade-in">
     <div class="flex items-center justify-between mb-5">
@@ -400,22 +418,21 @@
 
       <div class="flex items-center justify-between">
         <div>
-          <div class="font-semibold text-sm">صوت الإشعارات</div>
-          <div class="text-xs text-slate-500">تشغيل صوت عند وصول رسالة</div>
-        </div>
-        <label class="toggle-switch">
-          <input type="checkbox" id="soundToggle" onchange="toggleSound()" checked />
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-
-      <div class="flex items-center justify-between">
-        <div>
           <div class="font-semibold text-sm">الإشعارات المدفوعة</div>
           <div class="text-xs text-slate-500">Push notifications حتى والمتصفح مقفول</div>
         </div>
         <button id="enablePushBtn" onclick="enablePushNotifications()" class="text-xs bg-[#0078D4] text-white px-3 py-1.5 rounded font-semibold">
           تفعيل
+        </button>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <div>
+          <div class="font-semibold text-sm">تثبيت التطبيق</div>
+          <div class="text-xs text-slate-500">ثبّت النظام كتطبيق على جهازك</div>
+        </div>
+        <button id="installPwaBtn" onclick="installPWA()" class="text-xs bg-green-600 text-white px-3 py-1.5 rounded font-semibold hidden">
+          تثبيت
         </button>
       </div>
 
@@ -436,7 +453,7 @@
   </div>
 </div>
 
-<!-- CONFIRM -->
+<!-- ============ CONFIRM MODAL ============ -->
 <div id="confirmModal" class="hidden fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4 modal-overlay">
   <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm fade-in">
     <div class="flex items-center gap-3 mb-4">
@@ -457,13 +474,13 @@
   </div>
 </div>
 
-<!-- TOAST -->
+<!-- ============ TOAST ============ -->
 <div id="toastContainer" class="fixed top-16 left-4 z-[100] space-y-2"></div>
 
-<!-- Audio placeholder (Web Audio API is used instead) -->
+<!-- ============ AUDIO (Disabled) ============ -->
 <audio id="notifSound" preload="none" style="display:none"></audio>
 
-<!-- SCRIPTS -->
+<!-- ============ SCRIPTS ============ -->
 <script type="module" src="firebase.js"></script>
 <script type="module" src="app.js"></script>
 
