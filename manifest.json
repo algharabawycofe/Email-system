@@ -1,7 +1,7 @@
 {
   "name": "Mail System - نظام الرسائل",
   "short_name": "Mail System",
-  "description": "نظام الرسائل الداخلي - إرسال واستقبال الرسائل والإشعارات",
+  "description": "نظام الرسائل الداخلي",
   "start_url": "/Email-system/",
   "scope": "/Email-system/",
   "display": "standalone",
@@ -13,38 +13,16 @@
   "categories": ["business", "productivity"],
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3Cpath d='M100 180l156 112 156-112' fill='none' stroke='%230078D4' stroke-width='20' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     },
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3Cpath d='M100 180l156 112 156-112' fill='none' stroke='%230078D4' stroke-width='20' stroke-linejoin='round' stroke-linecap='round'/%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "رسالة جديدة",
-      "short_name": "جديدة",
-      "url": "/Email-system/?action=compose",
-      "icons": [{
-        "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E",
-        "sizes": "192x192",
-        "type": "image/svg+xml"
-      }]
-    },
-    {
-      "name": "صندوق الوارد",
-      "short_name": "الوارد",
-      "url": "/Email-system/?page=inbox",
-      "icons": [{
-        "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E",
-        "sizes": "192x192",
-        "type": "image/svg+xml"
-      }]
     }
   ],
   "prefer_related_applications": false
