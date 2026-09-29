@@ -202,8 +202,8 @@ export function playNotifSound() {
 
     // 🎵 نغمة ناعمة - Soft Chime (زي Mac/iPhone)
     // C5 (دافئة) → E5 (هادية)
-    playSoftTone(ctx, now, 523.25, 0.55, 0.09);
-    playSoftTone(ctx, now + 0.10, 659.25, 0.65, 0.07);
+playSoftTone(ctx, now, 523.25, 0.55, 0.09);      
+playSoftTone(ctx, now + 0.10, 659.25, 0.65, 0.07); 
   } catch (e) {
     console.warn('Web Audio error:', e);
     playAudioFallback();
