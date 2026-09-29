@@ -1,13 +1,37 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v6.1 - Styles
-   Complete Scroll Fix
+   Mail System v7.0 - Outlook Style Design
    ═══════════════════════════════════════════════════════════ */
 
-* {
-  font-family: 'Cairo', 'Segoe UI', sans-serif;
-  -webkit-tap-highlight-color: transparent;
+:root {
+  /* Outlook Colors */
+  --ow-blue: #0078D4;
+  --ow-blue-dark: #106EBE;
+  --ow-blue-light: #DEECF9;
+  --ow-bg: #FAF9F8;
+  --ow-white: #FFFFFF;
+  --ow-border: #EDEBE9;
+  --ow-border-2: #E1DFDD;
+  --ow-text: #201F1E;
+  --ow-text-2: #323130;
+  --ow-text-3: #605E5C;
+  --ow-text-4: #8A8886;
+  --ow-hover: #F3F2F1;
+  --ow-selected: #EFF6FC;
+  --ow-unread: #0078D4;
+  --ow-red: #D13438;
+  --ow-amber: #FFB900;
+  --ow-green: #107C10;
 }
 
+* {
+  font-family: 'Segoe UI', 'Cairo', system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+/* ═══════════════════════════════════════════════════════
+   BASE
+   ═══════════════════════════════════════════════════════ */
 html {
   height: 100%;
   -webkit-text-size-adjust: 100%;
@@ -20,16 +44,26 @@ body {
   padding: 0;
   overflow: hidden;
   overscroll-behavior-y: none;
+  background: var(--ow-bg);
+  color: var(--ow-text);
 }
 
-/* SCROLLBAR */
-::-webkit-scrollbar { width: 8px; height: 8px; }
+/* Scrollbar - Outlook style */
+::-webkit-scrollbar { width: 12px; height: 12px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-body.dark ::-webkit-scrollbar-thumb { background: #475569; }
+::-webkit-scrollbar-thumb {
+  background: #C8C6C4;
+  border-radius: 6px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #A19F9D;
+  background-clip: content-box;
+  border: 3px solid transparent;
+}
 
-/* ANIMATIONS */
+/* Animations */
 .fade-in { animation: fadeIn 0.15s ease-in; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 .modal-overlay { animation: modalIn 0.15s ease-out; }
@@ -37,29 +71,33 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
 .pulse { animation: pulse 1.5s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
 
-/* LOGIN */
+/* ═══════════════════════════════════════════════════════
+   LOGIN
+   ═══════════════════════════════════════════════════════ */
 .login-bg {
   background: linear-gradient(135deg, #0078D4 0%, #106EBE 50%, #0a4a8a 100%);
 }
 
 .input-field {
   width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 0.5rem;
-  padding: 0.625rem 0.75rem;
-  font-size: 16px;
+  border: 1px solid var(--ow-border-2);
+  border-radius: 2px;
+  padding: 0.5rem 0.75rem;
+  font-size: 15px;
   background: white;
-  color: #0f172a;
-  transition: all 0.15s;
+  color: var(--ow-text);
+  transition: border 0.15s;
   outline: none;
+  font-family: 'Segoe UI', 'Cairo', sans-serif;
 }
 .input-field:focus {
-  border-color: transparent;
-  box-shadow: 0 0 0 2px #0078D4;
+  border-color: var(--ow-blue);
+  border-bottom-width: 2px;
+  padding-bottom: calc(0.5rem - 1px);
 }
 .input-field:disabled {
-  background: #f8fafc;
-  color: #64748b;
+  background: #f3f2f1;
+  color: var(--ow-text-4);
   cursor: not-allowed;
 }
 .input-icon {
@@ -67,11 +105,13 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   top: 50%;
   transform: translateY(-50%);
   right: 0.75rem;
-  color: #94a3b8;
+  color: var(--ow-text-4);
   pointer-events: none;
 }
 
-/* APP LAYOUT */
+/* ═══════════════════════════════════════════════════════
+   APP LAYOUT
+   ═══════════════════════════════════════════════════════ */
 #app {
   height: 100vh;
   display: flex;
@@ -81,144 +121,169 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
 @supports (height: 100dvh) {
   #app { height: 100dvh; }
 }
+
 #app > .flex.flex-1 {
   flex: 1 1 0%;
   min-height: 0;
   overflow: hidden;
 }
 
-/* HEADER */
+/* ═══════════════════════════════════════════════════════
+   HEADER - Outlook Top Bar
+   ═══════════════════════════════════════════════════════ */
 .app-header {
-  height: 3rem;
+  height: 48px;
   flex-shrink: 0;
-  background: #0078D4;
+  background: var(--ow-blue);
   display: flex;
   align-items: center;
-  padding: 0 0.5rem;
-  gap: 0.5rem;
+  padding: 0 8px;
+  gap: 4px;
   position: relative;
   z-index: 40;
 }
 @media (min-width: 768px) {
-  .app-header { padding: 0 0.75rem; gap: 0.75rem; }
+  .app-header { padding: 0 12px; gap: 8px; }
 }
+
 .icon-btn {
-  padding: 0.5rem;
-  border-radius: 0.25rem;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 2px;
   color: white;
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.1s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .icon-btn:hover { background: rgba(255,255,255,0.15); }
+
 .global-search {
   width: 100%;
+  height: 32px;
   background: white;
   border: 1px solid transparent;
-  border-radius: 0.25rem;
-  padding: 0.375rem 2.25rem 0.375rem 0.75rem;
-  font-size: 16px;
+  border-radius: 2px;
+  padding: 0 36px 0 12px;
+  font-size: 14px;
+  color: var(--ow-text);
   outline: none;
+  font-family: 'Segoe UI', 'Cairo', sans-serif;
 }
-.global-search:focus { box-shadow: 0 0 0 2px rgba(255,255,255,0.5); }
+.global-search::placeholder { color: var(--ow-text-4); }
+.global-search:focus {
+  border-color: white;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.3);
+}
 
 .notif-badge {
   position: absolute;
-  top: 0.125rem;
-  left: 0.125rem;
+  top: 2px;
+  left: 2px;
   min-width: 16px;
   height: 16px;
-  background: #ef4444;
+  background: var(--ow-red);
   color: white;
   font-size: 10px;
-  font-weight: bold;
-  border-radius: 9999px;
+  font-weight: 600;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 4px;
-  border: 1px solid white;
+  border: 1px solid var(--ow-blue);
 }
+
 .notif-dropdown {
   position: absolute;
   left: 0;
-  margin-top: 0.5rem;
-  width: 20rem;
-  max-height: 70vh;
+  margin-top: 4px;
+  width: 360px;
+  max-height: 480px;
   background: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  box-shadow: 0 6.4px 14.4px 0 rgba(0,0,0,0.132), 0 1.2px 3.6px 0 rgba(0,0,0,0.108);
+  border: 1px solid var(--ow-border);
   overflow: hidden;
   z-index: 50;
   display: flex;
   flex-direction: column;
 }
-@media (min-width: 768px) {
-  .notif-dropdown { width: 24rem; }
-}
+
 .notif-dropdown-header {
-  padding: 0.75rem 1rem;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 16px;
+  background: white;
+  border-bottom: 1px solid var(--ow-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
 }
+
 .user-avatar {
-  width: 2rem;
-  height: 2rem;
-  border-radius: 9999px;
-  background: rgba(255,255,255,0.2);
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #8764B8;
   color: white;
-  border: 1px solid rgba(255,255,255,0.3);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  font-size: 0.75rem;
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
 }
+
 .user-menu {
   position: absolute;
   left: 0;
-  margin-top: 0.5rem;
-  width: 16rem;
+  margin-top: 4px;
+  width: 280px;
   background: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  box-shadow: 0 6.4px 14.4px 0 rgba(0,0,0,0.132), 0 1.2px 3.6px 0 rgba(0,0,0,0.108);
+  border: 1px solid var(--ow-border);
   overflow: hidden;
   z-index: 50;
 }
+
 .user-menu-header {
-  padding: 0.75rem 1rem;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  padding: 16px;
+  background: white;
+  border-bottom: 1px solid var(--ow-border);
 }
+
 .user-menu-item {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 12px;
   width: 100%;
-  padding: 0.625rem 1rem;
-  font-size: 0.875rem;
-  color: #334155;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--ow-text-2);
   background: transparent;
   border: none;
   cursor: pointer;
   text-align: right;
-  transition: background 0.15s;
+  transition: background 0.1s;
+  font-family: inherit;
 }
-.user-menu-item:hover { background: #f1f5f9; }
+.user-menu-item:hover { background: var(--ow-hover); }
+.user-menu-item i { color: var(--ow-text-3); flex-shrink: 0; }
 
-/* SIDEBAR */
+/* ═══════════════════════════════════════════════════════
+   SIDEBAR - Outlook Folder List
+   ═══════════════════════════════════════════════════════ */
 .app-sidebar {
-  width: 16rem;
+  width: 280px;
   height: 100%;
-  background: white;
-  border-left: 1px solid #e2e8f0;
+  background: #F3F2F1;
+  border-left: 1px solid var(--ow-border);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
@@ -229,86 +294,100 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   overscroll-behavior: contain;
   min-height: 0;
 }
-.app-sidebar.collapsed { margin-right: -16rem; }
+.app-sidebar.collapsed { margin-right: -280px; }
 
 .btn-primary {
-  background: #0078D4;
+  background: var(--ow-blue);
   color: white;
   font-weight: 600;
   border: none;
-  border-radius: 0.25rem;
-  padding: 0.625rem 1rem;
-  font-size: 0.875rem;
+  border-radius: 2px;
+  padding: 8px 16px;
+  font-size: 14px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.1s;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  gap: 8px;
+  font-family: inherit;
 }
-.btn-primary:hover { background: #106EBE; }
-.btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-primary:hover { background: var(--ow-blue-dark); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btn-secondary {
-  background: #f1f5f9;
-  color: #334155;
+  background: white;
+  color: var(--ow-text-2);
   font-weight: 500;
-  border: none;
-  border-radius: 0.25rem;
-  padding: 0.5rem 1rem;
+  border: 1px solid var(--ow-border-2);
+  border-radius: 2px;
+  padding: 6px 16px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.1s;
+  font-family: inherit;
+  font-size: 14px;
 }
-.btn-secondary:hover { background: #e2e8f0; }
+.btn-secondary:hover { background: var(--ow-hover); }
 
 .nav-btn {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 12px;
   text-align: right;
-  padding: 0.5rem 1rem;
-  color: #334155;
-  font-size: 0.875rem;
-  transition: all 0.15s;
+  padding: 8px 20px 8px 12px;
+  color: var(--ow-text-2);
+  font-size: 14px;
+  transition: background 0.1s;
   border: none;
   background: transparent;
   cursor: pointer;
-  border-right: 2px solid transparent;
+  border-right: 3px solid transparent;
+  font-family: inherit;
+  position: relative;
 }
-.nav-btn:hover { background: #f1f5f9; }
+.nav-btn:hover { background: #EDEBE9; }
 .nav-btn.active {
-  background: #e5f0fa;
-  color: #0078D4;
-  border-right-color: #0078D4;
+  background: #EDEBE9;
+  color: var(--ow-text);
+  border-right-color: var(--ow-blue);
   font-weight: 600;
 }
+.nav-btn i { color: var(--ow-blue); width: 20px; height: 20px; flex-shrink: 0; }
+.nav-btn.active i { color: var(--ow-blue); }
+
 .nav-badge {
   margin-right: auto;
-  font-size: 0.75rem;
-  background: #0078D4;
+  font-size: 12px;
+  background: var(--ow-blue);
   color: white;
-  border-radius: 9999px;
-  padding: 0.125rem 0.5rem;
-}
-.nav-section-title {
-  font-size: 0.75rem;
-  font-weight: bold;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  border-radius: 10px;
+  padding: 1px 8px;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: center;
 }
 
-/* MOBILE NAV */
+.nav-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ow-text-3);
+  text-transform: none;
+  letter-spacing: 0;
+  padding: 4px 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   MOBILE NAV
+   ═══════════════════════════════════════════════════════ */
 .mobile-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
-  height: 60px;
+  height: 56px;
   background: white;
-  border-top: 1px solid #e2e8f0;
+  border-top: 1px solid var(--ow-border);
   display: flex;
   z-index: 40;
   padding-bottom: env(safe-area-inset-bottom);
@@ -319,45 +398,48 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 0.25rem 0;
-  color: #64748b;
-  font-size: 10px;
-  gap: 0.125rem;
+  padding: 4px 0;
+  color: var(--ow-text-4);
+  font-size: 11px;
+  gap: 2px;
   background: transparent;
   border: none;
   cursor: pointer;
   position: relative;
+  font-family: inherit;
 }
-.mnav-btn.active { color: #0078D4; }
+.mnav-btn.active { color: var(--ow-blue); }
 .mnav-badge {
   position: absolute;
-  top: 0.25rem;
+  top: 4px;
   right: 25%;
   font-size: 10px;
-  background: #ef4444;
+  background: var(--ow-red);
   color: white;
-  border-radius: 9999px;
-  width: 16px;
+  border-radius: 10px;
+  min-width: 16px;
   height: 16px;
+  padding: 0 4px;
   display: flex;
   align-items: center;
   justify-content: center;
+  font-weight: 600;
 }
-.mnav-compose { color: #0078D4; }
+.mnav-compose { color: var(--ow-blue); }
 .mnav-compose-circle {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 9999px;
-  background: #0078D4;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--ow-blue);
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
-  margin-top: -1.25rem;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  margin-top: -20px;
 }
 
 /* ═══════════════════════════════════════════════════════
-   MAIN CONTENT - SCROLL FIX v6.1
+   MAIN CONTENT + SCROLL
    ═══════════════════════════════════════════════════════ */
 .app-main {
   flex: 1 1 0%;
@@ -379,28 +461,21 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   overscroll-behavior: contain;
 }
 
-/* ⭐ على الموبايل: absolute مع bottom لمقاس mobile nav */
 @media (max-width: 767px) {
-  .app-main {
-    position: relative;
-    overflow: hidden;
-  }
-
+  .app-main { position: relative; overflow: hidden; }
   #pageContent {
     position: absolute !important;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 60px;
+    top: 0; left: 0; right: 0; bottom: 56px;
     overflow-y: auto !important;
     overflow-x: hidden !important;
     -webkit-overflow-scrolling: touch !important;
     flex: none;
-    box-sizing: border-box;
   }
 }
 
-/* COMPOSE MODAL */
+/* ═══════════════════════════════════════════════════════
+   COMPOSE MODAL - Outlook style
+   ═══════════════════════════════════════════════════════ */
 .modal-fullscreen {
   position: fixed;
   inset: 0;
@@ -413,23 +488,25 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   overflow: hidden;
 }
 @media (min-width: 768px) {
-  .modal-fullscreen { align-items: center; padding: 1rem; }
+  .modal-fullscreen { align-items: center; padding: 16px; }
 }
+
 .compose-window {
   background: white;
   width: 100%;
   max-height: 92vh;
   max-height: 92dvh;
-  border-radius: 0.5rem 0.5rem 0 0;
-  box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+  border-radius: 4px 4px 0 0;
+  box-shadow: 0 6.4px 14.4px 0 rgba(0,0,0,0.132), 0 1.2px 3.6px 0 rgba(0,0,0,0.108);
   display: flex;
   flex-direction: column;
   animation: modalIn 0.15s ease-out;
   overflow: hidden;
 }
 @media (min-width: 768px) {
-  .compose-window { max-width: 48rem; border-radius: 0.5rem; }
+  .compose-window { max-width: 640px; border-radius: 4px; }
 }
+
 .compose-window > .flex-1 {
   flex: 1 1 0%;
   overflow-y: auto;
@@ -437,161 +514,188 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   min-height: 0;
   -webkit-overflow-scrolling: touch;
 }
+
 .compose-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.625rem 1rem;
-  background: #0078D4;
+  padding: 8px 12px;
+  background: var(--ow-blue);
   color: white;
   flex-shrink: 0;
+  height: 40px;
 }
+
 .compose-ribbon {
   display: flex;
   align-items: center;
-  gap: 0.125rem;
-  padding: 0.375rem 0.5rem;
-  background: #f8fafc;
-  border-bottom: 1px solid #e2e8f0;
+  gap: 2px;
+  padding: 6px 8px;
+  background: white;
+  border-bottom: 1px solid var(--ow-border);
   flex-shrink: 0;
 }
+
 .ribbon-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 6px 10px;
-  border-radius: 4px;
+  padding: 4px 8px;
+  border-radius: 2px;
   cursor: pointer;
   transition: background 0.1s;
-  gap: 3px;
+  gap: 2px;
   font-size: 11px;
-  color: #374151;
-  min-width: 55px;
+  color: var(--ow-text-2);
+  min-width: 50px;
   background: transparent;
   border: none;
+  font-family: inherit;
 }
-.ribbon-btn:hover { background: #f3f4f6; }
-.ribbon-btn i { width: 18px; height: 18px; color: #4b5563; }
-.ribbon-btn.primary i { color: #0078D4; }
+.ribbon-btn:hover { background: var(--ow-hover); }
+.ribbon-btn i { width: 16px; height: 16px; color: var(--ow-blue); }
+.ribbon-btn.primary i { color: var(--ow-blue); }
+
 .compose-fields {
-  border-bottom: 1px solid #e2e8f0;
-  flex-shrink: 0;
-}
-.broadcast-box {
-  padding: 0.5rem 1rem;
-  background: #fffbeb;
-  border-bottom: 1px solid #fcd34d;
-}
-.dept-box {
-  padding: 0.5rem 1rem;
-  background: #faf5ff;
-  border-bottom: 1px solid #d8b4fe;
-}
-.compose-field {
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid #e2e8f0;
-}
-.compose-label {
-  padding: 0.625rem 1rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #475569;
-  width: 4rem;
-  flex-shrink: 0;
-}
-.compose-input {
-  flex: 1;
-  padding: 0.625rem 1rem 0.625rem 0;
-  font-size: 16px;
-  background: transparent;
-  border: none;
-  outline: none;
-}
-.compose-textarea {
-  width: 100%;
-  min-height: 300px;
-  padding: 1rem;
-  font-size: 16px;
-  resize: none;
-  border: none;
-  outline: none;
-  font-family: 'Cairo', 'Segoe UI', sans-serif;
-  background: transparent;
-}
-.compose-footer {
-  padding: 0.5rem 1rem;
-  border-top: 1px solid #e2e8f0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: #f8fafc;
+  border-bottom: 1px solid var(--ow-border);
   flex-shrink: 0;
 }
 
-/* TOGGLE */
+.broadcast-box {
+  padding: 8px 16px;
+  background: #FFF4CE;
+  border-bottom: 1px solid #FDE7A4;
+}
+
+.dept-box {
+  padding: 8px 16px;
+  background: #F4F0FA;
+  border-bottom: 1px solid #E0D3F0;
+}
+
+.compose-field {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--ow-border);
+  padding: 0 12px;
+}
+
+.compose-label {
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ow-text-3);
+  width: 56px;
+  flex-shrink: 0;
+}
+
+.compose-input {
+  flex: 1;
+  padding: 8px 0;
+  font-size: 14px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  color: var(--ow-text);
+}
+
+.compose-textarea {
+  width: 100%;
+  min-height: 300px;
+  padding: 16px;
+  font-size: 14px;
+  resize: none;
+  border: none;
+  outline: none;
+  font-family: 'Segoe UI', 'Cairo', sans-serif;
+  background: transparent;
+  color: var(--ow-text);
+  line-height: 1.6;
+}
+
+.compose-footer {
+  padding: 8px 16px;
+  border-top: 1px solid var(--ow-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  flex-shrink: 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   TOGGLE
+   ═══════════════════════════════════════════════════════ */
 .toggle-switch {
   position: relative;
   display: inline-block;
-  width: 42px;
-  height: 24px;
+  width: 40px;
+  height: 20px;
 }
 .toggle-switch input { opacity: 0; width: 0; height: 0; }
 .toggle-slider {
   position: absolute;
   cursor: pointer;
   top: 0; left: 0; right: 0; bottom: 0;
-  background-color: #cbd5e1;
-  transition: 0.3s;
-  border-radius: 9999px;
+  background-color: #C8C6C4;
+  transition: 0.2s;
+  border-radius: 999px;
 }
 .toggle-slider:before {
   position: absolute;
   content: "";
-  height: 18px;
-  width: 18px;
+  height: 14px;
+  width: 14px;
   left: 3px;
   bottom: 3px;
   background-color: white;
-  transition: 0.3s;
-  border-radius: 9999px;
+  transition: 0.2s;
+  border-radius: 50%;
 }
-.toggle-switch input:checked + .toggle-slider { background-color: #0078D4; }
-.toggle-switch input:checked + .toggle-slider:before { transform: translateX(18px); }
+.toggle-switch input:checked + .toggle-slider { background-color: var(--ow-blue); }
+.toggle-switch input:checked + .toggle-slider:before { transform: translateX(20px); }
 
-/* MESSAGE LIST */
+/* ═══════════════════════════════════════════════════════
+   MESSAGE LIST ITEMS - Outlook style
+   ═══════════════════════════════════════════════════════ */
 .msg-item {
-  transition: background 0.1s;
+  transition: background 0.05s;
   cursor: pointer;
-  border-bottom: 1px solid #f1f5f9;
+  border-bottom: 1px solid #F3F2F1;
   position: relative;
+  background: white;
 }
-.msg-item:hover { background: #f3f4f6; }
-.msg-item.active { background: #cfe4fa; }
+.msg-item:hover { background: var(--ow-hover); }
+.msg-item.active { background: var(--ow-selected); }
 .msg-item.active::before {
   content: '';
   position: absolute;
   right: 0; top: 0; bottom: 0;
   width: 3px;
-  background: #0078D4;
+  background: var(--ow-blue);
 }
 
-/* INBOX LAYOUT */
+/* ═══════════════════════════════════════════════════════
+   INBOX LAYOUT
+   ═══════════════════════════════════════════════════════ */
 #inboxContainer {
   display: flex;
   height: 100%;
   overflow: hidden;
   min-height: 0;
+  background: white;
 }
+
 .inbox-list {
   display: flex;
   flex-direction: column;
   height: 100%;
   overflow: hidden;
   min-height: 0;
-  border-left: 1px solid #e2e8f0;
+  border-left: 1px solid var(--ow-border);
   background: white;
-  width: 24rem;
+  width: 380px;
   flex-shrink: 0;
 }
 .inbox-list > .flex-1 {
@@ -602,6 +706,7 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
 }
+
 .inbox-reading {
   flex: 1 1 0%;
   height: 100%;
@@ -614,9 +719,10 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   display: flex;
   flex-direction: column;
 }
+
 @media (min-width: 768px) {
   .inbox-reading { display: flex; }
-  .inbox-list { display: flex; width: 24rem; }
+  .inbox-list { display: flex; width: 380px; }
 }
 @media (max-width: 767px) {
   .inbox-list { display: flex; width: 100%; }
@@ -625,22 +731,37 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   .inbox-reading.mobile-show { display: flex !important; }
 }
 
-/* EMAIL CARD */
-.email-card { transition: box-shadow 0.15s; }
-.email-card:hover { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+/* ═══════════════════════════════════════════════════════
+   EMAIL CARD - Outlook style
+   ═══════════════════════════════════════════════════════ */
+.email-card {
+  transition: background 0.1s;
+  background: white;
+  border: none;
+  border-bottom: 1px solid #F3F2F1;
+  border-radius: 0;
+  margin-bottom: 0;
+}
+.email-card:hover { background: var(--ow-hover); }
 
-/* STAR / PRIORITY */
+/* ═══════════════════════════════════════════════════════
+   PRIORITY
+   ═══════════════════════════════════════════════════════ */
 .priority-urgent {
   display: inline-flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 4px;
   font-size: 10px;
-  font-weight: bold;
-  color: #dc2626;
-  background: rgba(239, 68, 68, 0.1);
-  padding: 0.125rem 0.375rem;
-  border-radius: 0.25rem;
+  font-weight: 600;
+  color: var(--ow-red);
+  background: #FDE7E9;
+  padding: 1px 6px;
+  border-radius: 2px;
 }
+
+/* ═══════════════════════════════════════════════════════
+   OVERFLOW
+   ═══════════════════════════════════════════════════════ */
 .overflow-x-auto {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -652,59 +773,71 @@ body.dark ::-webkit-scrollbar-thumb { background: #475569; }
   overscroll-behavior: contain;
 }
 
-/* DARK MODE */
-body.dark { background: #0f172a; color: #e2e8f0; }
-body.dark .bg-white { background: #1e293b !important; }
-body.dark .bg-slate-50 { background: #0f172a !important; }
-body.dark .bg-slate-100 { background: #334155 !important; }
-body.dark .bg-slate-200 { background: #475569 !important; }
-body.dark .text-slate-800 { color: #f1f5f9 !important; }
-body.dark .text-slate-700 { color: #e2e8f0 !important; }
-body.dark .text-slate-600 { color: #cbd5e1 !important; }
-body.dark .text-slate-500 { color: #94a3b8 !important; }
-body.dark .text-slate-400 { color: #64748b !important; }
-body.dark .border-slate-100 { border-color: #334155 !important; }
-body.dark .border-slate-200 { border-color: #334155 !important; }
-body.dark .border-slate-300 { border-color: #475569 !important; }
-body.dark .input-field { background: #1e293b; border-color: #475569; color: #f1f5f9; }
-body.dark .app-sidebar { background: #1e293b; border-color: #334155; }
-body.dark .nav-btn { color: #cbd5e1; }
-body.dark .nav-btn:hover { background: #334155; }
-body.dark .nav-btn.active { background: #1e3a5f; color: #60a5fa; border-right-color: #60a5fa; }
-body.dark .msg-item { border-bottom-color: #334155; }
-body.dark .msg-item:hover { background: #334155; }
-body.dark .msg-item.active { background: #1e3a5f; }
-body.dark .mobile-nav { background: #1e293b; border-color: #334155; }
-body.dark .compose-window { background: #1e293b; }
-body.dark .compose-ribbon { background: #0f172a; border-color: #334155; }
-body.dark .compose-fields { border-color: #334155; }
-body.dark .compose-field { border-color: #334155; }
-body.dark .compose-input { color: #f1f5f9; }
-body.dark .compose-textarea { color: #f1f5f9; }
-body.dark .compose-footer { background: #0f172a; border-color: #334155; }
-body.dark .app-main { background: #0f172a; }
-body.dark #pageContent { background: #0f172a; }
-body.dark .email-card { background: #1e293b; border-color: #334155; }
-body.dark .notif-dropdown { background: #1e293b; border-color: #334155; }
-body.dark .notif-dropdown-header { background: #0f172a; border-color: #334155; }
-body.dark .user-menu { background: #1e293b; border-color: #334155; }
-body.dark .user-menu-header { background: #0f172a; border-color: #334155; }
-body.dark .user-menu-item { color: #cbd5e1; }
-body.dark .user-menu-item:hover { background: #334155; }
-body.dark .ribbon-btn { color: #cbd5e1; }
-body.dark .ribbon-btn:hover { background: #334155; }
-body.dark .ribbon-btn i { color: #94a3b8; }
-body.dark .ribbon-btn.primary i { color: #60a5fa; }
-body.dark .btn-secondary { background: #334155; color: #cbd5e1; }
-body.dark .toggle-slider { background-color: #475569; }
-body.dark table { color: #e2e8f0; }
-body.dark thead { background: #0f172a !important; }
-body.dark tr:hover { background: #334155 !important; }
-body.dark td, body.dark th { border-color: #334155 !important; }
-body.dark .inbox-list { background: #1e293b; border-color: #334155; }
-body.dark .inbox-reading { background: #1e293b; }
+/* ═══════════════════════════════════════════════════════
+   DARK MODE
+   ═══════════════════════════════════════════════════════ */
+body.dark {
+  background: #1F1F1F;
+  color: #F3F2F1;
+}
+body.dark .bg-white { background: #252525 !important; }
+body.dark .bg-slate-50 { background: #1F1F1F !important; }
+body.dark .bg-slate-100 { background: #333333 !important; }
+body.dark .bg-slate-200 { background: #484644 !important; }
+body.dark .text-slate-800 { color: #F3F2F1 !important; }
+body.dark .text-slate-700 { color: #E1DFDD !important; }
+body.dark .text-slate-600 { color: #C8C6C4 !important; }
+body.dark .text-slate-500 { color: #A19F9D !important; }
+body.dark .text-slate-400 { color: #8A8886 !important; }
+body.dark .border-slate-100 { border-color: #3B3A39 !important; }
+body.dark .border-slate-200 { border-color: #484644 !important; }
+body.dark .border-slate-300 { border-color: #605E5C !important; }
+body.dark .input-field {
+  background: #333333;
+  border-color: #484644;
+  color: #F3F2F1;
+}
+body.dark .app-sidebar { background: #252525; border-color: #3B3A39; }
+body.dark .nav-btn { color: #C8C6C4; }
+body.dark .nav-btn:hover { background: #333333; }
+body.dark .nav-btn.active { background: #333333; color: #FFFFFF; border-right-color: var(--ow-blue); }
+body.dark .msg-item { border-bottom-color: #3B3A39; background: #252525; }
+body.dark .msg-item:hover { background: #333333; }
+body.dark .msg-item.active { background: #333333; }
+body.dark .mobile-nav { background: #252525; border-color: #3B3A39; }
+body.dark .compose-window { background: #252525; }
+body.dark .compose-ribbon { background: #1F1F1F; border-color: #3B3A39; }
+body.dark .compose-fields { border-color: #3B3A39; }
+body.dark .compose-field { border-color: #3B3A39; }
+body.dark .compose-input { color: #F3F2F1; }
+body.dark .compose-textarea { color: #F3F2F1; }
+body.dark .compose-footer { background: #1F1F1F; border-color: #3B3A39; }
+body.dark .app-main { background: #1F1F1F; }
+body.dark #pageContent { background: #1F1F1F; }
+body.dark .email-card { background: #252525; border-bottom-color: #3B3A39; }
+body.dark .email-card:hover { background: #333333; }
+body.dark .notif-dropdown { background: #252525; border-color: #3B3A39; }
+body.dark .notif-dropdown-header { background: #1F1F1F; border-color: #3B3A39; }
+body.dark .user-menu { background: #252525; border-color: #3B3A39; }
+body.dark .user-menu-header { background: #1F1F1F; border-color: #3B3A39; }
+body.dark .user-menu-item { color: #C8C6C4; }
+body.dark .user-menu-item:hover { background: #333333; }
+body.dark .ribbon-btn { color: #C8C6C4; }
+body.dark .ribbon-btn:hover { background: #333333; }
+body.dark .ribbon-btn i { color: #60a5fa; }
+body.dark .btn-secondary { background: #333333; color: #C8C6C4; border-color: #484644; }
+body.dark .btn-secondary:hover { background: #484644; }
+body.dark .toggle-slider { background-color: #605E5C; }
+body.dark table { color: #F3F2F1; }
+body.dark thead { background: #1F1F1F !important; }
+body.dark tr:hover { background: #333333 !important; }
+body.dark td, body.dark th { border-color: #3B3A39 !important; }
+body.dark .inbox-list { background: #252525; border-color: #3B3A39; }
+body.dark .inbox-reading { background: #252525; }
 
-/* MOBILE SPECIFIC */
+/* ═══════════════════════════════════════════════════════
+   MOBILE
+   ═══════════════════════════════════════════════════════ */
 @media (max-width: 767px) {
   .app-sidebar { display: none !important; }
   * {
@@ -714,13 +847,11 @@ body.dark .inbox-reading { background: #1e293b; }
   .fade-in { animation: none !important; }
 }
 
-/* iPhone Notch */
 @supports (padding: env(safe-area-inset-top)) {
   .app-header { padding-top: max(0, env(safe-area-inset-top)); }
   .mobile-nav { padding-bottom: env(safe-area-inset-bottom); }
 }
 
-/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
@@ -728,4 +859,4 @@ body.dark .inbox-reading { background: #1e293b; }
   }
 }
 
-/* END - v6.1 */
+/* END - v7.0 Outlook Style */
