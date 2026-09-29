@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v5.1 - Utilities & Helpers
-   iOS Optimized + Sound Disabled
+   Mail System v9.1 - Utilities & Helpers
+   WhatsApp-style Notification Sound
    ═══════════════════════════════════════════════════════════ */
 
 import { auth, db, doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from './firebase.js';
@@ -23,7 +23,7 @@ export const state = {
   searchQuery: '',
   settings: {
     darkMode: false,
-    soundEnabled: false
+    soundEnabled: true
   }
 };
 
@@ -124,16 +124,13 @@ export const roleColors = {
 };
 
 /* ═══════════════════════════════════════════════════════
-   ICONS (iOS Optimized - batched via requestAnimationFrame)
+   ICONS
    ═══════════════════════════════════════════════════════ */
 let iconsScheduled = false;
 export const icons = () => {
   if (!window.lucide || !window.lucide.createIcons) return;
-
-  // ✅ iOS: batch icons calls — مرة واحدة في الـ frame
   if (iconsScheduled) return;
   iconsScheduled = true;
-
   requestAnimationFrame(() => {
     iconsScheduled = false;
     try {
@@ -143,18 +140,13 @@ export const icons = () => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   THEME (Dark Mode)
+   THEME
    ═══════════════════════════════════════════════════════ */
 export function applyTheme(dark) {
   state.settings.darkMode = dark;
-  if (dark) {
-    document.body.classList.add('dark');
-  } else {
-    document.body.classList.remove('dark');
-  }
-  try {
-    localStorage.setItem('darkMode', dark ? '1' : '0');
-  } catch (e) {}
+  if (dark) document.body.classList.add('dark');
+  else document.body.classList.remove('dark');
+  try { localStorage.setItem('darkMode', dark ? '1' : '0'); } catch (e) {}
 }
 
 export function loadTheme() {
@@ -176,7 +168,7 @@ export function toggleDarkMode() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SOUND - DISABLED
+   SOUND - WhatsApp-style Notification
    ═══════════════════════════════════════════════════════ */
 
 let audioCtx = null;
@@ -198,24 +190,68 @@ function getAudioContext() {
 }
 
 /**
- * 🔇 الصوت متعطّل حالياً
+ * 🔔 صوت إشعار WhatsApp
+ * نغمتين صاعدتين ثم هابطة (زي واتساب)
  */
 export function playNotifSound() {
-  return; // 🔇 الصوت متعطّل
+  if (!state.settings.soundEnabled) return;
+
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    // 🎵 WhatsApp-style chime (محاكاة قريبة من الصوت الأصلي)
+    // Note 1: E6 (سريعة)
+    // Note 2: C#6 (أطول قليلاً)
+    
+    playTone(ctx, now,        1318.51, 0.10, 0.18);  // E6
+    playTone(ctx, now + 0.09,  1108.73, 0.22, 0.20);  // C#6
+
+    // إعادة النغمة الثانية بصدى خفيف (echo)
+    playTone(ctx, now + 0.13,  1108.73, 0.18, 0.10);
+
+  } catch (e) {
+    console.warn('Sound error:', e);
+  }
+}
+
+function playTone(ctx, startTime, freq, duration, volume) {
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+
+  // sine = الأنعم
+  osc.type = 'sine';
+  osc.frequency.value = freq;
+
+  // Envelope ناعم
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(volume, startTime + 0.01);
+  gain.gain.setValueAtTime(volume, startTime + duration * 0.6);
+  gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+
+  osc.start(startTime);
+  osc.stop(startTime + duration + 0.05);
 }
 
 export function toggleSound() {
   state.settings.soundEnabled = !state.settings.soundEnabled;
-  try {
-    localStorage.setItem('soundEnabled', state.settings.soundEnabled ? '1' : '0');
-  } catch (e) {}
+  try { localStorage.setItem('soundEnabled', state.settings.soundEnabled ? '1' : '0'); } catch (e) {}
   const toggle = document.getElementById('soundToggle');
   if (toggle) toggle.checked = state.settings.soundEnabled;
   return state.settings.soundEnabled;
 }
 
 export function loadSoundSetting() {
-  state.settings.soundEnabled = false;
+  try {
+    const saved = localStorage.getItem('soundEnabled');
+    if (saved === '0') state.settings.soundEnabled = false;
+    else state.settings.soundEnabled = true;
+  } catch (e) {}
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -251,43 +287,27 @@ export function confirmDialog(title, message) {
 /* ═══════════════════════════════════════════════════════
    TOAST
    ═══════════════════════════════════════════════════════ */
-export function showToast(title, body, onClick, playSound = false) {
+export function showToast(title, body, onClick, playSound = true) {
   if (playSound) playNotifSound();
 
   const container = document.getElementById('toastContainer');
   if (!container) return;
 
   const toast = document.createElement('div');
-  toast.className = 'bg-white rounded shadow-2xl border-r-4 border-[#0078D4] p-3 min-w-[280px] max-w-sm cursor-pointer fade-in';
+  toast.className = 'toast';
   toast.innerHTML = `
-    <div class="flex items-start gap-3">
-      <div class="w-9 h-9 rounded-full bg-[#e5f0fa] flex items-center justify-center flex-shrink-0">
-        <i data-lucide="mail" class="w-4 h-4 text-[#0078D4]"></i>
-      </div>
-      <div class="flex-1 min-w-0">
-        <div class="font-bold text-xs text-slate-800 truncate">${esc(title)}</div>
-        <div class="text-xs text-slate-600 mt-0.5 truncate">${esc(body)}</div>
-      </div>
-      <button class="p-1 hover:bg-slate-100 rounded flex-shrink-0">
-        <i data-lucide="x" class="w-3.5 h-3.5 text-slate-400"></i>
-      </button>
+    <div class="toast-icon"><i data-lucide="mail" class="w-4 h-4"></i></div>
+    <div class="toast-content">
+      <div class="toast-title">${esc(title)}</div>
+      ${body ? `<div class="toast-body">${esc(body)}</div>` : ''}
     </div>
+    <button class="toast-close"><i data-lucide="x" class="w-3.5 h-3.5"></i></button>
   `;
-  toast.querySelector('button').onclick = (e) => {
-    e.stopPropagation();
-    toast.remove();
-  };
-  if (onClick) {
-    toast.onclick = () => {
-      onClick();
-      toast.remove();
-    };
-  }
+  toast.querySelector('.toast-close').onclick = (e) => { e.stopPropagation(); toast.remove(); };
+  if (onClick) toast.onclick = () => { onClick(); toast.remove(); };
   container.appendChild(toast);
   icons();
-  setTimeout(() => {
-    if (toast.parentElement) toast.remove();
-  }, 6000);
+  setTimeout(() => { if (toast.parentElement) toast.remove(); }, 6000);
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -413,7 +433,7 @@ export function matchesSearch(msg, queryStr) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SANITIZE INPUT
+   SANITIZE
    ═══════════════════════════════════════════════════════ */
 export function sanitizeUsername(username) {
   return username.trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
@@ -428,7 +448,7 @@ export function validatePassword(password) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   INITIALS COLOR (Avatar gradient)
+   AVATAR COLORS
    ═══════════════════════════════════════════════════════ */
 const AVATAR_COLORS = [
   'from-blue-500 to-blue-700',
@@ -452,10 +472,32 @@ export function getAvatarColor(name) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   UNLOCK AUDIO - DISABLED
+   UNLOCK AUDIO (First interaction)
    ═══════════════════════════════════════════════════════ */
 export function unlockAudioOnFirstClick() {
-  return;
+  const unlock = () => {
+    try {
+      const ctx = getAudioContext();
+      if (ctx) {
+        // تشغيل صامت لفتح AudioContext
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.value = 0;
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.01);
+      }
+    } catch (e) {}
+
+    document.removeEventListener('click', unlock);
+    document.removeEventListener('touchstart', unlock);
+    document.removeEventListener('keydown', unlock);
+  };
+
+  document.addEventListener('click', unlock, { once: true });
+  document.addEventListener('touchstart', unlock, { once: true });
+  document.addEventListener('keydown', unlock, { once: true });
 }
 
-console.log('🛠️ Utils v5.1 loaded - iOS Optimized + Sound Disabled 🔇');
+console.log('🛠️ Utils v9.1 loaded - WhatsApp Sound 🔔');
