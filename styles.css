@@ -2885,3 +2885,45 @@ body.dark ::-webkit-scrollbar-thumb {
 }
 
 /* END v9.7 */
+/* ═══════════════════════════════════════════════════════
+   ⭐ FIX: Attachment button on mobile (v9.8)
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* رجّع زرار المرفقات على الموبايل */
+  .compose-actions-bar .actions-center {
+    display: flex !important;
+    justify-content: center;
+    gap: 6px;
+    flex: 1;
+  }
+
+  /* أخفي بس زرار التصنيفات من الوسط (مش ضروري على الموبايل) */
+  .compose-actions-bar .actions-center .icon-action-btn[title="تصنيفات"] {
+    display: none !important;
+  }
+
+  /* كبّر زرار المرفق شوية عشان يكون أسهل في اللمس */
+  .compose-actions-bar .actions-center .icon-action-btn[title="إرفاق"] {
+    display: flex !important;
+    width: 44px;
+    height: 44px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-strong);
+  }
+}
+
+@media (max-width: 640px) {
+  /* تطبيق نفس التعديل للشاشات الأصغر */
+  .compose-actions-bar .actions-center {
+    display: flex !important;
+    flex: 1;
+  }
+
+  .compose-actions-bar .actions-center .icon-action-btn[title="تصنيفات"] {
+    display: none !important;
+  }
+
+  .compose-actions-bar .actions-center .icon-action-btn[title="إرفاق"] {
+    display: flex !important;
+  }
+}
