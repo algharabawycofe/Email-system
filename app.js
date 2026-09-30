@@ -3308,9 +3308,9 @@ async function renderDeletedLog() {
           threadsMap[tid].latestDeleteTime = t;
         }
       });
-    });  // ⭐ الإصلاح: ضيف السطر ده
+    }); 
 
-    const threads = Object.values(threadsMap).sort((a, b) => b.latestDeleteTime - a.latestDeleteTime);
+    const threads = Object.values(threadsMap).sort((a, b) => b.latestDeleteTime - a.latestDeleteTime)};
 
     const rows = threads.map(t => {
       const firstMsg = t.messages[0];
