@@ -3228,7 +3228,7 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 /* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9.1) — سجل المحذوفات (مصحح)
+   DELETED LOG (v9.9.2) — سجل المحذوفات (مصحح نهائياً)
    ═══════════════════════════════════════════════════════ */
 async function renderDeletedLog() {
   if (!isAdmin()) {
@@ -3289,8 +3289,10 @@ async function renderDeletedLog() {
 
     // تجميع حسب threadId
     const threadsMap = {};
+
     deleted.forEach(m => {
       const tid = m.threadId || m.id;
+
       if (!threadsMap[tid]) {
         threadsMap[tid] = {
           threadId: tid,
@@ -3299,6 +3301,7 @@ async function renderDeletedLog() {
           latestDeleteTime: 0
         };
       }
+
       threadsMap[tid].messages.push(m);
 
       Object.entries(m.permanentlyDeletedBy).forEach(([uid, timeStr]) => {
@@ -3308,9 +3311,9 @@ async function renderDeletedLog() {
           threadsMap[tid].latestDeleteTime = t;
         }
       });
-    }); 
+    });
 
-    const threads = Object.values(threadsMap).sort((a, b) => b.latestDeleteTime - a.latestDeleteTime)};
+    const threads = Object.values(threadsMap).sort((a, b) => b.latestDeleteTime - a.latestDeleteTime);
 
     const rows = threads.map(t => {
       const firstMsg = t.messages[0];
@@ -3428,85 +3431,4 @@ async function renderDeletedLog() {
   }
 }
 window.renderDeletedLog = renderDeletedLog;
-
-window.viewDeletedThread = (threadId) => {
-  state.currentFilter = 'inbox';
-  navigate('inbox');
-  setTimeout(() => {
-    if (window.openThread) window.openThread(threadId);
-  }, 400);
-};
-
-window.restoreDeletedThread = async (threadId) => {
-  const ok = await confirmDialog('استعادة للكل', 'هيتم إرجاع الرسائل لكل المستخدمين. متأكد؟');
-  if (!ok) return;
-
-  try {
-    const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
-    const snap = await getDocs(q);
-
-    for (const d of snap.docs) {
-      await updateDoc(doc(db, 'messages', d.id), {
-        permanentlyDeletedBy: {},
-        deletedBy: {}
-      });
-    }
-    showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', {
-      type: 'success', icon: 'check-circle', duration: 2500
-    });
-    renderDeletedLog();
-  } catch (e) {
-    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
-  }
-};
-
-window.permanentDeleteThread = async (threadId) => {
-  const ok = await confirmDialog('حذف نهائي', 'هيتم حذف الرسائل نهائياً من النظام. متأكد؟');
-  if (!ok) return;
-
-  try {
-    const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
-    const snap = await getDocs(q);
-
-    for (const d of snap.docs) {
-      await deleteDoc(doc(db, 'messages', d.id));
-    }
-
-    showToastAdvanced('تم الحذف النهائي 🗑️', '', {
-      type: 'success', icon: 'trash-2', duration: 2500
-    });
-    renderDeletedLog();
-  } catch (e) {
-    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
-  }
-};
-
-async function updateDeletedLogBadge(count) {
-  if (!isAdmin()) return;
-
-  if (typeof count !== 'number') {
-    try {
-      const snap = await getDocs(collection(db, 'messages'));
-      count = snap.docs.filter(d => {
-        const data = d.data();
-        return data.permanentlyDeletedBy && Object.keys(data.permanentlyDeletedBy).length > 0;
-      }).length;
-    } catch (e) { count = 0; }
-  }
-
-  const els = [
-    document.getElementById('sidebarDeletedLogCount'),
-    document.getElementById('drawerDeletedLogCount')
-  ];
-
-  els.forEach(el => {
-    if (!el) return;
-    if (count > 0) {
-      el.textContent = count > 99 ? '99+' : count;
-      el.classList.remove('hidden');
-    } else {
-      el.classList.add('hidden');
-    }
-  });
-}
 console.log('🚀 Mail System v9.7 loaded — Drawer + Drafts + GoFile');
