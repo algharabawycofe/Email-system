@@ -3228,7 +3228,7 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 /* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9.1) — سجل المحذوفات (محسّن)
+   DELETED LOG (v9.9.1) — سجل المحذوفات (مصحح)
    ═══════════════════════════════════════════════════════ */
 async function renderDeletedLog() {
   if (!isAdmin()) {
@@ -3263,10 +3263,10 @@ async function renderDeletedLog() {
     const snap = await getDocs(collection(db, 'messages'));
     const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    const deleted = all.filter(m => 
+    const deleted = all.filter(m =>
       m.permanentlyDeletedBy && Object.keys(m.permanentlyDeletedBy).length > 0
     );
-     
+
     if (deleted.length === 0) {
       $('#pageContent').innerHTML = `
         <div class="dashboard" style="max-width:1100px;">
@@ -3301,13 +3301,14 @@ async function renderDeletedLog() {
       }
       threadsMap[tid].messages.push(m);
 
-         Object.entries(m.permanentlyDeletedBy).forEach(([uid, timeStr]) => {
+      Object.entries(m.permanentlyDeletedBy).forEach(([uid, timeStr]) => {
         threadsMap[tid].allDeleters.add(uid);
         const t = timeStr ? new Date(timeStr).getTime() : 0;
         if (t > threadsMap[tid].latestDeleteTime) {
           threadsMap[tid].latestDeleteTime = t;
         }
       });
+    });  // ⭐ الإصلاح: ضيف السطر ده
 
     const threads = Object.values(threadsMap).sort((a, b) => b.latestDeleteTime - a.latestDeleteTime);
 
@@ -3443,9 +3444,9 @@ window.restoreDeletedThread = async (threadId) => {
   try {
     const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
     const snap = await getDocs(q);
-     
+
     for (const d of snap.docs) {
-      await updateDoc(doc(db, 'messages', d.id), { 
+      await updateDoc(doc(db, 'messages', d.id), {
         permanentlyDeletedBy: {},
         deletedBy: {}
       });
@@ -3486,7 +3487,7 @@ async function updateDeletedLogBadge(count) {
   if (typeof count !== 'number') {
     try {
       const snap = await getDocs(collection(db, 'messages'));
-           count = snap.docs.filter(d => {
+      count = snap.docs.filter(d => {
         const data = d.data();
         return data.permanentlyDeletedBy && Object.keys(data.permanentlyDeletedBy).length > 0;
       }).length;
