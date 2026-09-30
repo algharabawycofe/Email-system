@@ -3432,3 +3432,36 @@ async function renderDeletedLog() {
 }
 window.renderDeletedLog = renderDeletedLog;
 console.log('🚀 Mail System v9.7 loaded — Drawer + Drafts + GoFile');
+/* ═══════════════════════════════════════════════════════
+   DELETED LOG BADGE — v9.9.2
+   ═══════════════════════════════════════════════════════ */
+async function updateDeletedLogBadge(count) {
+  if (!isAdmin()) return;
+
+  if (typeof count !== 'number') {
+    try {
+      const snap = await getDocs(collection(db, 'messages'));
+      count = snap.docs.filter(d => {
+        const data = d.data();
+        return data.permanentlyDeletedBy && Object.keys(data.permanentlyDeletedBy).length > 0;
+      }).length;
+    } catch (e) {
+      count = 0;
+    }
+  }
+
+  const els = [
+    document.getElementById('sidebarDeletedLogCount'),
+    document.getElementById('drawerDeletedLogCount')
+  ];
+
+  els.forEach(el => {
+    if (!el) return;
+    if (count > 0) {
+      el.textContent = count > 99 ? '99+' : count;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  });
+}
