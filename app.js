@@ -2997,4 +2997,200 @@ window.closeImageViewer = () => {
   document.body.style.overflow = '';
 };
 
-/* ═══════ PROFILE / SETTINGS
+/* ═══════ PROFILE / SETTINGS ═══════ */
+window.openProfile = () => {
+  const u = state.currentUser;
+  if (!u) return;
+  $('#profileName').value = u.name || '';
+  $('#profileUsername').value = u.username || '';
+  $('#profileEmail').value = u.email || '';
+  $('#profileRole').value = roleLabels[u.role] || u.role;
+  const avatarEl = $('#profileAvatar');
+  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
+  hideStyle($('#userMenu'));
+  show($('#profileModal'));
+  icons();
+};
+
+window.closeProfile = () => hide($('#profileModal'));
+
+window.saveProfile = async () => {
+  const name = $('#profileName').value.trim();
+  const status = $('#profileStatus');
+  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
+  try {
+    await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
+    state.currentUser.name = name;
+    status.className = 'alert alert-success';
+    status.textContent = '✅ تم الحفظ';
+    show(status);
+    showToastAdvanced('تم الحفظ ✅', 'الاسم اتحدّث', { type: 'success', icon: 'check', duration: 2000 });
+    setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
+  } catch (e) {
+    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
+  }
+};
+
+window.openSettings = () => {
+  hideStyle($('#userMenu'));
+  $('#darkModeToggle').checked = state.settings.darkMode;
+  const installBtn = $('#installPwaBtn');
+  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
+  show($('#settingsModal'));
+  icons();
+};
+
+window.closeSettings = () => hide($('#settingsModal'));
+
+window.toggleDarkMode = () => {
+  const isDark = toggleDarkMode();
+  const icon = $('#themeToggle i');
+  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  icons();
+};
+
+window.enablePushNotifications = async () => {
+  const btn = $('#enablePushBtn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (token) {
+      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
+      btn.textContent = '✅ مفعّل';
+      btn.className = 'btn btn-sm btn-success';
+    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
+  } catch (e) {
+    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
+  }
+};
+
+/* ═══════ NOTIFICATIONS ═══════ */
+async function registerFCMToken() {
+  try {
+    if (!messaging) return;
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) return;
+    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
+    console.log('✅ FCM Token saved');
+  } catch (e) { console.error('FCM error:', e); }
+}
+
+if (messaging) {
+  onMessage(messaging, (payload) => {
+    const { title, body } = payload.notification || {};
+    const data = payload.data || {};
+    showToastAdvanced(title || 'رسالة جديدة', body || '', {
+      type: 'info', icon: 'mail', duration: 6000,
+      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
+    });
+  });
+}
+
+function setupServiceWorkerMessages() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (window.__refreshing) return;
+    window.__refreshing = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
+}
+
+function startMessagesListener() {
+  if (state.unsubMessages) state.unsubMessages();
+  const q = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
+  state.unsubMessages = onSnapshot(q, (snap) => {
+    const all = [];
+    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
+    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
+    state.unreadMessages = visibleUnread;
+    updateNotificationUI();
+
+    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
+      const m = visibleUnread[0];
+      if (m && m.fromUserId !== state.currentUser.uid) {
+        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
+          type: 'info', icon: 'mail', actionLabel: 'فتح',
+          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
+          duration: 6000
+        });
+      }
+    }
+    state.lastUnreadCount = visibleUnread.length;
+
+    if (document.getElementById('inboxList')) renderInbox();
+  });
+}
+
+function updateNotificationUI() {
+  const count = state.unreadMessages.length;
+  const el = $('#inboxCount');
+  const elM = $('#inboxCountM');
+  const notifBadge = $('#notifBadge');
+  const drawerCount = document.getElementById('drawerInboxCount');
+
+  if (count > 0) {
+    if (el) { el.textContent = count; show(el); }
+    if (elM) { elM.textContent = count; show(elM); }
+    if (notifBadge) { notifBadge.textContent = count > 9 ? '9+' : count; notifBadge.classList.remove('hidden'); }
+    if (drawerCount) { drawerCount.textContent = count; drawerCount.classList.remove('hidden'); }
+  } else {
+    if (el) hide(el);
+    if (elM) hide(elM);
+    if (notifBadge) notifBadge.classList.add('hidden');
+    if (drawerCount) drawerCount.classList.add('hidden');
+  }
+  renderNotifDropdown();
+}
+
+function renderNotifDropdown() {
+  const list = $('#notifList');
+  if (!list) return;
+
+  if (state.unreadMessages.length === 0) {
+    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><i data-lucide="bell-off" style="width:40px;height:40px;"></i><p style="font-size:13px;">لا إشعارات</p></div>`;
+    icons();
+    return;
+  }
+
+  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
+    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
+      <div class="msg-avatar ${getAvatarGradient(m.fromUserName)}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
+          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
+      </div>
+    </div>
+  `).join('');
+  icons();
+}
+
+window.openNotifMsg = (msgId, threadId) => {
+  hideStyle($('#notifDropdown'));
+  navigate('inbox');
+  setTimeout(() => window.openThread(threadId), 400);
+};
+
+window.markAllRead = async () => {
+  if (state.unreadMessages.length === 0) return;
+  const batch = writeBatch(db);
+  state.unreadMessages.forEach(m => batch.update(doc(db, 'messages', m.id), { read: true }));
+  await batch.commit();
+  hideStyle($('#notifDropdown'));
+};
+
+console.log('🚀 Mail System v9.7 loaded — Drawer + Drafts + GoFile');
