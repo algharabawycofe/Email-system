@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.3 - Enterprise Application
-   Features: Permissions + Admin Templates + Per-User Deletion
+   Mail System v9.4 - Enterprise Application
+   Features: Pro Compose + Permissions + Admin Templates
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -42,6 +42,16 @@ let attachedFiles = [];
 let userTags = [];
 let selectedTags = [];
 let currentTagFilter = null;
+
+// ⭐ Recipients chips state
+let recipientChips = {
+  to: [],
+  cc: [],
+  bcc: []
+};
+let activeChipField = 'to';
+let activeSuggestionIdx = -1;
+let currentSuggestions = [];
 
 /* ═══════════════════════════════════════════════════════
    ADMIN MESSAGE TEMPLATES
@@ -123,6 +133,10 @@ function getDeletedByNames(msg) {
     const u = state.allUsersCache.find(x => x.id === uid);
     return u ? u.name : 'مستخدم';
   });
+}
+
+function roleNeedsDept(role) {
+  return role === 'user' || role === 'manager';
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -249,7 +263,11 @@ function setupKeyboardShortcuts() {
     }
     if (e.key === 'Escape') {
       const cm = $('#composeModal');
-      if (cm && cm.style.display === 'flex') closeCompose();
+      if (cm && cm.style.display === 'flex') {
+        // Only close if no suggestions open
+        const openSuggestions = document.querySelector('.chips-suggestions:not(.hidden)');
+        if (!openSuggestions) closeCompose();
+      }
       hide($('#profileModal'));
       hide($('#settingsModal'));
       hide($('#forgotModal'));
@@ -855,19 +873,24 @@ async function renderMyTeam() {
 
 window.quickSendToUser = async (userId) => {
   await window.openCompose();
-  const sel = $('#cTo'); if (sel) sel.value = userId;
-  setTimeout(() => window.onRecipientChange && window.onRecipientChange(), 100);
+  const u = state.allUsersCache.find(x => x.id === userId);
+  if (u) window.addRecipient('to', u);
 };
 
 window.quickSendToDept = async (deptId) => {
   await window.openCompose();
   const cb = $('#cDept'); const sel = $('#deptSelect');
   if (cb && sel) { sel.value = deptId; cb.checked = true; window.toggleDeptSend(); }
+  // Open options
+  const optionsField = $('#optionsField');
+  if (optionsField) show(optionsField);
 };
 
 window.quickSendToTeam = async () => {
   await window.openCompose();
   const cb = $('#cDept'); if (cb) { cb.checked = true; window.toggleDeptSend(); }
+  const optionsField = $('#optionsField');
+  if (optionsField) show(optionsField);
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -929,7 +952,6 @@ async function renderUsers() {
         <button onclick="openAddUser()" class="btn btn-primary"><i data-lucide="user-plus" class="w-4 h-4"></i><span>إضافة مستخدم</span></button>
       </div>
 
-      <!-- ⭐ ADD USER FORM v9.3 -->
       <div id="addUserForm" class="section hidden fade-in">
         <h3 class="section-title">مستخدم جديد</h3>
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
@@ -952,7 +974,6 @@ async function renderUsers() {
           <select id="nuDept" class="form-input"><option value="">— بدون قسم —</option></select>
         </div>
 
-        <!-- Checkbox مدير قسم -->
         <div style="margin-top:14px;padding:12px;background:var(--bg-subtle);border-radius:8px;">
           <label class="check-inline" style="cursor:pointer;">
             <input type="checkbox" id="nuIsManager" class="check-input" onchange="onIsManagerChange('nu')" />
@@ -964,7 +985,6 @@ async function renderUsers() {
           </p>
         </div>
 
-        <!-- الصلاحيات -->
         <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
             <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
@@ -981,7 +1001,6 @@ async function renderUsers() {
         </div>
       </div>
 
-      <!-- ⭐ EDIT USER FORM v9.3 -->
       <div id="editUserForm" class="section hidden fade-in">
         <h3 class="section-title">تعديل مستخدم</h3>
         <input type="hidden" id="euId" />
@@ -1004,7 +1023,6 @@ async function renderUsers() {
           <select id="euDept" class="form-input"><option value="">— بدون قسم —</option></select>
         </div>
 
-        <!-- Checkbox مدير قسم -->
         <div style="margin-top:14px;padding:12px;background:var(--bg-subtle);border-radius:8px;">
           <label class="check-inline" style="cursor:pointer;">
             <input type="checkbox" id="euIsManager" class="check-input" onchange="onIsManagerChange('eu')" />
@@ -1016,7 +1034,6 @@ async function renderUsers() {
           </p>
         </div>
 
-        <!-- الصلاحيات -->
         <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
             <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
@@ -1046,11 +1063,6 @@ async function renderUsers() {
   `;
   fillDeptSelects();
   icons();
-}
-
-/* ⭐ دوال الصلاحيات وفورم المستخدم */
-function roleNeedsDept(role) {
-  return role === 'user' || role === 'manager';
 }
 
 function renderPermissionsList(containerId, selectedPerms) {
@@ -1904,17 +1916,18 @@ window.replyAllToThread = async (threadId) => {
   $('#cThreadId').value = threadId;
   $('#cSubject').value = t.subject.startsWith('رد:') ? t.subject : 'رد: ' + t.subject;
 
-  const ccbccFields = $('#ccbccFields');
-  if (ccbccFields) ccbccFields.classList.remove('hidden');
-
   const list = Array.from(participants).filter(uid => {
     const u = state.allUsersCache.find(x => x.id === uid);
     return u && canSendTo(u);
   });
 
   if (list.length > 0) {
-    $('#cTo').value = list[0];
-    if (list.length > 1 && $('#cCC')) $('#cCC').value = list[1];
+    const u = state.allUsersCache.find(x => x.id === list[0]);
+    if (u) window.addRecipient('to', u);
+  }
+  if (list.length > 1) {
+    const u2 = state.allUsersCache.find(x => x.id === list[1]);
+    if (u2) window.addRecipient('cc', u2);
   }
   $('#composeTitle').textContent = 'رد على الكل';
 };
@@ -2090,90 +2103,89 @@ async function renderSent() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   COMPOSE
+   COMPOSE v9.4 (Pro Email Style)
    ═══════════════════════════════════════════════════════ */
 window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  const others = getAllowedRecipients();
+  // Reset state
+  recipientChips = { to: [], cc: [], bcc: [] };
+  activeChipField = 'to';
+  activeSuggestionIdx = -1;
+  currentSuggestions = [];
 
-  const userOptions = () =>
-    '<option value="">— اختر —</option>' + others.map(u => {
-      const roleTag = u.role === 'owner' ? ' 👑'
-        : u.role === 'chairman' ? ' 🎩'
-        : u.role === 'vice_chairman' ? ' 🎗️'
-        : u.role === 'admin' ? ' 🛡️'
-        : u.role === 'manager' ? ' 👔' : '';
-      const deptName = u.departmentId ? (getDeptById(u.departmentId)?.name || '') : '';
-      const deptTag = deptName ? ` · ${deptName}` : '';
-      return `<option value="${u.id}">${esc(u.name)}${roleTag} (${esc(u.username)}${deptTag})</option>`;
-    }).join('');
-
-  $('#cTo').innerHTML = userOptions();
-  if ($('#cCC')) $('#cCC').innerHTML = userOptions();
-  if ($('#cBCC')) $('#cBCC').innerHTML = userOptions();
-
-  const ccbccFields = $('#ccbccFields');
-  if (ccbccFields) ccbccFields.classList.add('hidden');
-  const ccbccIcon = $('#ccbccIcon');
-  if (ccbccIcon) ccbccIcon.setAttribute('data-lucide', 'chevron-down');
-
-  const deptSel = $('#deptSelect');
-  const deptBox = $('#deptBox');
-
-  if (isAdmin()) {
-    if (deptSel) deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d => `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`).join('');
-    if (deptBox) deptBox.style.display = 'flex';
-    const label = $('#deptSendLabel'); if (label) label.textContent = 'إرسال لكل موظفي قسم';
-  } else if (isDeptManager()) {
-    const myDepts = getMyManagedDepts();
-    if (deptSel) deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + myDepts.map(d => `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`).join('');
-    if (deptBox) deptBox.style.display = 'flex';
-    const label = $('#deptSendLabel'); if (label) label.textContent = 'إرسال لكل فريقي';
-  } else {
-    if (deptBox) deptBox.style.display = 'none';
-  }
-
+  // Reset fields
   $('#cSubject').value = '';
   $('#cBody').value = '';
   $('#cBody').dataset.fromTemplate = '';
   $('#cThreadId').value = '';
   $('#cDraftId').value = '';
-  $('#cBroadcast').checked = false;
+  $('#cUrgent').checked = false;
   $('#cDept').checked = false;
-  $('#toBox').classList.remove('hidden');
+  $('#cBroadcast').checked = false;
+
+  // Reset chips
+  $('#toChips').innerHTML = '';
+  $('#ccChips').innerHTML = '';
+  $('#bccChips').innerHTML = '';
+  $('#toInput').value = '';
+  $('#ccInput').value = '';
+  $('#bccInput').value = '';
+  $('#toChipsWrapper').style.opacity = '1';
+  $('#toInput').disabled = false;
+
+  // Hide extra rows
+  hide($('#ccRow'));
+  hide($('#bccRow'));
+  hide($('#optionsField'));
+  hide($('#templateRow'));
+  $('#extraFieldsIcon')?.setAttribute('data-lucide', 'plus');
+
+  // Reset dept select
+  const deptSel = $('#deptSelect');
+  const deptToggleWrap = $('#deptToggleWrap');
+  if (isAdmin()) {
+    if (deptSel) deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d => `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`).join('');
+    const label = $('#deptSendLabel'); if (label) label.textContent = '📢 قسم كامل';
+    if (deptToggleWrap) deptToggleWrap.style.display = 'inline-flex';
+  } else if (isDeptManager()) {
+    const myDepts = getMyManagedDepts();
+    if (deptSel) deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + myDepts.map(d => `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`).join('');
+    const label = $('#deptSendLabel'); if (label) label.textContent = '📢 فريقي';
+    if (deptToggleWrap) deptToggleWrap.style.display = 'inline-flex';
+  } else {
+    if (deptToggleWrap) deptToggleWrap.style.display = 'none';
+  }
+
+  // Broadcast toggle
+  const broadcastWrap = $('#broadcastToggleWrap');
+  if (broadcastWrap) {
+    const canBroadcast = isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast');
+    broadcastWrap.style.display = canBroadcast ? 'inline-flex' : 'none';
+    if (canBroadcast) {
+      const cntEl = $('#broadcastCount');
+      if (cntEl) cntEl.textContent = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false).length;
+    }
+  }
+
+  attachedFiles = [];
+  selectedTags = [];
+  renderAttachments();
+
   $('#composeTitle').textContent = 'رسالة جديدة';
   const statusEl = $('#cStatus');
   statusEl.textContent = '';
   statusEl.style.color = '';
 
-  attachedFiles = [];
-  selectedTags = [];
-  renderAttachments();
-  renderComposeTagsPicker();
-
-  const templateRow = $('#templateRow');
-  if (templateRow) templateRow.style.display = 'none';
-  const tplPicker = $('#templatePicker');
-  if (tplPicker) tplPicker.innerHTML = '';
-
-  document.querySelectorAll('input[name="priority"]').forEach(r => r.checked = r.value === 'normal');
-
-  const broadcastBox = $('#broadcastBox');
-  if (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast')) {
-    $('#broadcastCount').textContent = others.length;
-    broadcastBox.style.display = 'flex';
-  } else {
-    broadcastBox.style.display = 'none';
-  }
-
-  const toSel = $('#cTo');
-  if (toSel) toSel.onchange = window.onRecipientChange;
-
   $('#composeModal').style.display = 'flex';
   icons();
-  setTimeout(() => $('#cTo').focus(), 100);
+  setTimeout(() => $('#toInput').focus(), 150);
+
+  // Setup chip inputs
+  setupChipInput('to');
+  setupChipInput('cc');
+  setupChipInput('bcc');
 };
 
 window.closeCompose = () => {
@@ -2183,23 +2195,223 @@ window.closeCompose = () => {
   selectedTags = [];
 };
 
-window.onRecipientChange = () => {
-  const toUserId = $('#cTo')?.value;
-  const templateRow = $('#templateRow');
-  if (!templateRow) return;
+/* ═══════════════════════════════════════════════════════
+   RECIPIENT CHIPS SYSTEM
+   ═══════════════════════════════════════════════════════ */
+function renderRecipientChips() {
+  ['to', 'cc', 'bcc'].forEach(field => {
+    const container = document.getElementById(field + 'Chips');
+    if (!container) return;
 
-  const recipient = state.allUsersCache.find(u => u.id === toUserId);
-  const isAdminRecipient = recipient && (recipient.role === 'admin' || recipient.role === 'owner');
+    container.innerHTML = recipientChips[field].map((u, idx) => {
+      let chipClass = '';
+      if (u.role === 'admin') chipClass = 'admin-chip';
+      else if (u.role === 'owner') chipClass = 'owner-chip';
+
+      return `
+        <span class="recipient-chip ${chipClass}" data-uid="${u.id}">
+          <span class="chip-avatar ${getAvatarGradient(u.name)}">${initials(u.name)}</span>
+          <span class="chip-name">${esc(u.name)}</span>
+          <button type="button" class="chip-remove" onclick="removeRecipient('${field}', ${idx})" title="حذف">
+            <i data-lucide="x" class="w-3 h-3"></i>
+          </button>
+        </span>
+      `;
+    }).join('');
+  });
+  icons();
+}
+
+function setupChipInput(field) {
+  const input = document.getElementById(field + 'Input');
+  const suggestions = document.getElementById(field + 'Suggestions');
+  if (!input || !suggestions) return;
+
+  // Remove old listeners by cloning
+  const newInput = input.cloneNode(true);
+  input.parentNode.replaceChild(newInput, input);
+
+  newInput.addEventListener('focus', () => {
+    activeChipField = field;
+  });
+
+  newInput.addEventListener('input', () => {
+    const q = newInput.value.trim();
+    if (!q) {
+      suggestions.classList.add('hidden');
+      currentSuggestions = [];
+      return;
+    }
+    showSuggestions(field, q);
+  });
+
+  newInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (currentSuggestions.length > 0) {
+        const pick = activeSuggestionIdx >= 0 ? currentSuggestions[activeSuggestionIdx] : currentSuggestions[0];
+        addRecipient(field, pick);
+      }
+      newInput.value = '';
+      suggestions.classList.add('hidden');
+      currentSuggestions = [];
+      activeSuggestionIdx = -1;
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (currentSuggestions.length > 0) {
+        activeSuggestionIdx = Math.min(activeSuggestionIdx + 1, currentSuggestions.length - 1);
+        updateSuggestionHighlight();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (currentSuggestions.length > 0) {
+        activeSuggestionIdx = Math.max(activeSuggestionIdx - 1, 0);
+        updateSuggestionHighlight();
+      }
+    } else if (e.key === 'Backspace' && !newInput.value && recipientChips[field].length > 0) {
+      recipientChips[field].pop();
+      renderRecipientChips();
+      onChipsChanged();
+    } else if (e.key === 'Escape') {
+      suggestions.classList.add('hidden');
+      currentSuggestions = [];
+    }
+  });
+
+  // Click outside
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('#' + field + 'ChipsWrapper')) {
+      suggestions.classList.add('hidden');
+    }
+  }, { capture: true });
+}
+
+function showSuggestions(field, query) {
+  const suggestions = document.getElementById(field + 'Suggestions');
+  if (!suggestions) return;
+
+  const allUsers = getAllowedRecipients();
+  const alreadyAdded = recipientChips[field].map(u => u.id);
+
+  const q = query.toLowerCase();
+  const matches = allUsers
+    .filter(u => !alreadyAdded.includes(u.id))
+    .filter(u => {
+      const name = (u.name || '').toLowerCase();
+      const username = (u.username || '').toLowerCase();
+      return name.includes(q) || username.includes(q);
+    })
+    .slice(0, 8);
+
+  currentSuggestions = matches;
+  activeSuggestionIdx = -1;
+
+  if (matches.length === 0) {
+    suggestions.innerHTML = '<div class="suggestions-empty">لا نتائج</div>';
+    suggestions.classList.remove('hidden');
+    return;
+  }
+
+  const roleTagMap = {
+    owner: '👑',
+    chairman: '🎩',
+    vice_chairman: '🎗️',
+    admin: '🛡️',
+    manager: '👔',
+    user: '👤'
+  };
+
+  suggestions.innerHTML = matches.map((u, idx) => {
+    const dept = u.departmentId ? getDeptById(u.departmentId) : null;
+    return `
+      <div class="suggestion-item" data-idx="${idx}" onmousedown="event.preventDefault()" onclick="addRecipientFromSuggestion('${field}', ${idx})">
+        <div class="suggestion-avatar ${getAvatarGradient(u.name)}">${initials(u.name)}</div>
+        <div class="suggestion-info">
+          <div class="suggestion-name">${esc(u.name)} <span class="suggestion-role-tag">${roleTagMap[u.role] || ''} ${roleLabels[u.role] || ''}</span></div>
+          <div class="suggestion-sub">@${esc(u.username)}${dept ? ' · ' + esc(dept.name) : ''}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  suggestions.classList.remove('hidden');
+  icons();
+}
+
+function updateSuggestionHighlight() {
+  const suggestions = document.getElementById(activeChipField + 'Suggestions');
+  if (!suggestions) return;
+  suggestions.querySelectorAll('.suggestion-item').forEach((el, idx) => {
+    el.classList.toggle('active', idx === activeSuggestionIdx);
+  });
+}
+
+window.addRecipientFromSuggestion = (field, idx) => {
+  const user = currentSuggestions[idx];
+  if (user) window.addRecipient(field, user);
+};
+
+window.addRecipient = (field, user) => {
+  if (!user) return;
+  const alreadyAdded = recipientChips[field].some(u => u.id === user.id);
+  if (alreadyAdded) return;
+
+  recipientChips[field].push(user);
+  renderRecipientChips();
+
+  const input = document.getElementById(field + 'Input');
+  if (input) input.value = '';
+
+  const suggestions = document.getElementById(field + 'Suggestions');
+  if (suggestions) suggestions.classList.add('hidden');
+  currentSuggestions = [];
+  activeSuggestionIdx = -1;
+
+  onChipsChanged();
+  if (input) input.focus();
+};
+
+window.removeRecipient = (field, idx) => {
+  recipientChips[field].splice(idx, 1);
+  renderRecipientChips();
+  onChipsChanged();
+};
+
+function onChipsChanged() {
+  const hasAdminRecipient = recipientChips.to.some(u => u.role === 'admin' || u.role === 'owner');
   const senderRole = state.currentUser?.role;
   const senderIsDeptMgr = state.allDeptsCache.some(d => d.managerId === state.currentUser?.uid);
   const canUseTemplates = senderRole === 'user' || senderRole === 'manager' || senderIsDeptMgr;
 
-  if (isAdminRecipient && canUseTemplates) {
+  if (hasAdminRecipient && canUseTemplates) {
     renderAdminTemplates();
-    templateRow.style.display = 'flex';
+    show($('#templateRow'));
   } else {
-    templateRow.style.display = 'none';
+    hide($('#templateRow'));
   }
+}
+
+window.toggleExtraFields = () => {
+  const ccRow = $('#ccRow');
+  const bccRow = $('#bccRow');
+  const optionsField = $('#optionsField');
+
+  const isHidden = ccRow.classList.contains('hidden');
+  if (isHidden) {
+    show(ccRow);
+    show(bccRow);
+    show(optionsField);
+    $('#extraFieldsIcon')?.setAttribute('data-lucide', 'x');
+  } else {
+    hide(ccRow);
+    hide(bccRow);
+    hide(optionsField);
+    recipientChips.cc = [];
+    recipientChips.bcc = [];
+    renderRecipientChips();
+    $('#extraFieldsIcon')?.setAttribute('data-lucide', 'plus');
+  }
+  icons();
 };
 
 function renderAdminTemplates() {
@@ -2207,9 +2419,8 @@ function renderAdminTemplates() {
   if (!picker) return;
 
   picker.innerHTML = ADMIN_MESSAGE_TEMPLATES.map(t => `
-    <button type="button" class="tag-chip template-chip"
-            onclick="applyAdminTemplate('${t.id}')">
-      <i data-lucide="${t.icon}" class="w-3 h-3"></i>
+    <button type="button" class="template-btn" onclick="applyAdminTemplate('${t.id}')">
+      <i data-lucide="${t.icon}"></i>
       <span>${esc(t.label)}</span>
     </button>
   `).join('');
@@ -2222,7 +2433,6 @@ window.applyAdminTemplate = (templateId) => {
 
   const subjEl = $('#cSubject');
   const bodyEl = $('#cBody');
-  if (!subjEl || !bodyEl) return;
 
   if (!subjEl.value.trim()) subjEl.value = tpl.label;
 
@@ -2241,54 +2451,33 @@ window.applyAdminTemplate = (templateId) => {
   });
 };
 
-window.toggleCCBCC = () => {
-  const f = $('#ccbccFields');
-  const i = $('#ccbccIcon');
-  if (!f) return;
-  f.classList.toggle('hidden');
-  i?.setAttribute('data-lucide', f.classList.contains('hidden') ? 'chevron-down' : 'chevron-up');
-  icons();
-};
-
 window.toggleBroadcast = () => {
   const checked = $('#cBroadcast').checked;
-  if (checked) { hide($('#toBox')); hide($('#deptBox')); $('#cDept').checked = false; }
-  else { show($('#toBox')); if (isAdmin() || isDeptManager()) show($('#deptBox')); }
+  if (checked) {
+    $('#cDept').checked = false;
+    $('#toChipsWrapper').style.opacity = '0.5';
+    $('#toInput').disabled = true;
+  } else {
+    $('#toChipsWrapper').style.opacity = '1';
+    $('#toInput').disabled = false;
+  }
 };
 
 window.toggleDeptSend = () => {
   const checked = $('#cDept').checked;
-  if (checked) { hide($('#toBox')); hide($('#broadcastBox')); $('#cBroadcast').checked = false; }
-  else { show($('#toBox')); }
-};
-
-/* ═══ Tags in Compose ═══ */
-function renderComposeTagsPicker() {
-  const container = document.getElementById('composeTags');
-  if (!container) return;
-
-  if (userTags.length === 0) {
-    container.innerHTML = '<span class="tags-empty">لا يوجد تصنيفات — <button onclick="openTagsManager()" class="link-btn-sm">أنشئ واحد</button></span>';
-    return;
+  if (checked) {
+    $('#cBroadcast').checked = false;
+    $('#toChipsWrapper').style.opacity = '0.5';
+    $('#toInput').disabled = true;
+  } else {
+    $('#toChipsWrapper').style.opacity = '1';
+    $('#toInput').disabled = false;
   }
-
-  container.innerHTML = userTags.map(tag => `
-    <button type="button" class="tag-chip ${selectedTags.includes(tag.id) ? 'selected' : ''}"
-            style="--tag-color: ${tag.color};"
-            onclick="toggleComposeTag('${tag.id}')">
-      <span class="tag-chip-dot"></span>
-      <span>${esc(tag.name)}</span>
-    </button>
-  `).join('');
-}
-
-window.toggleComposeTag = (tagId) => {
-  if (selectedTags.includes(tagId)) selectedTags = selectedTags.filter(t => t !== tagId);
-  else selectedTags.push(tagId);
-  renderComposeTagsPicker();
 };
 
-/* ═══ File Upload ═══ */
+/* ═══════════════════════════════════════════════════════
+   FILE UPLOAD
+   ═══════════════════════════════════════════════════════ */
 window.handleFiles = async (event) => {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
@@ -2426,37 +2615,55 @@ window.clearAttachments = () => {
 window.sendMessage = async () => {
   const broadcast = $('#cBroadcast').checked && (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast'));
   const deptSend = $('#cDept').checked;
-  const toUserId = $('#cTo').value;
-  const ccUserId = $('#cCC')?.value || '';
-  const bccUserId = $('#cBCC')?.value || '';
+  const toUserId = recipientChips.to[0]?.id || '';
+  const ccUserId = recipientChips.cc[0]?.id || '';
+  const bccUserId = recipientChips.bcc[0]?.id || '';
   const deptId = $('#deptSelect').value;
   const subject = $('#cSubject').value.trim();
   const body = $('#cBody').value.trim();
   const replyToThread = $('#cThreadId')?.value || null;
-  const priority = document.querySelector('input[name="priority"]:checked')?.value || 'normal';
+  const priority = $('#cUrgent').checked ? 'urgent' : 'normal';
   const status = $('#cStatus');
 
   status.style.color = '';
   status.textContent = '';
 
-  if (!broadcast && !deptSend && !toUserId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر المستلم'; return; }
-  if (deptSend && !deptId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر القسم'; return; }
-  if (!subject) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب الموضوع'; return; }
+  if (!broadcast && !deptSend && recipientChips.to.length === 0) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'أضف مستلم';
+    return;
+  }
+  if (deptSend && !deptId) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'اختر القسم';
+    return;
+  }
+  if (!subject) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'اكتب الموضوع';
+    return;
+  }
 
-  if (!broadcast && !deptSend && toUserId) {
-    const recipient = state.allUsersCache.find(u => u.id === toUserId);
-    if (recipient && !canSendTo(recipient)) {
-      status.style.color = 'var(--danger)';
-      status.textContent = 'غير مسموحلك تبعت للمستخدم ده';
-      showToastAdvanced('غير مسموح', 'مش مسموحلك تبعت للمستخدم ده حسب صلاحياتك', {
-        type: 'error', icon: 'shield-x', duration: 4000
-      });
-      return;
+  // Validation
+  if (!broadcast && !deptSend) {
+    for (const recipient of recipientChips.to) {
+      if (!canSendTo(recipient)) {
+        status.style.color = 'var(--danger)';
+        status.textContent = `غير مسموح: ${recipient.name}`;
+        showToastAdvanced('غير مسموح', `مش مسموحلك تبعت لـ ${recipient.name}`, {
+          type: 'error', icon: 'shield-x', duration: 4000
+        });
+        return;
+      }
     }
   }
 
   const uploading = attachedFiles.some(f => f.status === 'uploading');
-  if (uploading) { status.style.color = 'var(--danger)'; status.textContent = 'استنى لحد ما المرفقات ترفع'; return; }
+  if (uploading) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'استنى المرفقات';
+    return;
+  }
 
   const attachmentsData = attachedFiles.filter(f => f.status === 'done').map(f => ({
     name: f.name, size: f.size, type: f.type, url: f.url, path: f.path
@@ -2595,7 +2802,7 @@ async function performSend(data) {
 }
 
 window.saveDraft = async () => {
-  const toUserId = $('#cTo').value;
+  const toUserId = recipientChips.to[0]?.id || '';
   const subject = $('#cSubject').value.trim();
   const body = $('#cBody').value.trim();
   const status = $('#cStatus');
@@ -2620,17 +2827,14 @@ window.saveDraft = async () => {
 
 window.replyToThread = async (userId, userName, threadId, subject) => {
   await window.openCompose();
-  $('#cTo').value = userId;
+  const recipient = state.allUsersCache.find(u => u.id === userId);
+  if (recipient) {
+    window.addRecipient('to', recipient);
+  }
   $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
   $('#cThreadId').value = threadId;
-  $('#cBroadcast').checked = false;
-  $('#cDept').checked = false;
-  $('#toBox').classList.remove('hidden');
   $('#composeTitle').textContent = `رد على ${userName}`;
-  setTimeout(() => {
-    window.onRecipientChange();
-    $('#cBody').focus();
-  }, 150);
+  setTimeout(() => $('#cBody').focus(), 200);
 };
 
 /* ═══════════════════════════════════════════════════════
@@ -2849,4 +3053,4 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-console.log('🚀 Mail System v9.3 loaded — Permissions + Templates');
+console.log('🚀 Mail System v9.4 loaded — Pro Compose + Permissions');
