@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.2 - Utilities & Helpers
-   WhatsApp-style Notification Sound + Advanced Permissions
+   Mail System v9.3 - Utilities & Helpers
+   WhatsApp Sound + Roles + Permissions + Admin Templates
    ═══════════════════════════════════════════════════════════ */
 
 import { auth, db, doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from './firebase.js';
@@ -174,7 +174,7 @@ export function toggleDarkMode() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SOUND - WhatsApp-style Notification
+   SOUND
    ═══════════════════════════════════════════════════════ */
 let audioCtx = null;
 
@@ -434,7 +434,7 @@ export function getAvatarColor(name) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   UNLOCK AUDIO (First interaction)
+   UNLOCK AUDIO
    ═══════════════════════════════════════════════════════ */
 export function unlockAudioOnFirstClick() {
   const unlock = () => {
@@ -460,14 +460,66 @@ export function unlockAudioOnFirstClick() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   ⭐ PERMISSIONS — مين يبعت لمين (NEW v9.2)
+   ⭐ PERMISSIONS (v9.3)
    ═══════════════════════════════════════════════════════ */
 
-/**
- * هل المُرسل الحالي يقدر يبعت للمستقبل ده؟
- * @param {Object} recipient — كائن المستخدم المستقبل (فيه id و role و departmentId)
- * @returns {boolean}
- */
+export const DEFAULT_PERMISSIONS = {
+  owner: [
+    'send_to_dept_members',
+    'send_to_dept_manager',
+    'send_to_managers',
+    'send_to_admins',
+    'send_to_chairman',
+    'send_to_all',
+    'can_broadcast'
+  ],
+  admin: [
+    'send_to_dept_members',
+    'send_to_dept_manager',
+    'send_to_managers',
+    'send_to_admins',
+    'send_to_chairman',
+    'send_to_all'
+  ],
+  chairman: [
+    'send_to_managers',
+    'send_to_admins',
+    'send_to_chairman'
+  ],
+  vice_chairman: [
+    'send_to_managers',
+    'send_to_admins',
+    'send_to_chairman'
+  ],
+  manager: [
+    'send_to_dept_members',
+    'send_to_managers',
+    'send_to_admins',
+    'send_to_chairman'
+  ],
+  user: [
+    'send_to_dept_members',
+    'send_to_dept_manager',
+    'send_to_admins'
+  ]
+};
+
+export const PERMISSION_LABELS = {
+  send_to_dept_members: { label: 'إرسال لأعضاء قسمه', icon: 'users' },
+  send_to_dept_manager: { label: 'إرسال لمدير قسمه', icon: 'user-check' },
+  send_to_managers:     { label: 'إرسال لمدراء الأقسام', icon: 'briefcase' },
+  send_to_admins:       { label: 'إرسال للأدمن والمالك', icon: 'shield' },
+  send_to_chairman:     { label: 'إرسال لمجلس الإدارة', icon: 'crown' },
+  send_to_all:          { label: 'إرسال للجميع', icon: 'globe' },
+  can_broadcast:        { label: 'بث جماعي (Broadcast)', icon: 'megaphone' }
+};
+
+export function isActualDeptManager(user) {
+  if (!user) return false;
+  if (user.role === 'manager') return true;
+  return state.allDeptsCache.some(d => d.managerId === user.id || d.managerId === user.uid);
+}
+
 export function canSendTo(recipient) {
   const sender = state.currentUser;
   if (!sender || !recipient) return false;
@@ -476,48 +528,45 @@ export function canSendTo(recipient) {
   const sRole = sender.role;
   const rRole = recipient.role;
 
-  // 👑 Owner → أي حد
-  if (sRole === 'owner') return true;
+  // Owner / Admin → أي حد
+  if (sRole === 'owner' || sRole === 'admin') return true;
 
-  // 🛡️ Admin → أي حد
-  if (sRole === 'admin') return true;
+  // الصلاحيات المخصصة أو defaults الدور
+  const perms = Array.isArray(sender.permissions) && sender.permissions.length > 0
+    ? sender.permissions
+    : (DEFAULT_PERMISSIONS[sRole] || []);
 
-  // 🎩 Chairman / Vice Chairman → owner + admin + managers + بعضهم
-  if (sRole === 'chairman' || sRole === 'vice_chairman') {
-    return ['owner', 'admin', 'manager', 'chairman', 'vice_chairman'].includes(rRole);
+  // "إرسال للجميع" → أي حد
+  if (perms.includes('send_to_all')) return true;
+
+  // Owner / Admin
+  if (rRole === 'owner' || rRole === 'admin') {
+    return perms.includes('send_to_admins');
   }
 
-  // 👔 Manager (or user assigned as dept manager) → أي حد
-  const isDeptMgr = sRole === 'manager' ||
-    state.allDeptsCache.some(d => d.managerId === sender.uid);
-  if (isDeptMgr) return true;
+  // Chairman / Vice
+  if (rRole === 'chairman' || rRole === 'vice_chairman') {
+    return perms.includes('send_to_chairman');
+  }
 
-  // 👤 User العادي
-  if (sRole === 'user') {
-    // 1) owner + admin
-    if (rRole === 'owner' || rRole === 'admin') return true;
+  // Manager
+  if (rRole === 'manager') {
+    const senderDept = state.allDeptsCache.find(d => d.id === sender.departmentId);
+    const isMyManager = senderDept && senderDept.managerId === recipient.id;
+    if (isMyManager && perms.includes('send_to_dept_manager')) return true;
+    return perms.includes('send_to_managers');
+  }
 
-    // 2) مدير قسمه
-    if (rRole === 'manager') {
-      const myDept = state.allDeptsCache.find(d => d.id === sender.departmentId);
-      return !!(myDept && myDept.managerId === recipient.id);
-    }
-
-    // 3) أعضاء قسمه فقط
-    if (rRole === 'user') {
-      return !!sender.departmentId && sender.departmentId === recipient.departmentId;
-    }
-
-    // ❌ ممنوع: chairman / vice_chairman
-    return false;
+  // User عادي
+  if (rRole === 'user') {
+    return perms.includes('send_to_dept_members')
+      && !!sender.departmentId
+      && sender.departmentId === recipient.departmentId;
   }
 
   return false;
 }
 
-/**
- * كل المستخدمين اللي المُرسل الحالي يقدر يبعتلهم
- */
 export function getAllowedRecipients() {
   if (!state.currentUser) return [];
   return state.allUsersCache.filter(u =>
@@ -527,4 +576,4 @@ export function getAllowedRecipients() {
   );
 }
 
-console.log('🛠️ Utils v9.2 loaded - Roles + Permissions + WhatsApp Sound 🔔');
+console.log('🛠️ Utils v9.3 loaded - Permissions + Templates + Sound 🔔');
