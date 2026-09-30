@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.1 - Utilities & Helpers
-   WhatsApp-style Notification Sound
+   Mail System v9.2 - Utilities & Helpers
+   WhatsApp-style Notification Sound + Advanced Permissions
    ═══════════════════════════════════════════════════════════ */
 
 import { auth, db, doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from './firebase.js';
@@ -102,15 +102,21 @@ export const todayArabic = () => {
    ═══════════════════════════════════════════════════════ */
 export const isOwner = () => state.currentUser?.role === 'owner';
 export const isAdmin = () => state.currentUser?.role === 'admin' || isOwner();
+export const isChairman = () => state.currentUser?.role === 'chairman';
+export const isViceChairman = () => state.currentUser?.role === 'vice_chairman';
+export const isExecutiveBoard = () => isChairman() || isViceChairman();
+
 export const isDeptManager = () => {
   if (!state.currentUser) return false;
   return state.currentUser.role === 'manager' ||
     state.allDeptsCache.some(d => d.managerId === state.currentUser.uid);
 };
-export const isManagerOrAbove = () => isAdmin() || isDeptManager();
+export const isManagerOrAbove = () => isAdmin() || isDeptManager() || isExecutiveBoard();
 
 export const roleLabels = {
   owner: 'صاحب الشركة',
+  chairman: 'رئيس مجلس الإدارة',
+  vice_chairman: 'نائب رئيس مجلس الإدارة',
   admin: 'مدير النظام',
   manager: 'مدير قسم',
   user: 'مستخدم'
@@ -118,6 +124,8 @@ export const roleLabels = {
 
 export const roleColors = {
   owner: 'bg-amber-100 text-amber-800',
+  chairman: 'bg-yellow-100 text-yellow-800',
+  vice_chairman: 'bg-lime-100 text-lime-800',
   admin: 'bg-red-50 text-red-700',
   manager: 'bg-purple-50 text-purple-700',
   user: 'bg-slate-100 text-slate-700'
@@ -133,9 +141,7 @@ export const icons = () => {
   iconsScheduled = true;
   requestAnimationFrame(() => {
     iconsScheduled = false;
-    try {
-      window.lucide.createIcons();
-    } catch (e) {}
+    try { window.lucide.createIcons(); } catch (e) {}
   });
 };
 
@@ -170,70 +176,41 @@ export function toggleDarkMode() {
 /* ═══════════════════════════════════════════════════════
    SOUND - WhatsApp-style Notification
    ═══════════════════════════════════════════════════════ */
-
 let audioCtx = null;
 
 function getAudioContext() {
   if (!audioCtx) {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return null;
-    try {
-      audioCtx = new Ctx();
-    } catch (e) {
-      return null;
-    }
+    try { audioCtx = new Ctx(); } catch (e) { return null; }
   }
-  if (audioCtx.state === 'suspended') {
-    audioCtx.resume().catch(() => {});
-  }
+  if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
   return audioCtx;
 }
 
-/**
- * 🔔 صوت إشعار WhatsApp
- * نغمتين صاعدتين ثم هابطة (زي واتساب)
- */
 export function playNotifSound() {
   if (!state.settings.soundEnabled) return;
-
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
-
     const now = ctx.currentTime;
-
-    // 🎵 WhatsApp-style chime (محاكاة قريبة من الصوت الأصلي)
-    // Note 1: E6 (سريعة)
-    // Note 2: C#6 (أطول قليلاً)
-    
-    playTone(ctx, now,        1318.51, 0.10, 0.18);  // E6
-    playTone(ctx, now + 0.09,  1108.73, 0.22, 0.20);  // C#6
-
-    // إعادة النغمة الثانية بصدى خفيف (echo)
-    playTone(ctx, now + 0.13,  1108.73, 0.18, 0.10);
-
-  } catch (e) {
-    console.warn('Sound error:', e);
-  }
+    playTone(ctx, now,        1318.51, 0.10, 0.18);
+    playTone(ctx, now + 0.09, 1108.73, 0.22, 0.20);
+    playTone(ctx, now + 0.13, 1108.73, 0.18, 0.10);
+  } catch (e) { console.warn('Sound error:', e); }
 }
 
 function playTone(ctx, startTime, freq, duration, volume) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
-
-  // sine = الأنعم
   osc.type = 'sine';
   osc.frequency.value = freq;
-
-  // Envelope ناعم
   gain.gain.setValueAtTime(0, startTime);
   gain.gain.linearRampToValueAtTime(volume, startTime + 0.01);
   gain.gain.setValueAtTime(volume, startTime + duration * 0.6);
   gain.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
-
   osc.connect(gain);
   gain.connect(ctx.destination);
-
   osc.start(startTime);
   osc.stop(startTime + duration + 0.05);
 }
@@ -249,8 +226,7 @@ export function toggleSound() {
 export function loadSoundSetting() {
   try {
     const saved = localStorage.getItem('soundEnabled');
-    if (saved === '0') state.settings.soundEnabled = false;
-    else state.settings.soundEnabled = true;
+    state.settings.soundEnabled = saved !== '0';
   } catch (e) {}
 }
 
@@ -275,10 +251,8 @@ export function confirmDialog(title, message) {
       yesBtn.removeEventListener('click', onYes);
       noBtn.removeEventListener('click', onNo);
     };
-
     const onYes = () => { cleanup(); resolve(true); };
     const onNo = () => { cleanup(); resolve(false); };
-
     yesBtn.addEventListener('click', onYes);
     noBtn.addEventListener('click', onNo);
   });
@@ -289,7 +263,6 @@ export function confirmDialog(title, message) {
    ═══════════════════════════════════════════════════════ */
 export function showToast(title, body, onClick, playSound = true) {
   if (playSound) playNotifSound();
-
   const container = document.getElementById('toastContainer');
   if (!container) return;
 
@@ -398,23 +371,15 @@ export function saveSession(user) {
 }
 
 export function loadLastUser() {
-  try {
-    return localStorage.getItem('lastUser') || '';
-  } catch (e) {
-    return '';
-  }
+  try { return localStorage.getItem('lastUser') || ''; } catch (e) { return ''; }
 }
 
 /* ═══════════════════════════════════════════════════════
    COPY TO CLIPBOARD
    ═══════════════════════════════════════════════════════ */
 export async function copyToClipboard(text) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch (e) {
-    return false;
-  }
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch (e) { return false; }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -464,11 +429,8 @@ const AVATAR_COLORS = [
 export function getAvatarColor(name) {
   let hash = 0;
   const str = name || '?';
-  for (let i = 0; i < str.length; i++) {
-    hash = str.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  const idx = Math.abs(hash) % AVATAR_COLORS.length;
-  return AVATAR_COLORS[idx];
+  for (let i = 0; i < str.length; i++) hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -479,7 +441,6 @@ export function unlockAudioOnFirstClick() {
     try {
       const ctx = getAudioContext();
       if (ctx) {
-        // تشغيل صامت لفتح AudioContext
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         gain.gain.value = 0;
@@ -489,15 +450,81 @@ export function unlockAudioOnFirstClick() {
         osc.stop(ctx.currentTime + 0.01);
       }
     } catch (e) {}
-
     document.removeEventListener('click', unlock);
     document.removeEventListener('touchstart', unlock);
     document.removeEventListener('keydown', unlock);
   };
-
   document.addEventListener('click', unlock, { once: true });
   document.addEventListener('touchstart', unlock, { once: true });
   document.addEventListener('keydown', unlock, { once: true });
 }
 
-console.log('🛠️ Utils v9.1 loaded - WhatsApp Sound 🔔');
+/* ═══════════════════════════════════════════════════════
+   ⭐ PERMISSIONS — مين يبعت لمين (NEW v9.2)
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * هل المُرسل الحالي يقدر يبعت للمستقبل ده؟
+ * @param {Object} recipient — كائن المستخدم المستقبل (فيه id و role و departmentId)
+ * @returns {boolean}
+ */
+export function canSendTo(recipient) {
+  const sender = state.currentUser;
+  if (!sender || !recipient) return false;
+  if (sender.uid === recipient.id) return false;
+
+  const sRole = sender.role;
+  const rRole = recipient.role;
+
+  // 👑 Owner → أي حد
+  if (sRole === 'owner') return true;
+
+  // 🛡️ Admin → أي حد
+  if (sRole === 'admin') return true;
+
+  // 🎩 Chairman / Vice Chairman → owner + admin + managers + بعضهم
+  if (sRole === 'chairman' || sRole === 'vice_chairman') {
+    return ['owner', 'admin', 'manager', 'chairman', 'vice_chairman'].includes(rRole);
+  }
+
+  // 👔 Manager (or user assigned as dept manager) → أي حد
+  const isDeptMgr = sRole === 'manager' ||
+    state.allDeptsCache.some(d => d.managerId === sender.uid);
+  if (isDeptMgr) return true;
+
+  // 👤 User العادي
+  if (sRole === 'user') {
+    // 1) owner + admin
+    if (rRole === 'owner' || rRole === 'admin') return true;
+
+    // 2) مدير قسمه
+    if (rRole === 'manager') {
+      const myDept = state.allDeptsCache.find(d => d.id === sender.departmentId);
+      return !!(myDept && myDept.managerId === recipient.id);
+    }
+
+    // 3) أعضاء قسمه فقط
+    if (rRole === 'user') {
+      return !!sender.departmentId && sender.departmentId === recipient.departmentId;
+    }
+
+    // ❌ ممنوع: chairman / vice_chairman
+    return false;
+  }
+
+  return false;
+}
+
+/**
+ * كل المستخدمين اللي المُرسل الحالي يقدر يبعتلهم
+ */
+export function getAllowedRecipients() {
+  if (!state.currentUser) return [];
+  return state.allUsersCache.filter(u =>
+    u.id !== state.currentUser.uid &&
+    u.isActive !== false &&
+    canSendTo(u)
+  );
+}
+
+console.log('🛠️ Utils v9.2 loaded - Roles + Permissions + WhatsApp Sound 🔔');
