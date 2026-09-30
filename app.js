@@ -1958,9 +1958,18 @@ function renderThreadReading() {
         <button onclick="toggleStar('${t.threadId}')" class="toolbar-btn ${threadStarred ? 'primary' : ''}"><i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i><span>${threadStarred ? 'مميزة' : 'تمييز'}</span></button>
       ` : ''}
 
-      <button onclick="trashThread('${t.threadId}', ${isTrash})" class="toolbar-btn ${isTrash ? 'primary' : 'danger'}">
-        <i data-lucide="${isTrash ? 'rotate-ccw' : 'trash-2'}" class="w-4 h-4"></i><span>${isTrash ? 'استعادة' : 'حذف'}</span>
-      </button>
+        ${isTrash ? `
+        <button onclick="trashThread('${t.threadId}', true)" class="toolbar-btn primary">
+          <i data-lucide="rotate-ccw" class="w-4 h-4"></i><span>استعادة</span>
+        </button>
+        <button onclick="permanentDeleteFromTrash('${t.threadId}')" class="toolbar-btn danger">
+          <i data-lucide="x-circle" class="w-4 h-4"></i><span>حذف نهائي</span>
+        </button>
+      ` : `
+        <button onclick="trashThread('${t.threadId}', false)" class="toolbar-btn danger">
+          <i data-lucide="trash-2" class="w-4 h-4"></i><span>حذف</span>
+        </button>
+      `}
 
       ${isAdmin() && (deletedUsers.length > 0 || t.messages.some(m => Object.keys(m.deletedBy || {}).length > 0)) ? `
         <button onclick="restoreThreadForAll('${t.threadId}')" class="toolbar-btn primary" title="استعادة الرسائل للجميع">
