@@ -13,7 +13,6 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%230078D4'/%3E%3Cpath d='M100 180l156 112 156-112v190a20 20 0 0 1-20 20H120a20 20 0 0 1-20-20V180z' fill='%23ffffff'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
-<link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin>
 <link rel="stylesheet" href="styles.css">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/lucide@latest"></script>
@@ -21,7 +20,6 @@
 </head>
 <body>
 
-<!-- Loader -->
 <div id="globalLoader" class="global-loader hidden">
   <div class="spinner"></div>
 </div>
@@ -74,7 +72,7 @@
         </button>
       </div>
 
-      <div class="login-footer"><span>Mail System v9.4</span></div>
+      <div class="login-footer"><span>Mail System v9.7</span></div>
     </div>
   </div>
 </div>
@@ -111,7 +109,7 @@
 
   <header class="app-header">
     <div class="header-start">
-      <button id="toggleSidebar" class="header-btn" title="إظهار/إخفاء القائمة">
+      <button id="toggleSidebar" class="header-btn" title="القائمة">
         <i data-lucide="menu" class="w-5 h-5"></i>
       </button>
       <div class="app-brand">
@@ -198,6 +196,11 @@
           <i data-lucide="send" class="w-4 h-4"></i>
           <span class="nav-label">المُرسلة</span>
         </button>
+        <button data-page="drafts" class="nav-item">
+          <i data-lucide="file-text" class="w-4 h-4"></i>
+          <span class="nav-label">المسودات</span>
+          <span id="sidebarDraftsCount" class="nav-badge hidden">0</span>
+        </button>
         <button data-page="trash" class="nav-item">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
           <span class="nav-label">سلة المهملات</span>
@@ -232,20 +235,20 @@
         </button>
       </nav>
 
-      <div class="sidebar-footer"><span class="text-xs">v9.4</span></div>
+      <div class="sidebar-footer"><span class="text-xs">v9.7</span></div>
     </aside>
 
     <nav id="mobileNav" class="mobile-nav" style="display:none">
-      <button data-page="dashboard" class="mnav-item"><i data-lucide="home" class="w-5 h-5"></i><span>الرئيسية</span></button>
       <button data-page="inbox" class="mnav-item relative">
         <i data-lucide="inbox" class="w-5 h-5"></i><span>الوارد</span>
         <span id="inboxCountM" class="mnav-badge hidden">0</span>
       </button>
+      <button data-page="starred" class="mnav-item"><i data-lucide="star" class="w-5 h-5"></i><span>المميزة</span></button>
       <button onclick="openCompose()" class="mnav-item mnav-primary">
         <div class="mnav-fab"><i data-lucide="pencil" class="w-5 h-5"></i></div>
       </button>
-      <button data-page="starred" class="mnav-item"><i data-lucide="star" class="w-5 h-5"></i><span>المميزة</span></button>
-      <button data-page="myteam" data-manager-only class="mnav-item"><i data-lucide="users-round" class="w-5 h-5"></i><span>فريقي</span></button>
+      <button data-page="drafts" class="mnav-item"><i data-lucide="file-text" class="w-5 h-5"></i><span>المسودات</span></button>
+      <button data-page="sent" class="mnav-item"><i data-lucide="send" class="w-5 h-5"></i><span>المُرسلة</span></button>
     </nav>
 
     <main id="mainContent" class="app-main">
@@ -254,11 +257,82 @@
   </div>
 </div>
 
-<!-- ══════════ COMPOSE MODAL v9.4 (Pro Email Style) ══════════ -->
+<!-- ⭐ MOBILE DRAWER -->
+<div id="mobileDrawer" class="mobile-drawer-overlay hidden" onclick="closeMobileDrawer(event)">
+  <aside class="mobile-drawer" onclick="event.stopPropagation()">
+    <div class="mobile-drawer-header">
+      <div class="mobile-drawer-user">
+        <div id="drawerAvatar" class="user-avatar gradient-1"></div>
+        <div style="min-width:0;flex:1;">
+          <div id="drawerName" class="mobile-drawer-name"></div>
+          <div id="drawerRole" class="mobile-drawer-role"></div>
+        </div>
+      </div>
+      <button onclick="closeMobileDrawer()" class="icon-btn icon-btn-ghost">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+    </div>
+
+    <nav class="mobile-drawer-nav">
+      <button class="drawer-item" onclick="drawerNavigate('inbox')">
+        <i data-lucide="inbox" class="w-5 h-5"></i>
+        <span>صندوق الوارد</span>
+        <span id="drawerInboxCount" class="nav-badge hidden">0</span>
+      </button>
+      <button class="drawer-item" onclick="drawerNavigate('starred')">
+        <i data-lucide="star" class="w-5 h-5"></i>
+        <span>المميزة</span>
+      </button>
+      <button class="drawer-item" onclick="drawerNavigate('sent')">
+        <i data-lucide="send" class="w-5 h-5"></i>
+        <span>المُرسلة</span>
+      </button>
+      <button class="drawer-item" onclick="drawerNavigate('drafts')">
+        <i data-lucide="file-text" class="w-5 h-5"></i>
+        <span>المسودات</span>
+        <span id="drawerDraftsCount" class="nav-badge hidden">0</span>
+      </button>
+      <button class="drawer-item" onclick="drawerNavigate('trash')">
+        <i data-lucide="trash-2" class="w-5 h-5"></i>
+        <span>سلة المهملات</span>
+      </button>
+
+      <div class="drawer-divider"></div>
+
+      <button class="drawer-item" data-manager-only onclick="drawerNavigate('myteam')">
+        <i data-lucide="users-round" class="w-5 h-5"></i>
+        <span>فريقي</span>
+      </button>
+      <button class="drawer-item" data-admin-only onclick="drawerNavigate('users')">
+        <i data-lucide="users" class="w-5 h-5"></i>
+        <span>المستخدمين</span>
+      </button>
+      <button class="drawer-item" data-admin-only onclick="drawerNavigate('departments')">
+        <i data-lucide="building-2" class="w-5 h-5"></i>
+        <span>الأقسام</span>
+      </button>
+
+      <div class="drawer-divider"></div>
+
+      <button class="drawer-item" onclick="closeMobileDrawer(); setTimeout(openProfile, 200);">
+        <i data-lucide="user" class="w-5 h-5"></i>
+        <span>الملف الشخصي</span>
+      </button>
+      <button class="drawer-item" onclick="closeMobileDrawer(); setTimeout(openSettings, 200);">
+        <i data-lucide="settings" class="w-5 h-5"></i>
+        <span>الإعدادات</span>
+      </button>
+      <button class="drawer-item danger" onclick="closeMobileDrawer(); setTimeout(handleLogout, 200);">
+        <i data-lucide="log-out" class="w-5 h-5"></i>
+        <span>تسجيل الخروج</span>
+      </button>
+    </nav>
+  </aside>
+</div>
+
+<!-- COMPOSE MODAL -->
 <div id="composeModal" class="compose-modal" style="display:none">
   <div class="compose-dialog">
-
-    <!-- Titlebar -->
     <div class="compose-titlebar">
       <div class="compose-title">
         <i data-lucide="mail" class="w-4 h-4"></i>
@@ -271,7 +345,6 @@
       </div>
     </div>
 
-    <!-- Recipients (Chips) -->
     <div class="compose-field compose-recipients-field">
       <div class="chips-row" id="toRow">
         <span class="field-label">إلى</span>
@@ -280,7 +353,7 @@
           <input type="text" id="toInput" class="chips-input" placeholder="اكتب اسم أو @username..." autocomplete="off" />
           <div class="chips-suggestions hidden" id="toSuggestions"></div>
         </div>
-        <button type="button" onclick="toggleExtraFields()" class="chip-add-btn" title="Cc / Bcc / المزيد">
+        <button type="button" onclick="toggleExtraFields()" class="chip-add-btn" title="المزيد">
           <i data-lucide="plus" class="w-4 h-4" id="extraFieldsIcon"></i>
         </button>
       </div>
@@ -304,29 +377,24 @@
       </div>
     </div>
 
-    <!-- Subject -->
     <div class="compose-field">
       <input id="cSubject" type="text" placeholder="الموضوع" class="compose-subject-input" />
     </div>
 
-    <!-- Options Row (collapsible) -->
     <div class="compose-field compose-options-field hidden" id="optionsField">
       <div class="options-row">
-        <label class="mini-toggle" title="أولوية عاجلة">
+        <label class="mini-toggle">
           <input type="checkbox" id="cUrgent">
           <span class="mini-toggle-track"></span>
           <span class="mini-toggle-label">🔴 عاجل</span>
         </label>
-
-        <label class="mini-toggle" title="إرسال لكل موظفي قسم" id="deptToggleWrap">
+        <label class="mini-toggle" id="deptToggleWrap">
           <input type="checkbox" id="cDept" onchange="toggleDeptSend()">
           <span class="mini-toggle-track"></span>
           <span class="mini-toggle-label" id="deptSendLabel">📢 قسم كامل</span>
         </label>
-
         <select id="deptSelect" class="dept-select-compact"></select>
-
-        <label class="mini-toggle" title="إرسال لكل المستخدمين" id="broadcastToggleWrap">
+        <label class="mini-toggle" id="broadcastToggleWrap">
           <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()">
           <span class="mini-toggle-track"></span>
           <span class="mini-toggle-label">🌐 للجميع (<span id="broadcastCount">0</span>)</span>
@@ -334,7 +402,6 @@
       </div>
     </div>
 
-    <!-- Templates Row -->
     <div class="compose-field compose-templates-field hidden" id="templateRow">
       <div class="templates-header">
         <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
@@ -343,12 +410,10 @@
       <div id="templatePicker" class="templates-picker"></div>
     </div>
 
-    <!-- Body -->
     <div class="compose-body">
       <textarea id="cBody" placeholder="اكتب رسالتك هنا..." class="compose-body-input"></textarea>
     </div>
 
-    <!-- Attachments -->
     <div id="attachmentsSection" class="compose-attachments" style="display:none;">
       <div class="attachments-header">
         <span>📎 المرفقات (<span id="attachmentsCount">0</span>)</span>
@@ -361,7 +426,6 @@
     <input type="hidden" id="cDraftId" />
     <input type="file" id="attachInput" style="display:none;" multiple onchange="handleFiles(event)" />
 
-    <!-- Bottom Bar -->
     <div class="compose-actions-bar">
       <div class="actions-left">
         <button onclick="sendMessage()" id="sendBtn" class="btn-send-cta">
@@ -369,27 +433,24 @@
           <i data-lucide="send" class="w-4 h-4"></i>
         </button>
       </div>
-
       <div class="actions-center">
-        <button onclick="document.getElementById('attachInput').click()" class="icon-action-btn" title="إرفاق ملف">
+        <button onclick="document.getElementById('attachInput').click()" class="icon-action-btn" title="إرفاق">
           <i data-lucide="paperclip" class="w-4 h-4"></i>
         </button>
         <button onclick="openTagsManager()" class="icon-action-btn" title="تصنيفات">
           <i data-lucide="tag" class="w-4 h-4"></i>
         </button>
       </div>
-
       <div class="actions-right">
         <p id="cStatus" class="send-status-compact"></p>
         <button onclick="saveDraft()" class="icon-action-btn" title="حفظ كمسودة">
           <i data-lucide="file-text" class="w-4 h-4"></i>
         </button>
-        <button onclick="closeCompose()" class="icon-action-btn danger" title="حذف / إلغاء">
+        <button onclick="closeCompose()" class="icon-action-btn danger" title="إلغاء">
           <i data-lucide="trash-2" class="w-4 h-4"></i>
         </button>
       </div>
     </div>
-
   </div>
 </div>
 
@@ -465,7 +526,7 @@
         </div>
         <div class="settings-item">
           <div class="settings-info">
-            <div class="settings-title">الإشعارات المدفوعة</div>
+            <div class="settings-title">الإشعارات</div>
             <div class="settings-desc">Push notifications</div>
           </div>
           <button id="enablePushBtn" onclick="enablePushNotifications()" class="btn btn-sm btn-primary">تفعيل</button>
