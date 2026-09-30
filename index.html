@@ -74,7 +74,7 @@
         </button>
       </div>
 
-      <div class="login-footer"><span>Mail System v9.3</span></div>
+      <div class="login-footer"><span>Mail System v9.4</span></div>
     </div>
   </div>
 </div>
@@ -109,7 +109,6 @@
 <!-- APP -->
 <div id="app" class="app-shell hidden">
 
-  <!-- HEADER -->
   <header class="app-header">
     <div class="header-start">
       <button id="toggleSidebar" class="header-btn" title="إظهار/إخفاء القائمة">
@@ -176,7 +175,6 @@
     </div>
   </header>
 
-  <!-- BODY -->
   <div class="app-body">
     <aside id="sidebar" class="app-sidebar">
       <div class="sidebar-compose">
@@ -234,7 +232,7 @@
         </button>
       </nav>
 
-      <div class="sidebar-footer"><span class="text-xs">v9.3</span></div>
+      <div class="sidebar-footer"><span class="text-xs">v9.4</span></div>
     </aside>
 
     <nav id="mobileNav" class="mobile-nav" style="display:none">
@@ -256,10 +254,11 @@
   </div>
 </div>
 
-<!-- COMPOSE MODAL v9.3 -->
+<!-- ══════════ COMPOSE MODAL v9.4 (Pro Email Style) ══════════ -->
 <div id="composeModal" class="compose-modal" style="display:none">
   <div class="compose-dialog">
 
+    <!-- Titlebar -->
     <div class="compose-titlebar">
       <div class="compose-title">
         <i data-lucide="mail" class="w-4 h-4"></i>
@@ -272,95 +271,87 @@
       </div>
     </div>
 
-    <div class="compose-row" id="toBox">
-      <span class="row-label">إلى</span>
-      <div class="row-content">
-        <select id="cTo" class="row-select"></select>
+    <!-- Recipients (Chips) -->
+    <div class="compose-field compose-recipients-field">
+      <div class="chips-row" id="toRow">
+        <span class="field-label">إلى</span>
+        <div class="chips-input-wrapper" id="toChipsWrapper">
+          <div class="chips-container" id="toChips"></div>
+          <input type="text" id="toInput" class="chips-input" placeholder="اكتب اسم أو @username..." autocomplete="off" />
+          <div class="chips-suggestions hidden" id="toSuggestions"></div>
+        </div>
+        <button type="button" onclick="toggleExtraFields()" class="chip-add-btn" title="Cc / Bcc / المزيد">
+          <i data-lucide="plus" class="w-4 h-4" id="extraFieldsIcon"></i>
+        </button>
       </div>
-      <button type="button" onclick="toggleCCBCC()" class="row-action-btn" title="Cc / Bcc">
-        <i data-lucide="chevron-down" class="w-4 h-4" id="ccbccIcon"></i>
-      </button>
-    </div>
 
-    <div id="ccbccFields" class="hidden">
-      <div class="compose-row">
-        <span class="row-label">Cc</span>
-        <div class="row-content"><select id="cCC" class="row-select"></select></div>
+      <div class="chips-row hidden" id="ccRow">
+        <span class="field-label">Cc</span>
+        <div class="chips-input-wrapper" id="ccChipsWrapper">
+          <div class="chips-container" id="ccChips"></div>
+          <input type="text" id="ccInput" class="chips-input" placeholder="Cc..." autocomplete="off" />
+          <div class="chips-suggestions hidden" id="ccSuggestions"></div>
+        </div>
       </div>
-      <div class="compose-row">
-        <span class="row-label">Bcc</span>
-        <div class="row-content"><select id="cBCC" class="row-select"></select></div>
-      </div>
-    </div>
 
-    <div id="broadcastBox" class="compose-row toggle-row" style="display:none">
-      <span class="row-label">للجميع</span>
-      <div class="row-content">
-        <label class="modern-toggle">
-          <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()">
-          <span class="toggle-track"></span>
-          <span class="toggle-text">إرسال لكل المستخدمين (<span id="broadcastCount">0</span>)</span>
-        </label>
-      </div>
-    </div>
-
-    <div id="deptBox" class="compose-row toggle-row" style="display:none">
-      <span class="row-label">لقسم</span>
-      <div class="row-content" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-        <label class="modern-toggle">
-          <input type="checkbox" id="cDept" onchange="toggleDeptSend()">
-          <span class="toggle-track"></span>
-          <span class="toggle-text" id="deptSendLabel">إرسال لقسم كامل</span>
-        </label>
-        <select id="deptSelect" class="dept-select"></select>
-      </div>
-    </div>
-
-    <div class="compose-row">
-      <span class="row-label">الموضوع</span>
-      <div class="row-content">
-        <input id="cSubject" type="text" placeholder="اكتب موضوع الرسالة..." class="row-input" />
-      </div>
-    </div>
-
-    <div class="compose-row priority-row">
-      <span class="row-label">الأولوية</span>
-      <div class="row-content">
-        <div class="priority-segment">
-          <label class="seg-item">
-            <input type="radio" name="priority" value="normal" checked>
-            <span class="seg-content"><i data-lucide="flag" class="w-3.5 h-3.5"></i> عادية</span>
-          </label>
-          <label class="seg-item urgent">
-            <input type="radio" name="priority" value="urgent">
-            <span class="seg-content"><i data-lucide="alert-circle" class="w-3.5 h-3.5"></i> عاجل</span>
-          </label>
+      <div class="chips-row hidden" id="bccRow">
+        <span class="field-label">Bcc</span>
+        <div class="chips-input-wrapper" id="bccChipsWrapper">
+          <div class="chips-container" id="bccChips"></div>
+          <input type="text" id="bccInput" class="chips-input" placeholder="Bcc..." autocomplete="off" />
+          <div class="chips-suggestions hidden" id="bccSuggestions"></div>
         </div>
       </div>
     </div>
 
-    <div class="compose-row tags-row">
-      <span class="row-label">تصنيفات</span>
-      <div class="row-content">
-        <div id="composeTags" class="tags-picker"></div>
+    <!-- Subject -->
+    <div class="compose-field">
+      <input id="cSubject" type="text" placeholder="الموضوع" class="compose-subject-input" />
+    </div>
+
+    <!-- Options Row (collapsible) -->
+    <div class="compose-field compose-options-field hidden" id="optionsField">
+      <div class="options-row">
+        <label class="mini-toggle" title="أولوية عاجلة">
+          <input type="checkbox" id="cUrgent">
+          <span class="mini-toggle-track"></span>
+          <span class="mini-toggle-label">🔴 عاجل</span>
+        </label>
+
+        <label class="mini-toggle" title="إرسال لكل موظفي قسم" id="deptToggleWrap">
+          <input type="checkbox" id="cDept" onchange="toggleDeptSend()">
+          <span class="mini-toggle-track"></span>
+          <span class="mini-toggle-label" id="deptSendLabel">📢 قسم كامل</span>
+        </label>
+
+        <select id="deptSelect" class="dept-select-compact"></select>
+
+        <label class="mini-toggle" title="إرسال لكل المستخدمين" id="broadcastToggleWrap">
+          <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()">
+          <span class="mini-toggle-track"></span>
+          <span class="mini-toggle-label">🌐 للجميع (<span id="broadcastCount">0</span>)</span>
+        </label>
       </div>
     </div>
 
-    <!-- ⭐ ADMIN TEMPLATES ROW -->
-    <div id="templateRow" class="compose-row tags-row" style="display:none;">
-      <span class="row-label">قوالب</span>
-      <div class="row-content">
-        <div id="templatePicker" class="tags-picker"></div>
+    <!-- Templates Row -->
+    <div class="compose-field compose-templates-field hidden" id="templateRow">
+      <div class="templates-header">
+        <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+        <span>قوالب سريعة</span>
       </div>
+      <div id="templatePicker" class="templates-picker"></div>
     </div>
 
+    <!-- Body -->
     <div class="compose-body">
       <textarea id="cBody" placeholder="اكتب رسالتك هنا..." class="compose-body-input"></textarea>
     </div>
 
+    <!-- Attachments -->
     <div id="attachmentsSection" class="compose-attachments" style="display:none;">
       <div class="attachments-header">
-        <span>المرفقات (<span id="attachmentsCount">0</span>)</span>
+        <span>📎 المرفقات (<span id="attachmentsCount">0</span>)</span>
         <button onclick="clearAttachments()" class="link-btn-sm">حذف الكل</button>
       </div>
       <div id="attachmentsList" class="attachments-list"></div>
@@ -370,26 +361,35 @@
     <input type="hidden" id="cDraftId" />
     <input type="file" id="attachInput" style="display:none;" multiple onchange="handleFiles(event)" />
 
-    <div class="compose-actions">
-      <div class="actions-start">
-        <button onclick="sendMessage()" id="sendBtn" class="btn-send-primary">
-          <i data-lucide="send" class="w-4 h-4"></i>
+    <!-- Bottom Bar -->
+    <div class="compose-actions-bar">
+      <div class="actions-left">
+        <button onclick="sendMessage()" id="sendBtn" class="btn-send-cta">
           <span>إرسال</span>
-        </button>
-        <button onclick="document.getElementById('attachInput').click()" class="btn-ghost-sm" title="إرفاق ملفات">
-          <i data-lucide="paperclip" class="w-4 h-4"></i>
-          <span>مرفق</span>
-        </button>
-        <button onclick="saveDraft()" class="btn-ghost-sm">
-          <i data-lucide="file-text" class="w-4 h-4"></i>
-          <span>مسودة</span>
+          <i data-lucide="send" class="w-4 h-4"></i>
         </button>
       </div>
-      <div class="actions-end">
-        <p id="cStatus" class="send-status"></p>
-        <button onclick="closeCompose()" class="btn-text">إلغاء</button>
+
+      <div class="actions-center">
+        <button onclick="document.getElementById('attachInput').click()" class="icon-action-btn" title="إرفاق ملف">
+          <i data-lucide="paperclip" class="w-4 h-4"></i>
+        </button>
+        <button onclick="openTagsManager()" class="icon-action-btn" title="تصنيفات">
+          <i data-lucide="tag" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="actions-right">
+        <p id="cStatus" class="send-status-compact"></p>
+        <button onclick="saveDraft()" class="icon-action-btn" title="حفظ كمسودة">
+          <i data-lucide="file-text" class="w-4 h-4"></i>
+        </button>
+        <button onclick="closeCompose()" class="icon-action-btn danger" title="حذف / إلغاء">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
       </div>
     </div>
+
   </div>
 </div>
 
