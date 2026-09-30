@@ -1942,3 +1942,125 @@ body.dark ::-webkit-scrollbar-thumb {
 
 /* END v9.2 */
 /* END v9.0 */
+/* ═══════════════════════════════════════════════════════
+   PERMISSIONS UI (v9.3)
+   ═══════════════════════════════════════════════════════ */
+.permissions-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+@media (max-width: 640px) {
+  .permissions-list { grid-template-columns: 1fr; }
+}
+
+.permission-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+  position: relative;
+}
+
+.permission-item:hover {
+  border-color: var(--brand-primary);
+  background: var(--brand-primary-subtle);
+}
+
+.permission-item input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.permission-box {
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--neutral-500);
+  border-radius: 3px;
+  background: var(--bg-surface);
+  position: relative;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.permission-item input:checked ~ .permission-box {
+  background: var(--brand-primary);
+  border-color: var(--brand-primary);
+}
+
+.permission-item input:checked ~ .permission-box::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.permission-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.permission-item input:checked ~ .permission-icon {
+  color: var(--brand-primary);
+}
+
+.permission-label {
+  font-size: 12.5px;
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.permission-item input:checked ~ .permission-label {
+  font-weight: 700;
+}
+
+/* Admin Templates */
+#templateRow {
+  background: linear-gradient(90deg, var(--brand-primary-subtle), transparent);
+  border-right: 3px solid var(--brand-primary);
+  min-height: 48px;
+}
+
+#templatePicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+#templatePicker .template-chip {
+  --tag-color: var(--brand-primary);
+  border: 1.5px solid var(--brand-primary);
+  color: var(--brand-primary);
+  background: var(--bg-surface);
+  transition: all 0.15s ease;
+}
+
+#templatePicker .template-chip:hover {
+  transform: translateY(-1px);
+  background: var(--brand-primary);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+#templatePicker .template-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* END v9.3 */
