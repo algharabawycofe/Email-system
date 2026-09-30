@@ -2147,3 +2147,706 @@ window.openCompose = async () => {
   const statusEl = $('#cStatus');
   statusEl.textContent = '';
   statusEl.style.color = '';
+
+  attachedFiles = [];
+  selectedTags = [];
+  renderAttachments();
+  renderComposeTagsPicker();
+
+  const templateRow = $('#templateRow');
+  if (templateRow) templateRow.style.display = 'none';
+  const tplPicker = $('#templatePicker');
+  if (tplPicker) tplPicker.innerHTML = '';
+
+  document.querySelectorAll('input[name="priority"]').forEach(r => r.checked = r.value === 'normal');
+
+  const broadcastBox = $('#broadcastBox');
+  if (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast')) {
+    $('#broadcastCount').textContent = others.length;
+    broadcastBox.style.display = 'flex';
+  } else {
+    broadcastBox.style.display = 'none';
+  }
+
+  const toSel = $('#cTo');
+  if (toSel) toSel.onchange = window.onRecipientChange;
+
+  $('#composeModal').style.display = 'flex';
+  icons();
+  setTimeout(() => $('#cTo').focus(), 100);
+};
+
+window.closeCompose = () => {
+  $('#composeModal').style.display = 'none';
+  $('#composeTitle').textContent = 'رسالة جديدة';
+  attachedFiles = [];
+  selectedTags = [];
+};
+
+window.onRecipientChange = () => {
+  const toUserId = $('#cTo')?.value;
+  const templateRow = $('#templateRow');
+  if (!templateRow) return;
+
+  const recipient = state.allUsersCache.find(u => u.id === toUserId);
+  const isAdminRecipient = recipient && (recipient.role === 'admin' || recipient.role === 'owner');
+  const senderRole = state.currentUser?.role;
+  const senderIsDeptMgr = state.allDeptsCache.some(d => d.managerId === state.currentUser?.uid);
+  const canUseTemplates = senderRole === 'user' || senderRole === 'manager' || senderIsDeptMgr;
+
+  if (isAdminRecipient && canUseTemplates) {
+    renderAdminTemplates();
+    templateRow.style.display = 'flex';
+  } else {
+    templateRow.style.display = 'none';
+  }
+};
+
+function renderAdminTemplates() {
+  const picker = $('#templatePicker');
+  if (!picker) return;
+
+  picker.innerHTML = ADMIN_MESSAGE_TEMPLATES.map(t => `
+    <button type="button" class="tag-chip template-chip"
+            onclick="applyAdminTemplate('${t.id}')">
+      <i data-lucide="${t.icon}" class="w-3 h-3"></i>
+      <span>${esc(t.label)}</span>
+    </button>
+  `).join('');
+  icons();
+}
+
+window.applyAdminTemplate = (templateId) => {
+  const tpl = ADMIN_MESSAGE_TEMPLATES.find(t => t.id === templateId);
+  if (!tpl) return;
+
+  const subjEl = $('#cSubject');
+  const bodyEl = $('#cBody');
+  if (!subjEl || !bodyEl) return;
+
+  if (!subjEl.value.trim()) subjEl.value = tpl.label;
+
+  if (!bodyEl.value.trim() || bodyEl.dataset.fromTemplate === '1') {
+    bodyEl.value = tpl.body;
+    bodyEl.dataset.fromTemplate = '1';
+  } else {
+    bodyEl.value = tpl.body + '\n' + bodyEl.value;
+  }
+
+  bodyEl.focus();
+  bodyEl.setSelectionRange(bodyEl.value.length, bodyEl.value.length);
+
+  showToastAdvanced('تم تطبيق القالب ✅', `${tpl.label} — أضف ملاحظتك`, {
+    type: 'info', icon: 'file-text', duration: 2500
+  });
+};
+
+window.toggleCCBCC = () => {
+  const f = $('#ccbccFields');
+  const i = $('#ccbccIcon');
+  if (!f) return;
+  f.classList.toggle('hidden');
+  i?.setAttribute('data-lucide', f.classList.contains('hidden') ? 'chevron-down' : 'chevron-up');
+  icons();
+};
+
+window.toggleBroadcast = () => {
+  const checked = $('#cBroadcast').checked;
+  if (checked) { hide($('#toBox')); hide($('#deptBox')); $('#cDept').checked = false; }
+  else { show($('#toBox')); if (isAdmin() || isDeptManager()) show($('#deptBox')); }
+};
+
+window.toggleDeptSend = () => {
+  const checked = $('#cDept').checked;
+  if (checked) { hide($('#toBox')); hide($('#broadcastBox')); $('#cBroadcast').checked = false; }
+  else { show($('#toBox')); }
+};
+
+/* ═══ Tags in Compose ═══ */
+function renderComposeTagsPicker() {
+  const container = document.getElementById('composeTags');
+  if (!container) return;
+
+  if (userTags.length === 0) {
+    container.innerHTML = '<span class="tags-empty">لا يوجد تصنيفات — <button onclick="openTagsManager()" class="link-btn-sm">أنشئ واحد</button></span>';
+    return;
+  }
+
+  container.innerHTML = userTags.map(tag => `
+    <button type="button" class="tag-chip ${selectedTags.includes(tag.id) ? 'selected' : ''}"
+            style="--tag-color: ${tag.color};"
+            onclick="toggleComposeTag('${tag.id}')">
+      <span class="tag-chip-dot"></span>
+      <span>${esc(tag.name)}</span>
+    </button>
+  `).join('');
+}
+
+window.toggleComposeTag = (tagId) => {
+  if (selectedTags.includes(tagId)) selectedTags = selectedTags.filter(t => t !== tagId);
+  else selectedTags.push(tagId);
+  renderComposeTagsPicker();
+};
+
+/* ═══ File Upload ═══ */
+window.handleFiles = async (event) => {
+  const files = Array.from(event.target.files || []);
+  if (files.length === 0) return;
+
+  const maxSize = 10 * 1024 * 1024;
+  const maxFiles = 10;
+
+  for (const file of files) {
+    if (attachedFiles.length >= maxFiles) {
+      showToastAdvanced('تجاوزت الحد الأقصى', `أقصى عدد ${maxFiles} ملفات`, { type: 'warning', icon: 'alert-triangle' });
+      break;
+    }
+    if (file.size > maxSize) {
+      showToastAdvanced('الملف كبير', `${file.name} أكبر من 10MB`, { type: 'error', icon: 'alert-circle' });
+      continue;
+    }
+
+    const fileObj = {
+      id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      progress: 0,
+      status: 'pending',
+      url: null,
+      path: null
+    };
+    attachedFiles.push(fileObj);
+    renderAttachments();
+    uploadFile(fileObj);
+  }
+
+  event.target.value = '';
+};
+
+async function uploadFile(fileObj) {
+  try {
+    fileObj.status = 'uploading';
+    renderAttachments();
+
+    const safeName = fileObj.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+    const path = `attachments/${state.currentUser.uid}/${Date.now()}_${safeName}`;
+    const storageRef = ref(storage, path);
+
+    const uploadTask = uploadBytesResumable(storageRef, fileObj.file);
+
+    await new Promise((resolve, reject) => {
+      uploadTask.on('state_changed',
+        (snapshot) => {
+          fileObj.progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          updateAttachmentProgress(fileObj.id, fileObj.progress);
+        },
+        reject,
+        resolve
+      );
+    });
+
+    const url = await getDownloadURL(storageRef);
+    fileObj.url = url;
+    fileObj.path = path;
+    fileObj.status = 'done';
+    fileObj.progress = 100;
+    renderAttachments();
+  } catch (e) {
+    console.error('Upload error:', e);
+    fileObj.status = 'error';
+    renderAttachments();
+    showToastAdvanced('فشل الرفع', fileObj.name, { type: 'error', icon: 'alert-circle' });
+  }
+}
+
+function updateAttachmentProgress(fileId, progress) {
+  const bar = document.querySelector(`[data-file-id="${fileId}"] .attachment-progress-bar`);
+  if (bar) bar.style.width = progress + '%';
+}
+
+function renderAttachments() {
+  const section = document.getElementById('attachmentsSection');
+  const list = document.getElementById('attachmentsList');
+  const count = document.getElementById('attachmentsCount');
+
+  if (!section || !list) return;
+
+  if (attachedFiles.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  if (count) count.textContent = attachedFiles.length;
+
+  list.innerHTML = attachedFiles.map(f => {
+    const cat = getFileIcon(f.type, f.name);
+    const iconName = getFileIconLucide(f.type, f.name);
+    const sizeText = f.status === 'uploading' ? `جاري الرفع... ${f.progress}%` : formatFileSize(f.size);
+    return `
+      <div class="attachment-item ${f.status === 'uploading' ? 'uploading' : ''} ${f.status === 'error' ? 'error' : ''}" data-file-id="${f.id}">
+        <div class="attachment-icon ${cat}"><i data-lucide="${iconName}" class="w-4 h-4"></i></div>
+        <div class="attachment-info">
+          <div class="attachment-name">${esc(f.name)}</div>
+          <div class="attachment-size">${sizeText}</div>
+          ${f.status === 'uploading' ? `<div class="attachment-progress"><div class="attachment-progress-bar" style="width: ${f.progress}%;"></div></div>` : ''}
+        </div>
+        <button type="button" class="attachment-remove" onclick="removeAttachment('${f.id}')" title="حذف">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+    `;
+  }).join('');
+  icons();
+}
+
+window.removeAttachment = async (fileId) => {
+  const idx = attachedFiles.findIndex(f => f.id === fileId);
+  if (idx === -1) return;
+  const f = attachedFiles[idx];
+
+  if (f.path) {
+    try { await deleteObject(ref(storage, f.path)); } catch (e) {}
+  }
+
+  attachedFiles.splice(idx, 1);
+  renderAttachments();
+};
+
+window.clearAttachments = () => {
+  attachedFiles = [];
+  renderAttachments();
+};
+
+/* ═══════════════════════════════════════════════════════
+   SEND
+   ═══════════════════════════════════════════════════════ */
+window.sendMessage = async () => {
+  const broadcast = $('#cBroadcast').checked && (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast'));
+  const deptSend = $('#cDept').checked;
+  const toUserId = $('#cTo').value;
+  const ccUserId = $('#cCC')?.value || '';
+  const bccUserId = $('#cBCC')?.value || '';
+  const deptId = $('#deptSelect').value;
+  const subject = $('#cSubject').value.trim();
+  const body = $('#cBody').value.trim();
+  const replyToThread = $('#cThreadId')?.value || null;
+  const priority = document.querySelector('input[name="priority"]:checked')?.value || 'normal';
+  const status = $('#cStatus');
+
+  status.style.color = '';
+  status.textContent = '';
+
+  if (!broadcast && !deptSend && !toUserId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر المستلم'; return; }
+  if (deptSend && !deptId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر القسم'; return; }
+  if (!subject) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب الموضوع'; return; }
+
+  if (!broadcast && !deptSend && toUserId) {
+    const recipient = state.allUsersCache.find(u => u.id === toUserId);
+    if (recipient && !canSendTo(recipient)) {
+      status.style.color = 'var(--danger)';
+      status.textContent = 'غير مسموحلك تبعت للمستخدم ده';
+      showToastAdvanced('غير مسموح', 'مش مسموحلك تبعت للمستخدم ده حسب صلاحياتك', {
+        type: 'error', icon: 'shield-x', duration: 4000
+      });
+      return;
+    }
+  }
+
+  const uploading = attachedFiles.some(f => f.status === 'uploading');
+  if (uploading) { status.style.color = 'var(--danger)'; status.textContent = 'استنى لحد ما المرفقات ترفع'; return; }
+
+  const attachmentsData = attachedFiles.filter(f => f.status === 'done').map(f => ({
+    name: f.name, size: f.size, type: f.type, url: f.url, path: f.path
+  }));
+
+  const emailData = {
+    subject, body, priority,
+    toUserId: toUserId || null,
+    ccUserId: ccUserId || null,
+    bccUserId: bccUserId || null,
+    replyToThread, broadcast, deptSend, deptId,
+    isBroadcast: broadcast,
+    fromUserId: state.currentUser.uid,
+    fromUserName: state.currentUser.name,
+    fromUserUsername: state.currentUser.username,
+    attachments: attachmentsData,
+    tags: selectedTags.slice()
+  };
+
+  closeCompose();
+
+  const undoToast = document.createElement('div');
+  undoToast.className = 'toast toast-warning';
+  undoToast.id = 'undoSendToast';
+  undoToast.innerHTML = `
+    <div class="toast-icon warning"><i data-lucide="clock" class="w-4 h-4"></i></div>
+    <div class="toast-content">
+      <div class="toast-title">جاري الإرسال...</div>
+      <div class="toast-body">اضغط "تراجع" لإلغاء</div>
+    </div>
+    <button class="toast-action" onclick="undoSend()">تراجع</button>
+  `;
+  document.getElementById('toastContainer').appendChild(undoToast);
+  icons();
+
+  lastSentData = emailData;
+
+  pendingSendTimeout = setTimeout(async () => {
+    await performSend(emailData);
+    const t = document.getElementById('undoSendToast');
+    if (t) t.remove();
+  }, 5000);
+};
+
+window.undoSend = () => {
+  if (pendingSendTimeout) {
+    clearTimeout(pendingSendTimeout);
+    pendingSendTimeout = null;
+    lastSentData = null;
+    document.getElementById('undoSendToast')?.remove();
+    showToastAdvanced('تم الإلغاء ⏹️', '', { type: 'info', icon: 'x-circle', duration: 2500 });
+  }
+};
+
+async function performSend(data) {
+  try {
+    if (data.broadcast) {
+      const recipients = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
+      for (const u of recipients) {
+        const msgRef = doc(collection(db, 'messages'));
+        await setDoc(msgRef, {
+          subject: data.subject, body: data.body, priority: data.priority,
+          fromUserId: data.fromUserId,
+          fromUserName: data.fromUserName,
+          fromUserUsername: data.fromUserUsername,
+          toUserId: u.id, toUserName: u.name,
+          read: false, isBroadcast: true,
+          threadId: msgRef.id,
+          notified: false, starred: false,
+          deletedBy: {},
+          attachments: data.attachments || [],
+          tags: data.tags || [],
+          createdAt: serverTimestamp()
+        });
+      }
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} مستخدم`, { type: 'success', icon: 'check-circle', duration: 3500 });
+    } else if (data.deptSend) {
+      const recipients = getUsersByDept(data.deptId).filter(u => u.id !== state.currentUser.uid);
+      for (const u of recipients) {
+        const msgRef = doc(collection(db, 'messages'));
+        await setDoc(msgRef, {
+          subject: data.subject, body: data.body, priority: data.priority,
+          fromUserId: data.fromUserId,
+          fromUserName: data.fromUserName,
+          fromUserUsername: data.fromUserUsername,
+          toUserId: u.id, toUserName: u.name,
+          read: false, isBroadcast: false,
+          threadId: msgRef.id,
+          notified: false, starred: false,
+          deletedBy: {},
+          attachments: data.attachments || [],
+          tags: data.tags || [],
+          createdAt: serverTimestamp()
+        });
+      }
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
+    } else {
+      const toUser = state.allUsersCache.find(u => u.id === data.toUserId);
+      const ccUser = data.ccUserId ? state.allUsersCache.find(u => u.id === data.ccUserId) : null;
+      const bccUser = data.bccUserId ? state.allUsersCache.find(u => u.id === data.bccUserId) : null;
+
+      const msgRef = doc(collection(db, 'messages'));
+      await setDoc(msgRef, {
+        subject: data.subject, body: data.body, priority: data.priority,
+        fromUserId: data.fromUserId,
+        fromUserName: data.fromUserName,
+        fromUserUsername: data.fromUserUsername,
+        toUserId: data.toUserId, toUserName: toUser?.name || '',
+        ccUserId: data.ccUserId || null,
+        ccUserName: ccUser?.name || null,
+        bccUserId: data.bccUserId || null,
+        bccUserName: bccUser?.name || null,
+        read: false,
+        threadId: data.replyToThread || msgRef.id,
+        parentId: data.replyToThread ? (state._currentThreadLastMsgId || null) : null,
+        notified: false, starred: false,
+        deletedBy: {},
+        attachments: data.attachments || [],
+        tags: data.tags || [],
+        createdAt: serverTimestamp()
+      });
+
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${toUser?.name || ''}`, { type: 'success', icon: 'check-circle', duration: 3000 });
+    }
+
+    if (document.getElementById('inboxList')) renderInbox();
+  } catch (e) {
+    console.error('SEND ERROR:', e);
+    showToastAdvanced('خطأ في الإرسال', e.message, {
+      type: 'error', icon: 'alert-circle',
+      actionLabel: 'إعادة',
+      onAction: () => performSend(data),
+      duration: 8000
+    });
+  }
+}
+
+window.saveDraft = async () => {
+  const toUserId = $('#cTo').value;
+  const subject = $('#cSubject').value.trim();
+  const body = $('#cBody').value.trim();
+  const status = $('#cStatus');
+
+  if (!subject && !body) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب حاجة'; return; }
+
+  try {
+    const draftId = $('#cDraftId').value;
+    const draftData = { toUserId: toUserId || null, subject, body, updatedAt: serverTimestamp() };
+    if (draftId) await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
+    else {
+      draftData.createdAt = serverTimestamp();
+      const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
+      $('#cDraftId').value = r.id;
+    }
+    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة', { type: 'success', icon: 'file-text', duration: 2000 });
+    setTimeout(() => closeCompose(), 1000);
+  } catch (e) {
+    status.style.color = 'var(--danger)'; status.textContent = e.message;
+  }
+};
+
+window.replyToThread = async (userId, userName, threadId, subject) => {
+  await window.openCompose();
+  $('#cTo').value = userId;
+  $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
+  $('#cThreadId').value = threadId;
+  $('#cBroadcast').checked = false;
+  $('#cDept').checked = false;
+  $('#toBox').classList.remove('hidden');
+  $('#composeTitle').textContent = `رد على ${userName}`;
+  setTimeout(() => {
+    window.onRecipientChange();
+    $('#cBody').focus();
+  }, 150);
+};
+
+/* ═══════════════════════════════════════════════════════
+   IMAGE VIEWER
+   ═══════════════════════════════════════════════════════ */
+window.openImageViewer = (url) => {
+  const viewer = document.getElementById('imageViewer');
+  const img = document.getElementById('imageViewerImg');
+  if (!viewer || !img) return;
+  img.src = url;
+  viewer.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  icons();
+};
+
+window.closeImageViewer = () => {
+  const viewer = document.getElementById('imageViewer');
+  if (viewer) viewer.style.display = 'none';
+  document.body.style.overflow = '';
+};
+
+/* ═══════════════════════════════════════════════════════
+   PROFILE / SETTINGS
+   ═══════════════════════════════════════════════════════ */
+window.openProfile = () => {
+  const u = state.currentUser;
+  if (!u) return;
+  $('#profileName').value = u.name || '';
+  $('#profileUsername').value = u.username || '';
+  $('#profileEmail').value = u.email || '';
+  $('#profileRole').value = roleLabels[u.role] || u.role;
+  const avatarEl = $('#profileAvatar');
+  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
+  hideStyle($('#userMenu'));
+  show($('#profileModal'));
+  icons();
+};
+
+window.closeProfile = () => hide($('#profileModal'));
+
+window.saveProfile = async () => {
+  const name = $('#profileName').value.trim();
+  const status = $('#profileStatus');
+  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
+  try {
+    await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
+    state.currentUser.name = name;
+    status.className = 'alert alert-success';
+    status.textContent = '✅ تم الحفظ';
+    show(status);
+    showToastAdvanced('تم الحفظ ✅', 'الاسم اتحدّث', { type: 'success', icon: 'check', duration: 2000 });
+    setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
+  } catch (e) {
+    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
+  }
+};
+
+window.openSettings = () => {
+  hideStyle($('#userMenu'));
+  $('#darkModeToggle').checked = state.settings.darkMode;
+  const installBtn = $('#installPwaBtn');
+  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
+  show($('#settingsModal'));
+  icons();
+};
+
+window.closeSettings = () => hide($('#settingsModal'));
+
+window.toggleDarkMode = () => {
+  const isDark = toggleDarkMode();
+  const icon = $('#themeToggle i');
+  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  icons();
+};
+
+window.enablePushNotifications = async () => {
+  const btn = $('#enablePushBtn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (token) {
+      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
+      btn.textContent = '✅ مفعّل';
+      btn.className = 'btn btn-sm btn-success';
+    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
+  } catch (e) {
+    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
+  }
+};
+
+/* ═══════════════════════════════════════════════════════
+   NOTIFICATIONS
+   ═══════════════════════════════════════════════════════ */
+async function registerFCMToken() {
+  try {
+    if (!messaging) return;
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) return;
+    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
+    console.log('✅ FCM Token saved');
+  } catch (e) { console.error('FCM error:', e); }
+}
+
+if (messaging) {
+  onMessage(messaging, (payload) => {
+    const { title, body } = payload.notification || {};
+    const data = payload.data || {};
+    showToastAdvanced(title || 'رسالة جديدة', body || '', {
+      type: 'info', icon: 'mail', duration: 6000,
+      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
+    });
+  });
+}
+
+function setupServiceWorkerMessages() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (window.__refreshing) return;
+    window.__refreshing = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
+}
+
+function startMessagesListener() {
+  if (state.unsubMessages) state.unsubMessages();
+  const q = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
+  state.unsubMessages = onSnapshot(q, (snap) => {
+    const all = [];
+    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
+    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
+    state.unreadMessages = visibleUnread;
+    updateNotificationUI();
+
+    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
+      const m = visibleUnread[0];
+      if (m && m.fromUserId !== state.currentUser.uid) {
+        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
+          type: 'info', icon: 'mail', actionLabel: 'فتح',
+          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
+          duration: 6000
+        });
+      }
+    }
+    state.lastUnreadCount = visibleUnread.length;
+
+    if (document.getElementById('inboxList')) renderInbox();
+  });
+}
+
+function updateNotificationUI() {
+  const count = state.unreadMessages.length;
+  const el = $('#inboxCount');
+  const elM = $('#inboxCountM');
+  const notifBadge = $('#notifBadge');
+
+  if (count > 0) {
+    if (el) { el.textContent = count; show(el); }
+    if (elM) { elM.textContent = count; show(elM); }
+    if (notifBadge) { notifBadge.textContent = count > 9 ? '9+' : count; notifBadge.classList.remove('hidden'); }
+  } else {
+    if (el) hide(el);
+    if (elM) hide(elM);
+    if (notifBadge) notifBadge.classList.add('hidden');
+  }
+  renderNotifDropdown();
+}
+
+function renderNotifDropdown() {
+  const list = $('#notifList');
+  if (!list) return;
+
+  if (state.unreadMessages.length === 0) {
+    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><i data-lucide="bell-off" style="width:40px;height:40px;"></i><p style="font-size:13px;">لا إشعارات</p></div>`;
+    icons();
+    return;
+  }
+
+  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
+    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
+      <div class="msg-avatar ${getAvatarGradient(m.fromUserName)}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
+          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
+      </div>
+    </div>
+  `).join('');
+  icons();
+}
+
+window.openNotifMsg = (msgId, threadId) => {
+  hideStyle($('#notifDropdown'));
+  navigate('inbox');
+  setTimeout(() => window.openThread(threadId), 400);
+};
+
+window.markAllRead = async () => {
+  if (state.unreadMessages.length === 0) return;
+  const batch = writeBatch(db);
+  state.unreadMessages.forEach(m => batch.update(doc(db, 'messages', m.id), { read: true }));
+  await batch.commit();
+  hideStyle($('#notifDropdown'));
+};
+
+console.log('🚀 Mail System v9.3 loaded — Permissions + Templates');
