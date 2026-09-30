@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.2 - Enterprise Application
-   Features: Per-user deletion + Advanced Permissions + Admin Templates
+   Mail System v9.3 - Enterprise Application
+   Features: Permissions + Admin Templates + Per-User Deletion
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -19,8 +19,9 @@ import {
   state, $, $$, show, hide, showStyle, hideStyle,
   esc, initials, truncate, timeAgo, formatDate, formatDateLong, todayArabic,
   isOwner, isAdmin, isDeptManager, isManagerOrAbove,
-  isChairman, isViceChairman, isExecutiveBoard,           // ⭐ NEW
-  canSendTo, getAllowedRecipients,                         // ⭐ NEW
+  isChairman, isViceChairman, isExecutiveBoard,
+  canSendTo, getAllowedRecipients,
+  DEFAULT_PERMISSIONS, PERMISSION_LABELS, isActualDeptManager,
   roleLabels, roleColors, icons,
   applyTheme, loadTheme, toggleDarkMode, loadSoundSetting, toggleSound, playNotifSound,
   confirmDialog, showToast,
@@ -43,7 +44,7 @@ let selectedTags = [];
 let currentTagFilter = null;
 
 /* ═══════════════════════════════════════════════════════
-   ⭐ ADMIN MESSAGE TEMPLATES (ثابتة في الكود)
+   ADMIN MESSAGE TEMPLATES
    ═══════════════════════════════════════════════════════ */
 const ADMIN_MESSAGE_TEMPLATES = [
   {
@@ -125,7 +126,7 @@ function getDeletedByNames(msg) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   GLOBAL LOADER
+   LOADER
    ═══════════════════════════════════════════════════════ */
 function showLoader() {
   const l = document.getElementById('globalLoader');
@@ -137,7 +138,7 @@ function hideLoader() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SKELETON LOADERS
+   SKELETONS
    ═══════════════════════════════════════════════════════ */
 function renderSkeletonInbox() {
   let html = '';
@@ -437,7 +438,7 @@ function updateUIForRole() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   TAGS SYSTEM
+   TAGS
    ═══════════════════════════════════════════════════════ */
 async function loadUserTags() {
   try {
@@ -783,7 +784,6 @@ async function renderMyTeam() {
   await loadDepartmentsCache();
 
   const myDepts = getMyManagedDepts();
-  // ⭐ فلترة الفريق حسب الصلاحيات
   const team = getMyTeamMembers().filter(u => canSendTo(u));
 
   const byDept = {};
@@ -856,6 +856,7 @@ async function renderMyTeam() {
 window.quickSendToUser = async (userId) => {
   await window.openCompose();
   const sel = $('#cTo'); if (sel) sel.value = userId;
+  setTimeout(() => window.onRecipientChange && window.onRecipientChange(), 100);
 };
 
 window.quickSendToDept = async (deptId) => {
@@ -928,6 +929,7 @@ async function renderUsers() {
         <button onclick="openAddUser()" class="btn btn-primary"><i data-lucide="user-plus" class="w-4 h-4"></i><span>إضافة مستخدم</span></button>
       </div>
 
+      <!-- ⭐ ADD USER FORM v9.3 -->
       <div id="addUserForm" class="section hidden fade-in">
         <h3 class="section-title">مستخدم جديد</h3>
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
@@ -943,8 +945,34 @@ async function renderUsers() {
               <option value="admin">أدمن</option>
             ` : ''}
           </select></div>
-          <div class="form-group" id="nuDeptGroup"><label class="form-label">القسم</label><select id="nuDept" class="form-input"><option value="">— بدون قسم —</option></select></div>
         </div>
+
+        <div class="form-group" id="nuDeptGroup" style="margin-top:14px;">
+          <label class="form-label">القسم</label>
+          <select id="nuDept" class="form-input"><option value="">— بدون قسم —</option></select>
+        </div>
+
+        <!-- Checkbox مدير قسم -->
+        <div style="margin-top:14px;padding:12px;background:var(--bg-subtle);border-radius:8px;">
+          <label class="check-inline" style="cursor:pointer;">
+            <input type="checkbox" id="nuIsManager" class="check-input" onchange="onIsManagerChange('nu')" />
+            <span class="check-box"></span>
+            <span class="check-label" style="font-weight:700;color:var(--text-primary);">👔 مدير قسم</span>
+          </label>
+          <p style="font-size:11.5px;color:var(--text-tertiary);margin:6px 24px 0 0;">
+            لو متحدد، المستخدم هيبقى مدير القسم المختار تلقائياً
+          </p>
+        </div>
+
+        <!-- الصلاحيات -->
+        <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
+            <span style="font-size:11px;color:var(--text-tertiary);">هيتم تعبئتها تلقائياً حسب الدور</span>
+          </div>
+          <div id="nuPermissionsList" class="permissions-list"></div>
+        </div>
+
         <p style="font-size:12px;color:var(--text-tertiary);margin:12px 0 0;">الإيميل: <span style="font-family:monospace;">username@${EMAIL_DOMAIN}</span></p>
         <p id="nuErr" class="alert hidden" style="margin-top:12px;"></p>
         <div style="display:flex;gap:8px;margin-top:16px;">
@@ -953,6 +981,7 @@ async function renderUsers() {
         </div>
       </div>
 
+      <!-- ⭐ EDIT USER FORM v9.3 -->
       <div id="editUserForm" class="section hidden fade-in">
         <h3 class="section-title">تعديل مستخدم</h3>
         <input type="hidden" id="euId" />
@@ -968,8 +997,34 @@ async function renderUsers() {
               <option value="admin">أدمن</option>
             ` : ''}
           </select></div>
-          <div class="form-group" id="euDeptGroup"><label class="form-label">القسم</label><select id="euDept" class="form-input"><option value="">— بدون قسم —</option></select></div>
         </div>
+
+        <div class="form-group" id="euDeptGroup" style="margin-top:14px;">
+          <label class="form-label">القسم</label>
+          <select id="euDept" class="form-input"><option value="">— بدون قسم —</option></select>
+        </div>
+
+        <!-- Checkbox مدير قسم -->
+        <div style="margin-top:14px;padding:12px;background:var(--bg-subtle);border-radius:8px;">
+          <label class="check-inline" style="cursor:pointer;">
+            <input type="checkbox" id="euIsManager" class="check-input" onchange="onIsManagerChange('eu')" />
+            <span class="check-box"></span>
+            <span class="check-label" style="font-weight:700;color:var(--text-primary);">👔 مدير قسم</span>
+          </label>
+          <p style="font-size:11.5px;color:var(--text-tertiary);margin:6px 24px 0 0;">
+            لو متحدد، المستخدم هيبقى مدير القسم المختار تلقائياً
+          </p>
+        </div>
+
+        <!-- الصلاحيات -->
+        <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
+            <span style="font-size:11px;color:var(--text-tertiary);">تقدر تعدلها يدوياً</span>
+          </div>
+          <div id="euPermissionsList" class="permissions-list"></div>
+        </div>
+
         <p id="euErr" class="alert hidden" style="margin-top:12px;"></p>
         <div style="display:flex;gap:8px;margin-top:16px;">
           <button onclick="saveEditUser()" class="btn btn-success"><i data-lucide="check" class="w-4 h-4"></i><span>حفظ</span></button>
@@ -993,15 +1048,71 @@ async function renderUsers() {
   icons();
 }
 
-/* ⭐ إظهار/إخفاء القسم حسب الدور */
+/* ⭐ دوال الصلاحيات وفورم المستخدم */
+function roleNeedsDept(role) {
+  return role === 'user' || role === 'manager';
+}
+
+function renderPermissionsList(containerId, selectedPerms) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  container.innerHTML = Object.entries(PERMISSION_LABELS).map(([key, info]) => `
+    <label class="permission-item">
+      <input type="checkbox" value="${key}" ${selectedPerms.includes(key) ? 'checked' : ''} />
+      <span class="permission-box"></span>
+      <i data-lucide="${info.icon}" class="permission-icon"></i>
+      <span class="permission-label">${esc(info.label)}</span>
+    </label>
+  `).join('');
+  icons();
+}
+
+function readPermissions(containerId) {
+  const container = document.getElementById(containerId);
+  if (!container) return [];
+  return Array.from(container.querySelectorAll('input[type="checkbox"]:checked'))
+    .map(cb => cb.value);
+}
+
 window.onRoleChange = (prefix) => {
   const roleEl = document.getElementById(prefix + 'Role');
   const deptGroup = document.getElementById(prefix + 'DeptGroup');
+  const isMgrCb = document.getElementById(prefix + 'IsManager');
   if (!roleEl || !deptGroup) return;
 
-  // القسم مطلوب لـ user و manager فقط
-  const needsDept = roleEl.value === 'user' || roleEl.value === 'manager';
+  const role = roleEl.value;
+  const needsDept = roleNeedsDept(role);
   deptGroup.style.display = needsDept ? 'flex' : 'none';
+
+  if (isMgrCb) {
+    isMgrCb.checked = (role === 'manager');
+  }
+
+  const defaults = DEFAULT_PERMISSIONS[role] || [];
+  renderPermissionsList(prefix + 'PermissionsList', defaults);
+};
+
+window.onIsManagerChange = (prefix) => {
+  const isMgrCb = document.getElementById(prefix + 'IsManager');
+  const roleEl = document.getElementById(prefix + 'Role');
+  if (!isMgrCb || !roleEl) return;
+
+  if (isMgrCb.checked) {
+    if (Array.from(roleEl.options).some(o => o.value === 'manager')) {
+      roleEl.value = 'manager';
+    }
+  } else {
+    if (roleEl.value === 'manager') {
+      roleEl.value = 'user';
+    }
+  }
+
+  const defaults = DEFAULT_PERMISSIONS[roleEl.value] || [];
+  renderPermissionsList(prefix + 'PermissionsList', defaults);
+
+  const deptGroup = document.getElementById(prefix + 'DeptGroup');
+  if (deptGroup) deptGroup.style.display = roleNeedsDept(roleEl.value) ? 'flex' : 'none';
 };
 
 function fillDeptSelects() {
@@ -1016,6 +1127,9 @@ window.openAddUser = () => {
   show($('#addUserForm'));
   hide($('#editUserForm'));
   fillDeptSelects();
+  const isMgrCb = document.getElementById('nuIsManager');
+  if (isMgrCb) isMgrCb.checked = false;
+  document.getElementById('nuRole').value = 'user';
   window.onRoleChange('nu');
 };
 window.closeAddUser = () => hide($('#addUserForm'));
@@ -1024,19 +1138,21 @@ window.createNewUser = async () => {
   const name = $('#nuName').value.trim();
   const user = sanitizeUsername($('#nuUser').value);
   const pass = $('#nuPass').value;
-  const role = $('#nuRole').value;
+  let role = $('#nuRole').value;
   const deptId = $('#nuDept').value;
+  const isManager = document.getElementById('nuIsManager')?.checked;
+  const permissions = readPermissions('nuPermissionsList');
   const err = $('#nuErr');
   hide(err);
+
+  if (isManager) role = 'manager';
 
   if (!name || !user || !pass) { err.className = 'alert alert-error'; err.textContent = 'املأ كل البيانات'; show(err); return; }
   if (!validateUsername(user)) { err.className = 'alert alert-error'; err.textContent = 'اسم المستخدم غير صالح'; show(err); return; }
   if (!validatePassword(pass)) { err.className = 'alert alert-error'; err.textContent = 'كلمة السر 6 حروف'; show(err); return; }
-
-  // تحقق: user و manager لازم يكون ليهم قسم
-  if ((role === 'user' || role === 'manager') && !deptId) {
+  if (roleNeedsDept(role) && !deptId) {
     err.className = 'alert alert-error';
-    err.textContent = 'لازم تختار قسم للمستخدم أو مدير القسم';
+    err.textContent = 'لازم تختار قسم للدور ده';
     show(err); return;
   }
 
@@ -1045,12 +1161,19 @@ window.createNewUser = async () => {
   try {
     const email = `${user}@${EMAIL_DOMAIN}`;
     const uid = await createAuthUser(email, pass);
+
     await setDoc(doc(db, 'users', uid), {
       name, username: user, email, role,
       departmentId: deptId || null,
+      permissions: permissions,
       isActive: true,
       createdAt: serverTimestamp()
     });
+
+    if (role === 'manager' && deptId) {
+      await updateDoc(doc(db, 'departments', deptId), { managerId: uid });
+    }
+
     err.className = 'alert alert-success'; err.textContent = `✅ تم إنشاء ${user}`;
     showToastAdvanced('تم الإنشاء ✅', `${user} أضيف`, { type: 'success', icon: 'user-check', duration: 2500 });
     $('#nuName').value = ''; $('#nuUser').value = ''; $('#nuPass').value = '';
@@ -1069,10 +1192,24 @@ window.editUser = async (uid) => {
   $('#euName').value = u.name || '';
   $('#euUser').value = u.username || '';
   $('#euRole').value = u.role || 'user';
+
   fillDeptSelects();
   $('#euDept').value = u.departmentId || '';
-  show($('#editUserForm')); hide($('#addUserForm'));
-  window.onRoleChange('eu');
+
+  const isMgrCb = document.getElementById('euIsManager');
+  if (isMgrCb) isMgrCb.checked = (u.role === 'manager');
+
+  const perms = Array.isArray(u.permissions) && u.permissions.length > 0
+    ? u.permissions
+    : (DEFAULT_PERMISSIONS[u.role] || []);
+  renderPermissionsList('euPermissionsList', perms);
+
+  show($('#editUserForm'));
+  hide($('#addUserForm'));
+
+  const deptGroup = document.getElementById('euDeptGroup');
+  if (deptGroup) deptGroup.style.display = roleNeedsDept(u.role) ? 'flex' : 'none';
+
   $('#editUserForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 window.closeEditUser = () => hide($('#editUserForm'));
@@ -1080,20 +1217,47 @@ window.closeEditUser = () => hide($('#editUserForm'));
 window.saveEditUser = async () => {
   const uid = $('#euId').value;
   const name = $('#euName').value.trim();
-  const role = $('#euRole').value;
+  let role = $('#euRole').value;
   const deptId = $('#euDept').value;
+  const isManager = document.getElementById('euIsManager')?.checked;
+  const permissions = readPermissions('euPermissionsList');
   const err = $('#euErr');
   hide(err);
-  if (!name) { err.className = 'alert alert-error'; err.textContent = 'اكتب الاسم'; show(err); return; }
 
-  if ((role === 'user' || role === 'manager') && !deptId) {
+  if (isManager) role = 'manager';
+
+  if (!name) { err.className = 'alert alert-error'; err.textContent = 'اكتب الاسم'; show(err); return; }
+  if (roleNeedsDept(role) && !deptId) {
     err.className = 'alert alert-error';
-    err.textContent = 'لازم تختار قسم للمستخدم أو مدير القسم';
+    err.textContent = 'لازم تختار قسم';
     show(err); return;
   }
 
   try {
-    await updateDoc(doc(db, 'users', uid), { name, role, departmentId: deptId || null });
+    const oldSnap = await getDoc(doc(db, 'users', uid));
+    const oldData = oldSnap.data() || {};
+
+    if (oldData.role === 'manager' && oldData.departmentId) {
+      const changed = role !== 'manager' || oldData.departmentId !== deptId;
+      if (changed) {
+        const oldDeptRef = doc(db, 'departments', oldData.departmentId);
+        const oldDeptSnap = await getDoc(oldDeptRef);
+        if (oldDeptSnap.exists() && oldDeptSnap.data().managerId === uid) {
+          await updateDoc(oldDeptRef, { managerId: null });
+        }
+      }
+    }
+
+    await updateDoc(doc(db, 'users', uid), {
+      name, role,
+      departmentId: deptId || null,
+      permissions: permissions
+    });
+
+    if (role === 'manager' && deptId) {
+      await updateDoc(doc(db, 'departments', deptId), { managerId: uid });
+    }
+
     hide($('#editUserForm'));
     showToastAdvanced('تم الحفظ ✅', '', { type: 'success', icon: 'check', duration: 2000 });
     renderUsers();
@@ -1102,7 +1266,10 @@ window.saveEditUser = async () => {
   }
 };
 
-window.toggleUser = async (uid, activate) => { await updateDoc(doc(db, 'users', uid), { isActive: activate }); renderUsers(); };
+window.toggleUser = async (uid, activate) => {
+  await updateDoc(doc(db, 'users', uid), { isActive: activate });
+  renderUsers();
+};
 
 window.deleteUserDoc = async (uid) => {
   const ok = await confirmDialog('حذف المستخدم', 'هيتحذف من Firestore فقط. متأكد؟');
@@ -1159,7 +1326,7 @@ async function renderDepartments() {
   `;
 
   const managerOpts = state.allUsersCache
-    .filter(u => u.isActive !== false && u.role === 'manager')
+    .filter(u => u.isActive !== false && (u.role === 'manager' || isActualDeptManager(u)))
     .map(u => `<option value="${u.id}">${esc(u.name)} (@${esc(u.username)})</option>`).join('');
   const dm = document.getElementById('dManager');
   if (dm) dm.innerHTML = '<option value="">— بدون مدير —</option>' + managerOpts;
@@ -1182,7 +1349,7 @@ window.editDept = async (id) => {
   if (!d) return;
 
   const managerOpts = state.allUsersCache
-    .filter(u => u.isActive !== false && u.role === 'manager')
+    .filter(u => u.isActive !== false && (u.role === 'manager' || isActualDeptManager(u)))
     .map(u => `<option value="${u.id}" ${u.id === d.managerId ? 'selected' : ''}>${esc(u.name)} (@${esc(u.username)})</option>`).join('');
 
   const modal = document.createElement('div');
@@ -1272,12 +1439,10 @@ async function renderInbox() {
 
   const visible = Array.from(all.values()).filter(m => {
     const deletedBy = m.deletedBy || {};
-
     if (state.currentFilter === 'trash') {
       if (isAdminUser) return Object.keys(deletedBy).length > 0;
       return !!deletedBy[myUID];
     }
-
     if (isAdminUser) return true;
     return !deletedBy[myUID];
   });
@@ -1488,7 +1653,6 @@ function renderThreadReading() {
   const replyUserId = t.lastMsg.fromUserId === state.currentUser.uid ? t.lastMsg.toUserId : t.lastMsg.fromUserId;
   const replyUserName = t.lastMsg.fromUserId === state.currentUser.uid ? t.lastMsg.toUserName : t.lastMsg.fromUserName;
 
-  // ⭐ هل أنا مسموحلي أرد؟
   const replyUserObj = state.allUsersCache.find(u => u.id === replyUserId);
   const canReply = replyUserObj ? canSendTo(replyUserObj) : false;
 
@@ -1650,9 +1814,6 @@ function renderThreadReading() {
             <div style="font-weight:700;font-size:13px;color:var(--danger);">رسالة محذوفة (للأرشيف)</div>
             <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
               حذفها من عندهم: <strong>${deletedUsers.map(u => esc(u.name)).join('، ')}</strong>
-            </div>
-            <div style="font-size:11.5px;color:var(--text-tertiary);margin-top:4px;">
-              💡 محتوى الرسالة متاح للقراءة فقط. استخدم "استعادة للكل" لو عايز ترجعها.
             </div>
           </div>
         </div>
@@ -1935,7 +2096,6 @@ window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  // ⭐ فلترة المستلمين حسب الصلاحيات
   const others = getAllowedRecipients();
 
   const userOptions = () =>
@@ -1987,713 +2147,3 @@ window.openCompose = async () => {
   const statusEl = $('#cStatus');
   statusEl.textContent = '';
   statusEl.style.color = '';
-
-  attachedFiles = [];
-  selectedTags = [];
-  renderAttachments();
-  renderComposeTagsPicker();
-
-  // ⭐ إخفاء صف القوالب مبدئياً
-  const templateRow = $('#templateRow');
-  if (templateRow) templateRow.style.display = 'none';
-  const tplPicker = $('#templatePicker');
-  if (tplPicker) tplPicker.innerHTML = '';
-
-  document.querySelectorAll('input[name="priority"]').forEach(r => r.checked = r.value === 'normal');
-
-  const broadcastBox = $('#broadcastBox');
-  if (isOwner()) {
-    $('#broadcastCount').textContent = others.length;
-    broadcastBox.style.display = 'flex';
-  } else {
-    broadcastBox.style.display = 'none';
-  }
-
-  // ⭐ اربط حدث تغيير المستلم
-  const toSel = $('#cTo');
-  if (toSel) toSel.onchange = window.onRecipientChange;
-
-  $('#composeModal').style.display = 'flex';
-  icons();
-  setTimeout(() => $('#cTo').focus(), 100);
-};
-
-window.closeCompose = () => {
-  $('#composeModal').style.display = 'none';
-  $('#composeTitle').textContent = 'رسالة جديدة';
-  attachedFiles = [];
-  selectedTags = [];
-};
-
-/* ⭐ مراقبة تغيير المستلم لإظهار قوالب الأدمن */
-window.onRecipientChange = () => {
-  const toUserId = $('#cTo')?.value;
-  const templateRow = $('#templateRow');
-  if (!templateRow) return;
-
-  const recipient = state.allUsersCache.find(u => u.id === toUserId);
-  const isAdminRecipient = recipient && (recipient.role === 'admin' || recipient.role === 'owner');
-  const isNormalSender = state.currentUser?.role === 'user';
-
-  if (isAdminRecipient && isNormalSender) {
-    renderAdminTemplates();
-    templateRow.style.display = 'flex';
-  } else {
-    templateRow.style.display = 'none';
-  }
-};
-
-function renderAdminTemplates() {
-  const picker = $('#templatePicker');
-  if (!picker) return;
-
-  picker.innerHTML = ADMIN_MESSAGE_TEMPLATES.map(t => `
-    <button type="button" class="tag-chip template-chip"
-            onclick="applyAdminTemplate('${t.id}')">
-      <i data-lucide="${t.icon}" class="w-3 h-3"></i>
-      <span>${esc(t.label)}</span>
-    </button>
-  `).join('');
-  icons();
-}
-
-window.applyAdminTemplate = (templateId) => {
-  const tpl = ADMIN_MESSAGE_TEMPLATES.find(t => t.id === templateId);
-  if (!tpl) return;
-
-  const subjEl = $('#cSubject');
-  const bodyEl = $('#cBody');
-  if (!subjEl || !bodyEl) return;
-
-  if (!subjEl.value.trim()) subjEl.value = tpl.label;
-
-  if (!bodyEl.value.trim() || bodyEl.dataset.fromTemplate === '1') {
-    bodyEl.value = tpl.body;
-    bodyEl.dataset.fromTemplate = '1';
-  } else {
-    bodyEl.value = tpl.body + '\n' + bodyEl.value;
-  }
-
-  bodyEl.focus();
-  bodyEl.setSelectionRange(bodyEl.value.length, bodyEl.value.length);
-
-  showToastAdvanced('تم تطبيق القالب ✅', `${tpl.label} — أضف ملاحظتك`, {
-    type: 'info', icon: 'file-text', duration: 2500
-  });
-};
-
-window.toggleCCBCC = () => {
-  const f = $('#ccbccFields');
-  const i = $('#ccbccIcon');
-  if (!f) return;
-  f.classList.toggle('hidden');
-  i?.setAttribute('data-lucide', f.classList.contains('hidden') ? 'chevron-down' : 'chevron-up');
-  icons();
-};
-
-window.toggleBroadcast = () => {
-  const checked = $('#cBroadcast').checked;
-  if (checked) { hide($('#toBox')); hide($('#deptBox')); $('#cDept').checked = false; }
-  else { show($('#toBox')); if (isAdmin() || isDeptManager()) show($('#deptBox')); }
-};
-
-window.toggleDeptSend = () => {
-  const checked = $('#cDept').checked;
-  if (checked) { hide($('#toBox')); hide($('#broadcastBox')); $('#cBroadcast').checked = false; }
-  else { show($('#toBox')); }
-};
-
-/* ═══════════════════════════════════════════════════════
-   TAGS IN COMPOSE
-   ═══════════════════════════════════════════════════════ */
-function renderComposeTagsPicker() {
-  const container = document.getElementById('composeTags');
-  if (!container) return;
-
-  if (userTags.length === 0) {
-    container.innerHTML = '<span class="tags-empty">لا يوجد تصنيفات — <button onclick="openTagsManager()" class="link-btn-sm">أنشئ واحد</button></span>';
-    return;
-  }
-
-  container.innerHTML = userTags.map(tag => `
-    <button type="button" class="tag-chip ${selectedTags.includes(tag.id) ? 'selected' : ''}"
-            style="--tag-color: ${tag.color};"
-            onclick="toggleComposeTag('${tag.id}')">
-      <span class="tag-chip-dot"></span>
-      <span>${esc(tag.name)}</span>
-    </button>
-  `).join('');
-}
-
-window.toggleComposeTag = (tagId) => {
-  if (selectedTags.includes(tagId)) selectedTags = selectedTags.filter(t => t !== tagId);
-  else selectedTags.push(tagId);
-  renderComposeTagsPicker();
-};
-
-/* ═══════════════════════════════════════════════════════
-   FILE UPLOAD
-   ═══════════════════════════════════════════════════════ */
-window.handleFiles = async (event) => {
-  const files = Array.from(event.target.files || []);
-  if (files.length === 0) return;
-
-  const maxSize = 10 * 1024 * 1024;
-  const maxFiles = 10;
-
-  for (const file of files) {
-    if (attachedFiles.length >= maxFiles) {
-      showToastAdvanced('تجاوزت الحد الأقصى', `أقصى عدد ${maxFiles} ملفات`, { type: 'warning', icon: 'alert-triangle' });
-      break;
-    }
-    if (file.size > maxSize) {
-      showToastAdvanced('الملف كبير', `${file.name} أكبر من 10MB`, { type: 'error', icon: 'alert-circle' });
-      continue;
-    }
-
-    const fileObj = {
-      id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      file,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      progress: 0,
-      status: 'pending',
-      url: null,
-      path: null
-    };
-    attachedFiles.push(fileObj);
-    renderAttachments();
-    uploadFile(fileObj);
-  }
-
-  event.target.value = '';
-};
-
-async function uploadFile(fileObj) {
-  try {
-    fileObj.status = 'uploading';
-    renderAttachments();
-
-    const safeName = fileObj.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path = `attachments/${state.currentUser.uid}/${Date.now()}_${safeName}`;
-    const storageRef = ref(storage, path);
-
-    const uploadTask = uploadBytesResumable(storageRef, fileObj.file);
-
-    await new Promise((resolve, reject) => {
-      uploadTask.on('state_changed',
-        (snapshot) => {
-          fileObj.progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-          updateAttachmentProgress(fileObj.id, fileObj.progress);
-        },
-        reject,
-        resolve
-      );
-    });
-
-    const url = await getDownloadURL(storageRef);
-    fileObj.url = url;
-    fileObj.path = path;
-    fileObj.status = 'done';
-    fileObj.progress = 100;
-    renderAttachments();
-  } catch (e) {
-    console.error('Upload error:', e);
-    fileObj.status = 'error';
-    renderAttachments();
-    showToastAdvanced('فشل الرفع', fileObj.name, { type: 'error', icon: 'alert-circle' });
-  }
-}
-
-function updateAttachmentProgress(fileId, progress) {
-  const bar = document.querySelector(`[data-file-id="${fileId}"] .attachment-progress-bar`);
-  if (bar) bar.style.width = progress + '%';
-}
-
-function renderAttachments() {
-  const section = document.getElementById('attachmentsSection');
-  const list = document.getElementById('attachmentsList');
-  const count = document.getElementById('attachmentsCount');
-
-  if (!section || !list) return;
-
-  if (attachedFiles.length === 0) {
-    section.style.display = 'none';
-    return;
-  }
-
-  section.style.display = 'block';
-  if (count) count.textContent = attachedFiles.length;
-
-  list.innerHTML = attachedFiles.map(f => {
-    const cat = getFileIcon(f.type, f.name);
-    const iconName = getFileIconLucide(f.type, f.name);
-    const sizeText = f.status === 'uploading' ? `جاري الرفع... ${f.progress}%` : formatFileSize(f.size);
-    return `
-      <div class="attachment-item ${f.status === 'uploading' ? 'uploading' : ''} ${f.status === 'error' ? 'error' : ''}" data-file-id="${f.id}">
-        <div class="attachment-icon ${cat}"><i data-lucide="${iconName}" class="w-4 h-4"></i></div>
-        <div class="attachment-info">
-          <div class="attachment-name">${esc(f.name)}</div>
-          <div class="attachment-size">${sizeText}</div>
-          ${f.status === 'uploading' ? `<div class="attachment-progress"><div class="attachment-progress-bar" style="width: ${f.progress}%;"></div></div>` : ''}
-        </div>
-        <button type="button" class="attachment-remove" onclick="removeAttachment('${f.id}')" title="حذف">
-          <i data-lucide="x" class="w-4 h-4"></i>
-        </button>
-      </div>
-    `;
-  }).join('');
-  icons();
-}
-
-window.removeAttachment = async (fileId) => {
-  const idx = attachedFiles.findIndex(f => f.id === fileId);
-  if (idx === -1) return;
-  const f = attachedFiles[idx];
-
-  if (f.path) {
-    try { await deleteObject(ref(storage, f.path)); } catch (e) {}
-  }
-
-  attachedFiles.splice(idx, 1);
-  renderAttachments();
-};
-
-window.clearAttachments = () => {
-  attachedFiles = [];
-  renderAttachments();
-};
-
-/* ═══════════════════════════════════════════════════════
-   SEND
-   ═══════════════════════════════════════════════════════ */
-window.sendMessage = async () => {
-  const broadcast = isOwner() && $('#cBroadcast').checked;
-  const deptSend = $('#cDept').checked;
-  const toUserId = $('#cTo').value;
-  const ccUserId = $('#cCC')?.value || '';
-  const bccUserId = $('#cBCC')?.value || '';
-  const deptId = $('#deptSelect').value;
-  const subject = $('#cSubject').value.trim();
-  const body = $('#cBody').value.trim();
-  const replyToThread = $('#cThreadId')?.value || null;
-  const priority = document.querySelector('input[name="priority"]:checked')?.value || 'normal';
-  const status = $('#cStatus');
-
-  status.style.color = '';
-  status.textContent = '';
-
-  if (!broadcast && !deptSend && !toUserId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر المستلم'; return; }
-  if (deptSend && !deptId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر القسم'; return; }
-  if (!subject) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب الموضوع'; return; }
-
-  // ⭐ تحقق من الصلاحيات للمرسل الفردي
-  if (!broadcast && !deptSend && toUserId) {
-    const recipient = state.allUsersCache.find(u => u.id === toUserId);
-    if (recipient && !canSendTo(recipient)) {
-      status.style.color = 'var(--danger)';
-      status.textContent = 'غير مسموحلك تبعت للمستخدم ده';
-      showToastAdvanced('غير مسموح', 'مش مسموحلك تبعت للمستخدم ده حسب صلاحياتك', {
-        type: 'error', icon: 'shield-x', duration: 4000
-      });
-      return;
-    }
-  }
-
-  const uploading = attachedFiles.some(f => f.status === 'uploading');
-  if (uploading) { status.style.color = 'var(--danger)'; status.textContent = 'استنى لحد ما المرفقات ترفع'; return; }
-
-  const attachmentsData = attachedFiles.filter(f => f.status === 'done').map(f => ({
-    name: f.name, size: f.size, type: f.type, url: f.url, path: f.path
-  }));
-
-  const emailData = {
-    subject, body, priority,
-    toUserId: toUserId || null,
-    ccUserId: ccUserId || null,
-    bccUserId: bccUserId || null,
-    replyToThread, broadcast, deptSend, deptId,
-    isBroadcast: broadcast,
-    fromUserId: state.currentUser.uid,
-    fromUserName: state.currentUser.name,
-    fromUserUsername: state.currentUser.username,
-    attachments: attachmentsData,
-    tags: selectedTags.slice()
-  };
-
-  closeCompose();
-
-  const undoToast = document.createElement('div');
-  undoToast.className = 'toast toast-warning';
-  undoToast.id = 'undoSendToast';
-  undoToast.innerHTML = `
-    <div class="toast-icon warning"><i data-lucide="clock" class="w-4 h-4"></i></div>
-    <div class="toast-content">
-      <div class="toast-title">جاري الإرسال...</div>
-      <div class="toast-body">اضغط "تراجع" لإلغاء</div>
-    </div>
-    <button class="toast-action" onclick="undoSend()">تراجع</button>
-  `;
-  document.getElementById('toastContainer').appendChild(undoToast);
-  icons();
-
-  lastSentData = emailData;
-
-  pendingSendTimeout = setTimeout(async () => {
-    await performSend(emailData);
-    const t = document.getElementById('undoSendToast');
-    if (t) t.remove();
-  }, 5000);
-};
-
-window.undoSend = () => {
-  if (pendingSendTimeout) {
-    clearTimeout(pendingSendTimeout);
-    pendingSendTimeout = null;
-    lastSentData = null;
-    document.getElementById('undoSendToast')?.remove();
-    showToastAdvanced('تم الإلغاء ⏹️', '', { type: 'info', icon: 'x-circle', duration: 2500 });
-  }
-};
-
-async function performSend(data) {
-  try {
-    if (data.broadcast) {
-      const recipients = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
-      for (const u of recipients) {
-        const msgRef = doc(collection(db, 'messages'));
-        await setDoc(msgRef, {
-          subject: data.subject, body: data.body, priority: data.priority,
-          fromUserId: data.fromUserId,
-          fromUserName: data.fromUserName,
-          fromUserUsername: data.fromUserUsername,
-          toUserId: u.id, toUserName: u.name,
-          read: false, isBroadcast: true,
-          threadId: msgRef.id,
-          notified: false, starred: false,
-          deletedBy: {},
-          attachments: data.attachments || [],
-          tags: data.tags || [],
-          createdAt: serverTimestamp()
-        });
-      }
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} مستخدم`, { type: 'success', icon: 'check-circle', duration: 3500 });
-    } else if (data.deptSend) {
-      const recipients = getUsersByDept(data.deptId).filter(u => u.id !== state.currentUser.uid);
-      for (const u of recipients) {
-        const msgRef = doc(collection(db, 'messages'));
-        await setDoc(msgRef, {
-          subject: data.subject, body: data.body, priority: data.priority,
-          fromUserId: data.fromUserId,
-          fromUserName: data.fromUserName,
-          fromUserUsername: data.fromUserUsername,
-          toUserId: u.id, toUserName: u.name,
-          read: false, isBroadcast: false,
-          threadId: msgRef.id,
-          notified: false, starred: false,
-          deletedBy: {},
-          attachments: data.attachments || [],
-          tags: data.tags || [],
-          createdAt: serverTimestamp()
-        });
-      }
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
-    } else {
-      const toUser = state.allUsersCache.find(u => u.id === data.toUserId);
-      const ccUser = data.ccUserId ? state.allUsersCache.find(u => u.id === data.ccUserId) : null;
-      const bccUser = data.bccUserId ? state.allUsersCache.find(u => u.id === data.bccUserId) : null;
-
-      const msgRef = doc(collection(db, 'messages'));
-      await setDoc(msgRef, {
-        subject: data.subject, body: data.body, priority: data.priority,
-        fromUserId: data.fromUserId,
-        fromUserName: data.fromUserName,
-        fromUserUsername: data.fromUserUsername,
-        toUserId: data.toUserId, toUserName: toUser?.name || '',
-        ccUserId: data.ccUserId || null,
-        ccUserName: ccUser?.name || null,
-        bccUserId: data.bccUserId || null,
-        bccUserName: bccUser?.name || null,
-        read: false,
-        threadId: data.replyToThread || msgRef.id,
-        parentId: data.replyToThread ? (state._currentThreadLastMsgId || null) : null,
-        notified: false, starred: false,
-        deletedBy: {},
-        attachments: data.attachments || [],
-        tags: data.tags || [],
-        createdAt: serverTimestamp()
-      });
-
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${toUser?.name || ''}`, { type: 'success', icon: 'check-circle', duration: 3000 });
-    }
-
-    if (document.getElementById('inboxList')) renderInbox();
-  } catch (e) {
-    console.error('SEND ERROR:', e);
-    showToastAdvanced('خطأ في الإرسال', e.message, {
-      type: 'error', icon: 'alert-circle',
-      actionLabel: 'إعادة',
-      onAction: () => performSend(data),
-      duration: 8000
-    });
-  }
-}
-
-window.saveDraft = async () => {
-  const toUserId = $('#cTo').value;
-  const subject = $('#cSubject').value.trim();
-  const body = $('#cBody').value.trim();
-  const status = $('#cStatus');
-
-  if (!subject && !body) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب حاجة'; return; }
-
-  try {
-    const draftId = $('#cDraftId').value;
-    const draftData = { toUserId: toUserId || null, subject, body, updatedAt: serverTimestamp() };
-    if (draftId) await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
-    else {
-      draftData.createdAt = serverTimestamp();
-      const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
-      $('#cDraftId').value = r.id;
-    }
-    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة', { type: 'success', icon: 'file-text', duration: 2000 });
-    setTimeout(() => closeCompose(), 1000);
-  } catch (e) {
-    status.style.color = 'var(--danger)'; status.textContent = e.message;
-  }
-};
-
-window.replyToThread = async (userId, userName, threadId, subject) => {
-  await window.openCompose();
-  $('#cTo').value = userId;
-  $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
-  $('#cThreadId').value = threadId;
-  $('#cBroadcast').checked = false;
-  $('#cDept').checked = false;
-  $('#toBox').classList.remove('hidden');
-  $('#composeTitle').textContent = `رد على ${userName}`;
-  // ⭐ شغّل مراقبة المستلم عشان يظهر القوالب لو المستقبل أدمن
-  setTimeout(() => {
-    window.onRecipientChange();
-    $('#cBody').focus();
-  }, 150);
-};
-
-/* ═══════════════════════════════════════════════════════
-   IMAGE VIEWER
-   ═══════════════════════════════════════════════════════ */
-window.openImageViewer = (url) => {
-  const viewer = document.getElementById('imageViewer');
-  const img = document.getElementById('imageViewerImg');
-  if (!viewer || !img) return;
-  img.src = url;
-  viewer.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-  icons();
-};
-
-window.closeImageViewer = () => {
-  const viewer = document.getElementById('imageViewer');
-  if (viewer) viewer.style.display = 'none';
-  document.body.style.overflow = '';
-};
-
-/* ═══════════════════════════════════════════════════════
-   PROFILE / SETTINGS
-   ═══════════════════════════════════════════════════════ */
-window.openProfile = () => {
-  const u = state.currentUser;
-  if (!u) return;
-  $('#profileName').value = u.name || '';
-  $('#profileUsername').value = u.username || '';
-  $('#profileEmail').value = u.email || '';
-  $('#profileRole').value = roleLabels[u.role] || u.role;
-  const avatarEl = $('#profileAvatar');
-  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
-  hideStyle($('#userMenu'));
-  show($('#profileModal'));
-  icons();
-};
-
-window.closeProfile = () => hide($('#profileModal'));
-
-window.saveProfile = async () => {
-  const name = $('#profileName').value.trim();
-  const status = $('#profileStatus');
-  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
-  try {
-    await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
-    state.currentUser.name = name;
-    status.className = 'alert alert-success';
-    status.textContent = '✅ تم الحفظ';
-    show(status);
-    showToastAdvanced('تم الحفظ ✅', 'الاسم اتحدّث', { type: 'success', icon: 'check', duration: 2000 });
-    setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
-  } catch (e) {
-    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
-  }
-};
-
-window.openSettings = () => {
-  hideStyle($('#userMenu'));
-  $('#darkModeToggle').checked = state.settings.darkMode;
-  const installBtn = $('#installPwaBtn');
-  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
-  show($('#settingsModal'));
-  icons();
-};
-
-window.closeSettings = () => hide($('#settingsModal'));
-
-window.toggleDarkMode = () => {
-  const isDark = toggleDarkMode();
-  const icon = $('#themeToggle i');
-  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
-  icons();
-};
-
-window.enablePushNotifications = async () => {
-  const btn = $('#enablePushBtn');
-  btn.disabled = true;
-  btn.textContent = '...';
-  try {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (token) {
-      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-      btn.textContent = '✅ مفعّل';
-      btn.className = 'btn btn-sm btn-success';
-    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
-  } catch (e) {
-    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
-  }
-};
-
-/* ═══════════════════════════════════════════════════════
-   NOTIFICATIONS
-   ═══════════════════════════════════════════════════════ */
-async function registerFCMToken() {
-  try {
-    if (!messaging) return;
-    if (!('Notification' in window)) return;
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (!token) return;
-    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-    console.log('✅ FCM Token saved');
-  } catch (e) { console.error('FCM error:', e); }
-}
-
-if (messaging) {
-  onMessage(messaging, (payload) => {
-    const { title, body } = payload.notification || {};
-    const data = payload.data || {};
-    showToastAdvanced(title || 'رسالة جديدة', body || '', {
-      type: 'info', icon: 'mail', duration: 6000,
-      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
-    });
-  });
-}
-
-function setupServiceWorkerMessages() {
-  if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (window.__refreshing) return;
-    window.__refreshing = true;
-    window.location.reload();
-  });
-  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
-}
-
-function startMessagesListener() {
-  if (state.unsubMessages) state.unsubMessages();
-  const q = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
-  state.unsubMessages = onSnapshot(q, (snap) => {
-    const all = [];
-    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
-    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-    const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
-    state.unreadMessages = visibleUnread;
-    updateNotificationUI();
-
-    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
-      const m = visibleUnread[0];
-      if (m && m.fromUserId !== state.currentUser.uid) {
-        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
-          type: 'info', icon: 'mail', actionLabel: 'فتح',
-          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
-          duration: 6000
-        });
-      }
-    }
-    state.lastUnreadCount = visibleUnread.length;
-
-    if (document.getElementById('inboxList')) renderInbox();
-  });
-}
-
-function updateNotificationUI() {
-  const count = state.unreadMessages.length;
-  const el = $('#inboxCount');
-  const elM = $('#inboxCountM');
-  const notifBadge = $('#notifBadge');
-
-  if (count > 0) {
-    if (el) { el.textContent = count; show(el); }
-    if (elM) { elM.textContent = count; show(elM); }
-    if (notifBadge) { notifBadge.textContent = count > 9 ? '9+' : count; notifBadge.classList.remove('hidden'); }
-  } else {
-    if (el) hide(el);
-    if (elM) hide(elM);
-    if (notifBadge) notifBadge.classList.add('hidden');
-  }
-  renderNotifDropdown();
-}
-
-function renderNotifDropdown() {
-  const list = $('#notifList');
-  if (!list) return;
-
-  if (state.unreadMessages.length === 0) {
-    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><i data-lucide="bell-off" style="width:40px;height:40px;"></i><p style="font-size:13px;">لا إشعارات</p></div>`;
-    icons();
-    return;
-  }
-
-  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
-    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
-      <div class="msg-avatar ${getAvatarGradient(m.fromUserName)}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;justify-content:space-between;gap:8px;">
-          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
-          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
-        </div>
-        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
-      </div>
-    </div>
-  `).join('');
-  icons();
-}
-
-window.openNotifMsg = (msgId, threadId) => {
-  hideStyle($('#notifDropdown'));
-  navigate('inbox');
-  setTimeout(() => window.openThread(threadId), 400);
-};
-
-window.markAllRead = async () => {
-  if (state.unreadMessages.length === 0) return;
-  const batch = writeBatch(db);
-  state.unreadMessages.forEach(m => batch.update(doc(db, 'messages', m.id), { read: true }));
-  await batch.commit();
-  hideStyle($('#notifDropdown'));
-};
-
-console.log('🚀 Mail System v9.2 loaded - Permissions + Admin Templates');
