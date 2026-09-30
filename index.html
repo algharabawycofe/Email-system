@@ -74,7 +74,7 @@
         </button>
       </div>
 
-      <div class="login-footer"><span>Mail System v9.2</span></div>
+      <div class="login-footer"><span>Mail System v9.3</span></div>
     </div>
   </div>
 </div>
@@ -121,7 +121,6 @@
       </div>
     </div>
 
-    <!-- Instant Search -->
     <div class="header-search">
       <i data-lucide="search" class="search-icon"></i>
       <input id="globalSearch" type="text" placeholder="ابحث في الرسائل..." class="search-input" autocomplete="off" />
@@ -179,7 +178,6 @@
 
   <!-- BODY -->
   <div class="app-body">
-    <!-- SIDEBAR -->
     <aside id="sidebar" class="app-sidebar">
       <div class="sidebar-compose">
         <button onclick="openCompose()" class="btn btn-primary btn-full btn-lg">
@@ -207,7 +205,6 @@
           <span class="nav-label">سلة المهملات</span>
         </button>
 
-        <!-- TAGS SECTION -->
         <div class="nav-section">
           <span class="nav-section-title">التصنيفات</span>
           <button onclick="openTagsManager()" class="nav-action" title="إدارة التصنيفات">
@@ -237,10 +234,9 @@
         </button>
       </nav>
 
-      <div class="sidebar-footer"><span class="text-xs">v9.2</span></div>
+      <div class="sidebar-footer"><span class="text-xs">v9.3</span></div>
     </aside>
 
-    <!-- MOBILE NAV -->
     <nav id="mobileNav" class="mobile-nav" style="display:none">
       <button data-page="dashboard" class="mnav-item"><i data-lucide="home" class="w-5 h-5"></i><span>الرئيسية</span></button>
       <button data-page="inbox" class="mnav-item relative">
@@ -260,7 +256,7 @@
   </div>
 </div>
 
-<!-- ══════════ COMPOSE MODAL v9.2 ══════════ -->
+<!-- COMPOSE MODAL v9.3 -->
 <div id="composeModal" class="compose-modal" style="display:none">
   <div class="compose-dialog">
 
@@ -350,7 +346,7 @@
       </div>
     </div>
 
-    <!-- ⭐ ADMIN TEMPLATES ROW (v9.2) -->
+    <!-- ⭐ ADMIN TEMPLATES ROW -->
     <div id="templateRow" class="compose-row tags-row" style="display:none;">
       <span class="row-label">قوالب</span>
       <div class="row-content">
@@ -362,7 +358,6 @@
       <textarea id="cBody" placeholder="اكتب رسالتك هنا..." class="compose-body-input"></textarea>
     </div>
 
-    <!-- ATTACHMENTS SECTION -->
     <div id="attachmentsSection" class="compose-attachments" style="display:none;">
       <div class="attachments-header">
         <span>المرفقات (<span id="attachmentsCount">0</span>)</span>
@@ -375,7 +370,6 @@
     <input type="hidden" id="cDraftId" />
     <input type="file" id="attachInput" style="display:none;" multiple onchange="handleFiles(event)" />
 
-    <!-- Actions -->
     <div class="compose-actions">
       <div class="actions-start">
         <button onclick="sendMessage()" id="sendBtn" class="btn-send-primary">
@@ -399,7 +393,7 @@
   </div>
 </div>
 
-<!-- ══════════ TAGS MANAGER ══════════ -->
+<!-- TAGS MANAGER -->
 <div id="tagsModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -423,7 +417,7 @@
   </div>
 </div>
 
-<!-- ══════════ PROFILE ══════════ -->
+<!-- PROFILE -->
 <div id="profileModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -450,7 +444,7 @@
   </div>
 </div>
 
-<!-- ══════════ SETTINGS ══════════ -->
+<!-- SETTINGS -->
 <div id="settingsModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -497,7 +491,7 @@
   </div>
 </div>
 
-<!-- ══════════ IMAGE VIEWER ══════════ -->
+<!-- IMAGE VIEWER -->
 <div id="imageViewer" class="image-viewer" style="display:none;" onclick="closeImageViewer()">
   <button class="image-viewer-close"><i data-lucide="x" class="w-6 h-6"></i></button>
   <img id="imageViewerImg" src="" alt="" onclick="event.stopPropagation()" />
