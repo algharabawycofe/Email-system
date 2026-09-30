@@ -1904,5 +1904,41 @@ body.dark ::-webkit-scrollbar-thumb {
     transition-duration: 0.01ms !important;
   }
 }
+/* ═══════════════════════════════════════════════════════
+   ADMIN TEMPLATES (v9.2)
+   ═══════════════════════════════════════════════════════ */
+#templateRow {
+  background: linear-gradient(90deg, var(--brand-primary-subtle), transparent);
+  border-right: 3px solid var(--brand-primary);
+  min-height: 48px;
+}
 
+#templatePicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+#templatePicker .template-chip {
+  --tag-color: var(--brand-primary);
+  border: 1.5px solid var(--brand-primary);
+  color: var(--brand-primary);
+  background: var(--bg-surface);
+  transition: all var(--transition-fast);
+}
+
+#templatePicker .template-chip:hover {
+  transform: translateY(-1px);
+  background: var(--brand-primary);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+#templatePicker .template-chip svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* END v9.2 */
 /* END v9.0 */
