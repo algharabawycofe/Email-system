@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.2 - Enterprise Application
+   Mail System v9.9.3 - Enterprise Application
    Features: Pro Compose + Permissions + GoFile Uploads
              Mobile Drawer + Drafts + Notifications + Deleted Log
+             Fixed: Stay logged in on refresh
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -313,13 +314,18 @@ async function handleLogin() {
   if (!u || !p) { err.textContent = 'املأ البيانات'; show(err); return; }
 
   const email = u.includes('@') ? u : `${u}@${EMAIL_DOMAIN}`;
-  const remember = $('#rememberMe')?.checked;
 
   btn.disabled = true;
   btn.querySelector('span').textContent = 'جاري الدخول...';
 
   try {
-    try { await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence); } catch (e) {}
+    // ⭐ دايماً Local Persistence — عشان يفضل مسجل حتى بعد Refresh
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (e) {
+      console.warn('setPersistence error:', e);
+    }
+
     await signInWithEmailAndPassword(auth, email, p);
   } catch (e) {
     const messages = {
@@ -362,7 +368,14 @@ window.sendPasswordReset = async () => {
 };
 
 /* ═══════ AUTH STATE ═══════ */
-function checkAuthState() {
+async function checkAuthState() {
+  // ⭐ تأكد من الـ persistence قبل بدء الاستماع
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+  } catch (e) {
+    console.warn('setPersistence init error:', e);
+  }
+
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
       state.currentUser = null;
@@ -413,7 +426,6 @@ function updateUIForRole() {
   if (menuEmail) menuEmail.textContent = state.currentUser.email || '';
   if (menuAvatar) { menuAvatar.textContent = initial; applyAvatar(menuAvatar, state.currentUser.name); }
 
-  // Drawer
   const drawerNameEl = document.getElementById('drawerName');
   const drawerRoleEl = document.getElementById('drawerRole');
   const drawerAvatarEl = document.getElementById('drawerAvatar');
@@ -1613,7 +1625,6 @@ async function renderInbox() {
     const deletedBy = m.deletedBy || {};
     const permanentlyDeletedBy = m.permanentlyDeletedBy || {};
 
-    // ⭐ المستخدم العادي: الرسالة اختفت نهائياً من عنده
     if (!isAdminUser && permanentlyDeletedBy[myUID]) return false;
 
     if (state.currentFilter === 'trash') {
@@ -2156,7 +2167,6 @@ window.trashThread = async (threadId, isTrash, permanent = false) => {
     const permanentlyDeletedBy = m.permanentlyDeletedBy || {};
 
     if (isTrash && permanent) {
-      // ⭐ حذف نهائي من السلة → يروح لسجل الأدمن
       const newDeletedBy = { ...deletedBy };
       delete newDeletedBy[myUID];
       const newPermanent = { ...permanentlyDeletedBy, [myUID]: new Date().toISOString() };
@@ -2167,13 +2177,11 @@ window.trashThread = async (threadId, isTrash, permanent = false) => {
       m.deletedBy = newDeletedBy;
       m.permanentlyDeletedBy = newPermanent;
     } else if (isTrash) {
-      // استعادة من السلة
       const newDeletedBy = { ...deletedBy };
       delete newDeletedBy[myUID];
       await updateDoc(doc(db, 'messages', m.id), { deletedBy: newDeletedBy }).catch(() => {});
       m.deletedBy = newDeletedBy;
     } else {
-      // حذف → سلة المهملات
       const newDeletedBy = { ...deletedBy, [myUID]: new Date().toISOString() };
       await updateDoc(doc(db, 'messages', m.id), { deletedBy: newDeletedBy }).catch(() => {});
       m.deletedBy = newDeletedBy;
@@ -2185,7 +2193,6 @@ window.trashThread = async (threadId, isTrash, permanent = false) => {
   else renderThreadReading();
 };
 
-// ⭐ دالة جديدة: حذف نهائي من السلة
 window.permanentDeleteFromTrash = async (threadId) => {
   const ok = await confirmDialog(
     'حذف نهائي',
@@ -3139,15 +3146,27 @@ if (messaging) {
   });
 }
 
+/* ⭐ Service Worker — معدّل لمنع تسجيل الخروج عند الـ Refresh */
 function setupServiceWorkerMessages() {
   if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
+
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'PLAY_SOUND') playNotifSound();
+  });
+
+  // منع الـ controllerchange من عمل reload مفاجئ
+  let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (window.__refreshing) return;
-    window.__refreshing = true;
+    if (refreshing) return;
+    if (!sessionStorage.getItem('app_updating')) return;
+    refreshing = true;
+    sessionStorage.removeItem('app_updating');
     window.location.reload();
   });
-  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
+
+  navigator.serviceWorker.register(SW_PATH)
+    .then(() => console.log('✅ SW registered'))
+    .catch(() => {});
 }
 
 function startMessagesListener() {
@@ -3239,7 +3258,7 @@ window.markAllRead = async () => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9.2) — سجل المحذوفات
+   DELETED LOG (v9.9.3)
    ═══════════════════════════════════════════════════════ */
 async function renderDeletedLog() {
   if (!isAdmin()) {
@@ -3442,7 +3461,6 @@ async function renderDeletedLog() {
 }
 window.renderDeletedLog = renderDeletedLog;
 
-/* ⭐ دالة جديدة: عرض المحادثة */
 window.viewDeletedThread = (threadId) => {
   state.currentFilter = 'inbox';
   navigate('inbox');
@@ -3451,7 +3469,6 @@ window.viewDeletedThread = (threadId) => {
   }, 400);
 };
 
-/* ⭐ دالة جديدة: استعادة للكل */
 window.restoreDeletedThread = async (threadId) => {
   const ok = await confirmDialog('استعادة للكل', 'هيتم إرجاع الرسائل لكل المستخدمين. متأكد؟');
   if (!ok) return;
@@ -3475,7 +3492,6 @@ window.restoreDeletedThread = async (threadId) => {
   }
 };
 
-/* ⭐ دالة جديدة: حذف نهائي من السجل */
 window.permanentDeleteThread = async (threadId) => {
   const ok = await confirmDialog('حذف نهائي', 'هيتم حذف الرسائل نهائياً من النظام. متأكد؟');
   if (!ok) return;
@@ -3497,9 +3513,6 @@ window.permanentDeleteThread = async (threadId) => {
   }
 };
 
-/* ═══════════════════════════════════════════════════════
-   DELETED LOG BADGE — v9.9.2
-   ═══════════════════════════════════════════════════════ */
 async function updateDeletedLogBadge(count) {
   if (!isAdmin()) return;
 
@@ -3531,4 +3544,4 @@ async function updateDeletedLogBadge(count) {
   });
 }
 
-console.log('🚀 Mail System v9.9.2 loaded — Full Features');
+console.log('🚀 Mail System v9.9.3 loaded — Stay logged in on refresh');
