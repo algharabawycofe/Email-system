@@ -1608,10 +1608,16 @@ async function renderInbox() {
 
   const visible = Array.from(all.values()).filter(m => {
     const deletedBy = m.deletedBy || {};
+    const permanentlyDeletedBy = m.permanentlyDeletedBy || {};
+
+    // ⭐ المستخدم العادي: الرسالة اختفت نهائياً من عنده
+    if (!isAdminUser && permanentlyDeletedBy[myUID]) return false;
+
     if (state.currentFilter === 'trash') {
       if (isAdminUser) return Object.keys(deletedBy).length > 0;
       return !!deletedBy[myUID];
     }
+
     if (isAdminUser) return true;
     return !deletedBy[myUID];
   });
