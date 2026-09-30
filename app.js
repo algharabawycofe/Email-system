@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.1 - Enterprise Application
-   Features: Per-user deletion (Admin sees all)
+   Mail System v9.2 - Enterprise Application
+   Features: Per-user deletion + Advanced Permissions + Admin Templates
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -19,6 +19,8 @@ import {
   state, $, $$, show, hide, showStyle, hideStyle,
   esc, initials, truncate, timeAgo, formatDate, formatDateLong, todayArabic,
   isOwner, isAdmin, isDeptManager, isManagerOrAbove,
+  isChairman, isViceChairman, isExecutiveBoard,           // ⭐ NEW
+  canSendTo, getAllowedRecipients,                         // ⭐ NEW
   roleLabels, roleColors, icons,
   applyTheme, loadTheme, toggleDarkMode, loadSoundSetting, toggleSound, playNotifSound,
   confirmDialog, showToast,
@@ -39,6 +41,24 @@ let attachedFiles = [];
 let userTags = [];
 let selectedTags = [];
 let currentTagFilter = null;
+
+/* ═══════════════════════════════════════════════════════
+   ⭐ ADMIN MESSAGE TEMPLATES (ثابتة في الكود)
+   ═══════════════════════════════════════════════════════ */
+const ADMIN_MESSAGE_TEMPLATES = [
+  {
+    id: 'complaint',
+    label: 'شكوى',
+    icon: 'alert-triangle',
+    body: 'أود التقدم بشكوى بخصوص:\n\n\n\n\nالتفاصيل:\n'
+  },
+  {
+    id: 'inquiry',
+    label: 'استفسار',
+    icon: 'help-circle',
+    body: 'أرجو الإفادة بخصوص:\n\n\n\n\nالتفاصيل:\n'
+  }
+];
 
 /* ═══════════════════════════════════════════════════════
    HELPERS
@@ -245,7 +265,6 @@ function setupPWAHandlers() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     deferredPrompt = e;
-    console.log('📱 PWA Install prompt captured');
     const btn = document.getElementById('installPwaBtn');
     if (btn) btn.classList.remove('hidden');
   });
@@ -764,7 +783,8 @@ async function renderMyTeam() {
   await loadDepartmentsCache();
 
   const myDepts = getMyManagedDepts();
-  const team = getMyTeamMembers();
+  // ⭐ فلترة الفريق حسب الصلاحيات
+  const team = getMyTeamMembers().filter(u => canSendTo(u));
 
   const byDept = {};
   myDepts.forEach(d => byDept[d.id] = []);
@@ -914,12 +934,16 @@ async function renderUsers() {
           <div class="form-group"><label class="form-label">الاسم</label><input id="nuName" class="form-input" placeholder="محمد أحمد" /></div>
           <div class="form-group"><label class="form-label">اسم المستخدم</label><input id="nuUser" class="form-input" placeholder="mohamed" /></div>
           <div class="form-group"><label class="form-label">كلمة السر</label><input id="nuPass" type="text" class="form-input" placeholder="6+ حروف" /></div>
-          <div class="form-group"><label class="form-label">الدور</label><select id="nuRole" class="form-input">
+          <div class="form-group"><label class="form-label">الدور</label><select id="nuRole" class="form-input" onchange="onRoleChange('nu')">
             <option value="user">مستخدم</option>
             <option value="manager">مدير قسم</option>
-            ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
+            ${isOwner() ? `
+              <option value="chairman">رئيس مجلس الإدارة</option>
+              <option value="vice_chairman">نائب رئيس مجلس الإدارة</option>
+              <option value="admin">أدمن</option>
+            ` : ''}
           </select></div>
-          <div class="form-group"><label class="form-label">القسم</label><select id="nuDept" class="form-input"><option value="">— بدون قسم —</option></select></div>
+          <div class="form-group" id="nuDeptGroup"><label class="form-label">القسم</label><select id="nuDept" class="form-input"><option value="">— بدون قسم —</option></select></div>
         </div>
         <p style="font-size:12px;color:var(--text-tertiary);margin:12px 0 0;">الإيميل: <span style="font-family:monospace;">username@${EMAIL_DOMAIN}</span></p>
         <p id="nuErr" class="alert hidden" style="margin-top:12px;"></p>
@@ -935,12 +959,16 @@ async function renderUsers() {
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
           <div class="form-group"><label class="form-label">الاسم</label><input id="euName" class="form-input" /></div>
           <div class="form-group"><label class="form-label">اسم المستخدم</label><input id="euUser" class="form-input form-input-disabled" disabled /></div>
-          <div class="form-group"><label class="form-label">الدور</label><select id="euRole" class="form-input">
+          <div class="form-group"><label class="form-label">الدور</label><select id="euRole" class="form-input" onchange="onRoleChange('eu')">
             <option value="user">مستخدم</option>
             <option value="manager">مدير قسم</option>
-            ${isOwner() ? '<option value="admin">أدمن</option>' : ''}
+            ${isOwner() ? `
+              <option value="chairman">رئيس مجلس الإدارة</option>
+              <option value="vice_chairman">نائب رئيس مجلس الإدارة</option>
+              <option value="admin">أدمن</option>
+            ` : ''}
           </select></div>
-          <div class="form-group"><label class="form-label">القسم</label><select id="euDept" class="form-input"><option value="">— بدون قسم —</option></select></div>
+          <div class="form-group" id="euDeptGroup"><label class="form-label">القسم</label><select id="euDept" class="form-input"><option value="">— بدون قسم —</option></select></div>
         </div>
         <p id="euErr" class="alert hidden" style="margin-top:12px;"></p>
         <div style="display:flex;gap:8px;margin-top:16px;">
@@ -965,6 +993,17 @@ async function renderUsers() {
   icons();
 }
 
+/* ⭐ إظهار/إخفاء القسم حسب الدور */
+window.onRoleChange = (prefix) => {
+  const roleEl = document.getElementById(prefix + 'Role');
+  const deptGroup = document.getElementById(prefix + 'DeptGroup');
+  if (!roleEl || !deptGroup) return;
+
+  // القسم مطلوب لـ user و manager فقط
+  const needsDept = roleEl.value === 'user' || roleEl.value === 'manager';
+  deptGroup.style.display = needsDept ? 'flex' : 'none';
+};
+
 function fillDeptSelects() {
   const opts = state.allDeptsCache.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
   ['nuDept', 'euDept'].forEach(id => {
@@ -973,7 +1012,12 @@ function fillDeptSelects() {
   });
 }
 
-window.openAddUser = () => { show($('#addUserForm')); hide($('#editUserForm')); fillDeptSelects(); };
+window.openAddUser = () => {
+  show($('#addUserForm'));
+  hide($('#editUserForm'));
+  fillDeptSelects();
+  window.onRoleChange('nu');
+};
 window.closeAddUser = () => hide($('#addUserForm'));
 
 window.createNewUser = async () => {
@@ -989,12 +1033,24 @@ window.createNewUser = async () => {
   if (!validateUsername(user)) { err.className = 'alert alert-error'; err.textContent = 'اسم المستخدم غير صالح'; show(err); return; }
   if (!validatePassword(pass)) { err.className = 'alert alert-error'; err.textContent = 'كلمة السر 6 حروف'; show(err); return; }
 
+  // تحقق: user و manager لازم يكون ليهم قسم
+  if ((role === 'user' || role === 'manager') && !deptId) {
+    err.className = 'alert alert-error';
+    err.textContent = 'لازم تختار قسم للمستخدم أو مدير القسم';
+    show(err); return;
+  }
+
   err.className = 'alert alert-info'; err.textContent = 'جاري الإنشاء...'; show(err);
 
   try {
     const email = `${user}@${EMAIL_DOMAIN}`;
     const uid = await createAuthUser(email, pass);
-    await setDoc(doc(db, 'users', uid), { name, username: user, email, role, departmentId: deptId || null, isActive: true, createdAt: serverTimestamp() });
+    await setDoc(doc(db, 'users', uid), {
+      name, username: user, email, role,
+      departmentId: deptId || null,
+      isActive: true,
+      createdAt: serverTimestamp()
+    });
     err.className = 'alert alert-success'; err.textContent = `✅ تم إنشاء ${user}`;
     showToastAdvanced('تم الإنشاء ✅', `${user} أضيف`, { type: 'success', icon: 'user-check', duration: 2500 });
     $('#nuName').value = ''; $('#nuUser').value = ''; $('#nuPass').value = '';
@@ -1016,6 +1072,7 @@ window.editUser = async (uid) => {
   fillDeptSelects();
   $('#euDept').value = u.departmentId || '';
   show($('#editUserForm')); hide($('#addUserForm'));
+  window.onRoleChange('eu');
   $('#editUserForm').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 };
 window.closeEditUser = () => hide($('#editUserForm'));
@@ -1028,6 +1085,13 @@ window.saveEditUser = async () => {
   const err = $('#euErr');
   hide(err);
   if (!name) { err.className = 'alert alert-error'; err.textContent = 'اكتب الاسم'; show(err); return; }
+
+  if ((role === 'user' || role === 'manager') && !deptId) {
+    err.className = 'alert alert-error';
+    err.textContent = 'لازم تختار قسم للمستخدم أو مدير القسم';
+    show(err); return;
+  }
+
   try {
     await updateDoc(doc(db, 'users', uid), { name, role, departmentId: deptId || null });
     hide($('#editUserForm'));
@@ -1094,7 +1158,9 @@ async function renderDepartments() {
     </div>
   `;
 
-  const managerOpts = state.allUsersCache.filter(u => u.isActive !== false).map(u => `<option value="${u.id}">${esc(u.name)} (@${esc(u.username)})</option>`).join('');
+  const managerOpts = state.allUsersCache
+    .filter(u => u.isActive !== false && u.role === 'manager')
+    .map(u => `<option value="${u.id}">${esc(u.name)} (@${esc(u.username)})</option>`).join('');
   const dm = document.getElementById('dManager');
   if (dm) dm.innerHTML = '<option value="">— بدون مدير —</option>' + managerOpts;
 
@@ -1115,7 +1181,9 @@ window.editDept = async (id) => {
   const d = state.allDeptsCache.find(x => x.id === id);
   if (!d) return;
 
-  const managerOpts = state.allUsersCache.filter(u => u.isActive !== false).map(u => `<option value="${u.id}" ${u.id === d.managerId ? 'selected' : ''}>${esc(u.name)} (@${esc(u.username)})</option>`).join('');
+  const managerOpts = state.allUsersCache
+    .filter(u => u.isActive !== false && u.role === 'manager')
+    .map(u => `<option value="${u.id}" ${u.id === d.managerId ? 'selected' : ''}>${esc(u.name)} (@${esc(u.username)})</option>`).join('');
 
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
@@ -1160,7 +1228,7 @@ window.deleteDept = async (id) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   INBOX - با Per-User Deletion
+   INBOX
    ═══════════════════════════════════════════════════════ */
 async function renderInbox() {
   const filter = state.currentFilter;
@@ -1202,17 +1270,14 @@ async function renderInbox() {
   const isAdminUser = isAdmin();
   const myUID = state.currentUser.uid;
 
-  // ═══════ الفلترة الأساسية ═══════
   const visible = Array.from(all.values()).filter(m => {
     const deletedBy = m.deletedBy || {};
 
     if (state.currentFilter === 'trash') {
-      // TRASH: admin يشوف كل اللي اتحذف، user يشوف اللي هو حذفه بس
       if (isAdminUser) return Object.keys(deletedBy).length > 0;
       return !!deletedBy[myUID];
     }
 
-    // INBOX/SENT/etc: admin يشوف الكل، user يشوف اللي هو ماحذفهاش
     if (isAdminUser) return true;
     return !deletedBy[myUID];
   });
@@ -1275,7 +1340,6 @@ function renderThreadList() {
       </div>
     ` : '';
 
-    // ═══════ Badge "محذوفة من" للأدمن ═══════
     let deletedBadgeHtml = '';
     if (isAdmin()) {
       const deletedNames = getDeletedByNames(last);
@@ -1424,7 +1488,10 @@ function renderThreadReading() {
   const replyUserId = t.lastMsg.fromUserId === state.currentUser.uid ? t.lastMsg.toUserId : t.lastMsg.fromUserId;
   const replyUserName = t.lastMsg.fromUserId === state.currentUser.uid ? t.lastMsg.toUserName : t.lastMsg.fromUserName;
 
-  // ═══════ معلومات الحذف للأدمن ═══════
+  // ⭐ هل أنا مسموحلي أرد؟
+  const replyUserObj = state.allUsersCache.find(u => u.id === replyUserId);
+  const canReply = replyUserObj ? canSendTo(replyUserObj) : false;
+
   const allDeletedByUIDs = new Set();
   t.messages.forEach(m => {
     Object.keys(m.deletedBy || {}).forEach(uid => allDeletedByUIDs.add(uid));
@@ -1480,7 +1547,6 @@ function renderThreadReading() {
       </div>
     ` : '';
 
-    // معلومات حذف الرسالة للأدمن
     const msgDeletedNames = getDeletedByNames(m);
     const showMsgDeleteInfo = isAdmin() && msgDeletedNames.length > 0;
     const msgDeletedHtml = showMsgDeleteInfo ? `
@@ -1523,7 +1589,7 @@ function renderThreadReading() {
 
   const threadStarred = t.messages.some(m => m.starred);
 
-  const inlineReplyHtml = !isTrash && !showDeletedInfo ? `
+  const inlineReplyHtml = !isTrash && !showDeletedInfo && canReply ? `
     <div class="inline-reply">
       <div class="inline-reply-header" onclick="toggleInlineReply()">
         <i data-lucide="reply" class="w-4 h-4"></i>
@@ -1547,7 +1613,7 @@ function renderThreadReading() {
     <div class="reading-toolbar">
       <button onclick="backToList()" class="toolbar-btn" style="display:none;" id="mobileBackBtn"><i data-lucide="arrow-right" class="w-4 h-4"></i></button>
 
-      ${!isTrash && !showDeletedInfo ? `
+      ${!isTrash && !showDeletedInfo && canReply ? `
         <button onclick="replyToThread('${replyUserId}', '${esc(replyUserName).replace(/'/g, "\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g, "\\'")}')" class="toolbar-btn primary"><i data-lucide="reply" class="w-4 h-4"></i><span>رد</span></button>
         <button onclick="replyAllToThread('${t.threadId}')" class="toolbar-btn primary"><i data-lucide="reply-all" class="w-4 h-4"></i><span>رد على الكل</span></button>
         <button onclick="toggleStar('${t.threadId}')" class="toolbar-btn ${threadStarred ? 'primary' : ''}"><i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i><span>${threadStarred ? 'مميزة' : 'تمييز'}</span></button>
@@ -1592,6 +1658,13 @@ function renderThreadReading() {
         </div>
       ` : ''}
 
+      ${!canReply && !isTrash && !showDeletedInfo ? `
+        <div style="background:var(--warning-bg);border:1px solid #F0DDA0;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#7A5D00;">
+          <i data-lucide="shield-alert" class="w-4 h-4" style="flex-shrink:0;"></i>
+          <span>مش مسموحلك ترد على هذه المحادثة حسب صلاحياتك.</span>
+        </div>
+      ` : ''}
+
       ${messagesHtml}
       ${inlineReplyHtml}
     </div>
@@ -1622,6 +1695,12 @@ window.sendInlineReply = async (toUserId, threadId, subject) => {
   const text = document.getElementById('inlineReplyText')?.value.trim();
   const status = document.getElementById('inlineReplyStatus');
   if (!text) { if (status) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب رد'; } return; }
+
+  const recipient = state.allUsersCache.find(u => u.id === toUserId);
+  if (!canSendTo(recipient)) {
+    if (status) { status.style.color = 'var(--danger)'; status.textContent = 'غير مسموح'; }
+    return;
+  }
 
   try {
     const toUser = state.allUsersCache.find(u => u.id === toUserId);
@@ -1667,7 +1746,11 @@ window.replyAllToThread = async (threadId) => {
   const ccbccFields = $('#ccbccFields');
   if (ccbccFields) ccbccFields.classList.remove('hidden');
 
-  const list = Array.from(participants);
+  const list = Array.from(participants).filter(uid => {
+    const u = state.allUsersCache.find(x => x.id === uid);
+    return u && canSendTo(u);
+  });
+
   if (list.length > 0) {
     $('#cTo').value = list[0];
     if (list.length > 1 && $('#cCC')) $('#cCC').value = list[1];
@@ -1715,7 +1798,7 @@ window.toggleStar = async (threadId) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   TRASH - per user deletion
+   TRASH
    ═══════════════════════════════════════════════════════ */
 window.trashThread = async (threadId, isTrash) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
@@ -1727,13 +1810,11 @@ window.trashThread = async (threadId, isTrash) => {
     const deletedBy = m.deletedBy || {};
 
     if (isTrash) {
-      // استعادة → شيل اسمي من deletedBy
       const newDeletedBy = { ...deletedBy };
       delete newDeletedBy[myUID];
       await updateDoc(doc(db, 'messages', m.id), { deletedBy: newDeletedBy }).catch(() => {});
       m.deletedBy = newDeletedBy;
     } else {
-      // حذف → ضيف اسمي في deletedBy
       const newDeletedBy = { ...deletedBy, [myUID]: new Date().toISOString() };
       await updateDoc(doc(db, 'messages', m.id), { deletedBy: newDeletedBy }).catch(() => {});
       m.deletedBy = newDeletedBy;
@@ -1746,16 +1827,12 @@ window.trashThread = async (threadId, isTrash) => {
 };
 
 window.permanentDelete = async (threadId) => {
-  // ⚠️ الأدمن/الأونر بس
   if (!isAdmin()) {
     showToastAdvanced('غير مسموح', 'الأدمن بس اللي يقدر يحذف نهائياً', { type: 'error', icon: 'shield-x' });
     return;
   }
 
-  const ok = await confirmDialog(
-    'حذف نهائي',
-    'هيتم حذف الرسائل نهائيًا من النظام (لكل المستخدمين). متأكد؟'
-  );
+  const ok = await confirmDialog('حذف نهائي', 'هيتم حذف الرسائل نهائيًا من النظام (لكل المستخدمين). متأكد؟');
   if (!ok) return;
 
   const t = state.threadsCache.find(x => x.threadId === threadId);
@@ -1781,10 +1858,7 @@ window.restoreThreadForAll = async (threadId) => {
     return;
   }
 
-  const ok = await confirmDialog(
-    'استعادة للكل',
-    'هيتم إرجاع الرسائل لكل المستخدمين اللي حذفوها. متأكد؟'
-  );
+  const ok = await confirmDialog('استعادة للكل', 'هيتم إرجاع الرسائل لكل المستخدمين اللي حذفوها. متأكد؟');
   if (!ok) return;
 
   const t = state.threadsCache.find(x => x.threadId === threadId);
@@ -1861,11 +1935,16 @@ window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  const others = state.allUsersCache.filter(u => u.id !== state.currentUser.uid && u.isActive !== false);
+  // ⭐ فلترة المستلمين حسب الصلاحيات
+  const others = getAllowedRecipients();
 
   const userOptions = () =>
     '<option value="">— اختر —</option>' + others.map(u => {
-      const roleTag = u.role === 'owner' ? ' 👑' : u.role === 'admin' ? ' 🛡️' : u.role === 'manager' ? ' 👔' : '';
+      const roleTag = u.role === 'owner' ? ' 👑'
+        : u.role === 'chairman' ? ' 🎩'
+        : u.role === 'vice_chairman' ? ' 🎗️'
+        : u.role === 'admin' ? ' 🛡️'
+        : u.role === 'manager' ? ' 👔' : '';
       const deptName = u.departmentId ? (getDeptById(u.departmentId)?.name || '') : '';
       const deptTag = deptName ? ` · ${deptName}` : '';
       return `<option value="${u.id}">${esc(u.name)}${roleTag} (${esc(u.username)}${deptTag})</option>`;
@@ -1898,6 +1977,7 @@ window.openCompose = async () => {
 
   $('#cSubject').value = '';
   $('#cBody').value = '';
+  $('#cBody').dataset.fromTemplate = '';
   $('#cThreadId').value = '';
   $('#cDraftId').value = '';
   $('#cBroadcast').checked = false;
@@ -1913,6 +1993,12 @@ window.openCompose = async () => {
   renderAttachments();
   renderComposeTagsPicker();
 
+  // ⭐ إخفاء صف القوالب مبدئياً
+  const templateRow = $('#templateRow');
+  if (templateRow) templateRow.style.display = 'none';
+  const tplPicker = $('#templatePicker');
+  if (tplPicker) tplPicker.innerHTML = '';
+
   document.querySelectorAll('input[name="priority"]').forEach(r => r.checked = r.value === 'normal');
 
   const broadcastBox = $('#broadcastBox');
@@ -1922,6 +2008,10 @@ window.openCompose = async () => {
   } else {
     broadcastBox.style.display = 'none';
   }
+
+  // ⭐ اربط حدث تغيير المستلم
+  const toSel = $('#cTo');
+  if (toSel) toSel.onchange = window.onRecipientChange;
 
   $('#composeModal').style.display = 'flex';
   icons();
@@ -1933,6 +2023,63 @@ window.closeCompose = () => {
   $('#composeTitle').textContent = 'رسالة جديدة';
   attachedFiles = [];
   selectedTags = [];
+};
+
+/* ⭐ مراقبة تغيير المستلم لإظهار قوالب الأدمن */
+window.onRecipientChange = () => {
+  const toUserId = $('#cTo')?.value;
+  const templateRow = $('#templateRow');
+  if (!templateRow) return;
+
+  const recipient = state.allUsersCache.find(u => u.id === toUserId);
+  const isAdminRecipient = recipient && (recipient.role === 'admin' || recipient.role === 'owner');
+  const isNormalSender = state.currentUser?.role === 'user';
+
+  if (isAdminRecipient && isNormalSender) {
+    renderAdminTemplates();
+    templateRow.style.display = 'flex';
+  } else {
+    templateRow.style.display = 'none';
+  }
+};
+
+function renderAdminTemplates() {
+  const picker = $('#templatePicker');
+  if (!picker) return;
+
+  picker.innerHTML = ADMIN_MESSAGE_TEMPLATES.map(t => `
+    <button type="button" class="tag-chip template-chip"
+            onclick="applyAdminTemplate('${t.id}')">
+      <i data-lucide="${t.icon}" class="w-3 h-3"></i>
+      <span>${esc(t.label)}</span>
+    </button>
+  `).join('');
+  icons();
+}
+
+window.applyAdminTemplate = (templateId) => {
+  const tpl = ADMIN_MESSAGE_TEMPLATES.find(t => t.id === templateId);
+  if (!tpl) return;
+
+  const subjEl = $('#cSubject');
+  const bodyEl = $('#cBody');
+  if (!subjEl || !bodyEl) return;
+
+  if (!subjEl.value.trim()) subjEl.value = tpl.label;
+
+  if (!bodyEl.value.trim() || bodyEl.dataset.fromTemplate === '1') {
+    bodyEl.value = tpl.body;
+    bodyEl.dataset.fromTemplate = '1';
+  } else {
+    bodyEl.value = tpl.body + '\n' + bodyEl.value;
+  }
+
+  bodyEl.focus();
+  bodyEl.setSelectionRange(bodyEl.value.length, bodyEl.value.length);
+
+  showToastAdvanced('تم تطبيق القالب ✅', `${tpl.label} — أضف ملاحظتك`, {
+    type: 'info', icon: 'file-text', duration: 2500
+  });
 };
 
 window.toggleCCBCC = () => {
@@ -2141,6 +2288,19 @@ window.sendMessage = async () => {
   if (deptSend && !deptId) { status.style.color = 'var(--danger)'; status.textContent = 'اختر القسم'; return; }
   if (!subject) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب الموضوع'; return; }
 
+  // ⭐ تحقق من الصلاحيات للمرسل الفردي
+  if (!broadcast && !deptSend && toUserId) {
+    const recipient = state.allUsersCache.find(u => u.id === toUserId);
+    if (recipient && !canSendTo(recipient)) {
+      status.style.color = 'var(--danger)';
+      status.textContent = 'غير مسموحلك تبعت للمستخدم ده';
+      showToastAdvanced('غير مسموح', 'مش مسموحلك تبعت للمستخدم ده حسب صلاحياتك', {
+        type: 'error', icon: 'shield-x', duration: 4000
+      });
+      return;
+    }
+  }
+
   const uploading = attachedFiles.some(f => f.status === 'uploading');
   if (uploading) { status.style.color = 'var(--danger)'; status.textContent = 'استنى لحد ما المرفقات ترفع'; return; }
 
@@ -2209,328 +2369,4 @@ async function performSend(data) {
           fromUserName: data.fromUserName,
           fromUserUsername: data.fromUserUsername,
           toUserId: u.id, toUserName: u.name,
-          read: false, isBroadcast: true,
-          threadId: msgRef.id,
-          notified: false, starred: false,
-          deletedBy: {},
-          attachments: data.attachments || [],
-          tags: data.tags || [],
-          createdAt: serverTimestamp()
-        });
-      }
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} مستخدم`, { type: 'success', icon: 'check-circle', duration: 3500 });
-    } else if (data.deptSend) {
-      const recipients = getUsersByDept(data.deptId).filter(u => u.id !== state.currentUser.uid);
-      for (const u of recipients) {
-        const msgRef = doc(collection(db, 'messages'));
-        await setDoc(msgRef, {
-          subject: data.subject, body: data.body, priority: data.priority,
-          fromUserId: data.fromUserId,
-          fromUserName: data.fromUserName,
-          fromUserUsername: data.fromUserUsername,
-          toUserId: u.id, toUserName: u.name,
-          read: false, isBroadcast: false,
-          threadId: msgRef.id,
-          notified: false, starred: false,
-          deletedBy: {},
-          attachments: data.attachments || [],
-          tags: data.tags || [],
-          createdAt: serverTimestamp()
-        });
-      }
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
-    } else {
-      const toUser = state.allUsersCache.find(u => u.id === data.toUserId);
-      const ccUser = data.ccUserId ? state.allUsersCache.find(u => u.id === data.ccUserId) : null;
-      const bccUser = data.bccUserId ? state.allUsersCache.find(u => u.id === data.bccUserId) : null;
-
-      const msgRef = doc(collection(db, 'messages'));
-      await setDoc(msgRef, {
-        subject: data.subject, body: data.body, priority: data.priority,
-        fromUserId: data.fromUserId,
-        fromUserName: data.fromUserName,
-        fromUserUsername: data.fromUserUsername,
-        toUserId: data.toUserId, toUserName: toUser?.name || '',
-        ccUserId: data.ccUserId || null,
-        ccUserName: ccUser?.name || null,
-        bccUserId: data.bccUserId || null,
-        bccUserName: bccUser?.name || null,
-        read: false,
-        threadId: data.replyToThread || msgRef.id,
-        parentId: data.replyToThread ? (state._currentThreadLastMsgId || null) : null,
-        notified: false, starred: false,
-        deletedBy: {},
-        attachments: data.attachments || [],
-        tags: data.tags || [],
-        createdAt: serverTimestamp()
-      });
-
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${toUser?.name || ''}`, { type: 'success', icon: 'check-circle', duration: 3000 });
-    }
-
-    if (document.getElementById('inboxList')) renderInbox();
-  } catch (e) {
-    console.error('SEND ERROR:', e);
-    showToastAdvanced('خطأ في الإرسال', e.message, {
-      type: 'error', icon: 'alert-circle',
-      actionLabel: 'إعادة',
-      onAction: () => performSend(data),
-      duration: 8000
-    });
-  }
-}
-
-window.saveDraft = async () => {
-  const toUserId = $('#cTo').value;
-  const subject = $('#cSubject').value.trim();
-  const body = $('#cBody').value.trim();
-  const status = $('#cStatus');
-
-  if (!subject && !body) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب حاجة'; return; }
-
-  try {
-    const draftId = $('#cDraftId').value;
-    const draftData = { toUserId: toUserId || null, subject, body, updatedAt: serverTimestamp() };
-    if (draftId) await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
-    else {
-      draftData.createdAt = serverTimestamp();
-      const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
-      $('#cDraftId').value = r.id;
-    }
-    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة', { type: 'success', icon: 'file-text', duration: 2000 });
-    setTimeout(() => closeCompose(), 1000);
-  } catch (e) {
-    status.style.color = 'var(--danger)'; status.textContent = e.message;
-  }
-};
-
-window.replyToThread = async (userId, userName, threadId, subject) => {
-  await window.openCompose();
-  $('#cTo').value = userId;
-  $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
-  $('#cThreadId').value = threadId;
-  $('#cBroadcast').checked = false;
-  $('#cDept').checked = false;
-  $('#toBox').classList.remove('hidden');
-  $('#composeTitle').textContent = `رد على ${userName}`;
-  setTimeout(() => $('#cBody').focus(), 150);
-};
-
-/* ═══════════════════════════════════════════════════════
-   IMAGE VIEWER
-   ═══════════════════════════════════════════════════════ */
-window.openImageViewer = (url) => {
-  const viewer = document.getElementById('imageViewer');
-  const img = document.getElementById('imageViewerImg');
-  if (!viewer || !img) return;
-  img.src = url;
-  viewer.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
-  icons();
-};
-
-window.closeImageViewer = () => {
-  const viewer = document.getElementById('imageViewer');
-  if (viewer) viewer.style.display = 'none';
-  document.body.style.overflow = '';
-};
-
-/* ═══════════════════════════════════════════════════════
-   PROFILE / SETTINGS
-   ═══════════════════════════════════════════════════════ */
-window.openProfile = () => {
-  const u = state.currentUser;
-  if (!u) return;
-  $('#profileName').value = u.name || '';
-  $('#profileUsername').value = u.username || '';
-  $('#profileEmail').value = u.email || '';
-  $('#profileRole').value = roleLabels[u.role] || u.role;
-  const avatarEl = $('#profileAvatar');
-  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
-  hideStyle($('#userMenu'));
-  show($('#profileModal'));
-  icons();
-};
-
-window.closeProfile = () => hide($('#profileModal'));
-
-window.saveProfile = async () => {
-  const name = $('#profileName').value.trim();
-  const status = $('#profileStatus');
-  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
-  try {
-    await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
-    state.currentUser.name = name;
-    status.className = 'alert alert-success';
-    status.textContent = '✅ تم الحفظ';
-    show(status);
-    showToastAdvanced('تم الحفظ ✅', 'الاسم اتحدّث', { type: 'success', icon: 'check', duration: 2000 });
-    setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
-  } catch (e) {
-    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
-  }
-};
-
-window.openSettings = () => {
-  hideStyle($('#userMenu'));
-  $('#darkModeToggle').checked = state.settings.darkMode;
-  const installBtn = $('#installPwaBtn');
-  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
-  show($('#settingsModal'));
-  icons();
-};
-
-window.closeSettings = () => hide($('#settingsModal'));
-
-window.toggleDarkMode = () => {
-  const isDark = toggleDarkMode();
-  const icon = $('#themeToggle i');
-  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
-  icons();
-};
-
-window.enablePushNotifications = async () => {
-  const btn = $('#enablePushBtn');
-  btn.disabled = true;
-  btn.textContent = '...';
-  try {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (token) {
-      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-      btn.textContent = '✅ مفعّل';
-      btn.className = 'btn btn-sm btn-success';
-    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
-  } catch (e) {
-    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
-  }
-};
-
-/* ═══════════════════════════════════════════════════════
-   NOTIFICATIONS
-   ═══════════════════════════════════════════════════════ */
-async function registerFCMToken() {
-  try {
-    if (!messaging) return;
-    if (!('Notification' in window)) return;
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (!token) return;
-    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-    console.log('✅ FCM Token saved');
-  } catch (e) { console.error('FCM error:', e); }
-}
-
-if (messaging) {
-  onMessage(messaging, (payload) => {
-    const { title, body } = payload.notification || {};
-    const data = payload.data || {};
-    showToastAdvanced(title || 'رسالة جديدة', body || '', {
-      type: 'info', icon: 'mail', duration: 6000,
-      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
-    });
-  });
-}
-
-function setupServiceWorkerMessages() {
-  if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (window.__refreshing) return;
-    window.__refreshing = true;
-    window.location.reload();
-  });
-  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
-}
-
-function startMessagesListener() {
-  if (state.unsubMessages) state.unsubMessages();
-  const q = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
-  state.unsubMessages = onSnapshot(q, (snap) => {
-    const all = [];
-    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
-    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-    // ✅ فلترة deletedBy للمستخدم العادي (الأدمن يشوف الكل)
-    const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
-    state.unreadMessages = visibleUnread;
-    updateNotificationUI();
-
-    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
-      const m = visibleUnread[0];
-      if (m && m.fromUserId !== state.currentUser.uid) {
-        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
-          type: 'info', icon: 'mail', actionLabel: 'فتح',
-          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
-          duration: 6000
-        });
-      }
-    }
-    state.lastUnreadCount = visibleUnread.length;
-
-    if (document.getElementById('inboxList')) renderInbox();
-  });
-}
-
-function updateNotificationUI() {
-  const count = state.unreadMessages.length;
-  const el = $('#inboxCount');
-  const elM = $('#inboxCountM');
-  const notifBadge = $('#notifBadge');
-
-  if (count > 0) {
-    if (el) { el.textContent = count; show(el); }
-    if (elM) { elM.textContent = count; show(elM); }
-    if (notifBadge) { notifBadge.textContent = count > 9 ? '9+' : count; notifBadge.classList.remove('hidden'); }
-  } else {
-    if (el) hide(el);
-    if (elM) hide(elM);
-    if (notifBadge) notifBadge.classList.add('hidden');
-  }
-  renderNotifDropdown();
-}
-
-function renderNotifDropdown() {
-  const list = $('#notifList');
-  if (!list) return;
-
-  if (state.unreadMessages.length === 0) {
-    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><i data-lucide="bell-off" style="width:40px;height:40px;"></i><p style="font-size:13px;">لا إشعارات</p></div>`;
-    icons();
-    return;
-  }
-
-  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
-    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
-      <div class="msg-avatar ${getAvatarGradient(m.fromUserName)}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;justify-content:space-between;gap:8px;">
-          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
-          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
-        </div>
-        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
-      </div>
-    </div>
-  `).join('');
-  icons();
-}
-
-window.openNotifMsg = (msgId, threadId) => {
-  hideStyle($('#notifDropdown'));
-  navigate('inbox');
-  setTimeout(() => window.openThread(threadId), 400);
-};
-
-window.markAllRead = async () => {
-  if (state.unreadMessages.length === 0) return;
-  const batch = writeBatch(db);
-  state.unreadMessages.forEach(m => batch.update(doc(db, 'messages', m.id), { read: true }));
-  await batch.commit();
-  hideStyle($('#notifDropdown'));
-};
-
-console.log('🚀 Mail System v9.1 loaded - Per-User Deletion');
+          read: false, isBroad
