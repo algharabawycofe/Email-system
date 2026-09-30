@@ -103,7 +103,8 @@ function isHiddenFromMe(msg) {
   if (!msg || !state.currentUser) return false;
   if (isAdmin()) return false;
   const deletedBy = msg.deletedBy || {};
-  return !!deletedBy[state.currentUser.uid];
+  const permanentlyDeletedBy = msg.permanentlyDeletedBy || {};
+  return !!(deletedBy[state.currentUser.uid] || permanentlyDeletedBy[state.currentUser.uid]);
 }
 
 function getDeletedByNames(msg) {
