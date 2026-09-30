@@ -3194,7 +3194,7 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 /* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9) — سجل المحذوفات
+   DELETED LOG (v9.9.1) — سجل المحذوفات (محسّن)
    ═══════════════════════════════════════════════════════ */
 async function renderDeletedLog() {
   if (!isAdmin()) {
@@ -3280,7 +3280,7 @@ async function renderDeletedLog() {
       const firstMsg = t.messages[0];
       const lastMsg = t.messages[t.messages.length - 1];
       const subject = firstMsg.subject || '(بدون موضوع)';
-      const preview = (lastMsg.body || '').slice(0, 100);
+      const preview = (lastMsg.body || '').slice(0, 120);
 
       const deleters = Array.from(t.allDeleters).map(uid => {
         const u = state.allUsersCache.find(x => x.id === uid);
@@ -3299,44 +3299,59 @@ async function renderDeletedLog() {
           })
         : '—';
 
+      const msgCount = t.messages.length;
+
       return `
         <div class="deleted-log-item">
-          <div class="deleted-log-header">
-            <div class="deleted-log-avatars">
-              <div class="user-cell-avatar ${getAvatarGradient(fromName)}" style="width:32px;height:32px;font-size:12px;">${initials(fromName)}</div>
-              <i data-lucide="arrow-left" class="w-3 h-3 deleted-log-arrow"></i>
-              <div class="user-cell-avatar ${getAvatarGradient(toName)}" style="width:32px;height:32px;font-size:12px;">${initials(toName)}</div>
+          <div class="deleted-log-row-1">
+            <div class="deleted-log-from-to">
+              <div class="user-cell-avatar ${getAvatarGradient(fromName)}" title="${esc(fromName)}">${initials(fromName)}</div>
+              <div class="deleted-log-arrow">
+                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
+              </div>
+              <div class="user-cell-avatar ${getAvatarGradient(toName)}" title="${esc(toName)}">${initials(toName)}</div>
             </div>
-            <div class="deleted-log-main">
-              <div class="deleted-log-subject">${esc(subject)}</div>
-              <div class="deleted-log-preview">${esc(preview)}</div>
+            <div class="deleted-log-names">
+              <span class="deleted-log-from">${esc(fromName)}</span>
+              <span class="deleted-log-to">← ${esc(toName)}</span>
             </div>
-          </div>
-
-          <div class="deleted-log-meta">
-            <div class="deleted-log-deleters">
-              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-              <span>حذفها من عندهم: <strong>${deleters.map(esc).join('، ')}</strong></span>
-            </div>
-            <div class="deleted-log-time">
-              <i data-lucide="clock" class="w-3 h-3"></i>
-              ${timeStr}
+            <div class="deleted-log-badges">
+              ${msgCount > 1 ? `<span class="deleted-log-thread-badge">💬 ${msgCount}</span>` : ''}
             </div>
           </div>
 
-          <div class="deleted-log-actions">
-            <button onclick="viewDeletedThread('${t.threadId}')" class="btn btn-ghost btn-sm">
-              <i data-lucide="eye" class="w-3.5 h-3.5"></i>
-              <span>عرض</span>
-            </button>
-            <button onclick="restoreDeletedThread('${t.threadId}')" class="btn btn-primary btn-sm">
-              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-              <span>استعادة للكل</span>
-            </button>
-            <button onclick="permanentDeleteThread('${t.threadId}')" class="btn btn-danger btn-sm">
-              <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
-              <span>حذف نهائي</span>
-            </button>
+          <div class="deleted-log-row-2">
+            <div class="deleted-log-subject">${esc(subject)}</div>
+            <div class="deleted-log-preview">${esc(preview)}</div>
+          </div>
+
+          <div class="deleted-log-row-3">
+            <div class="deleted-log-info">
+              <span class="deleted-log-info-item">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                <span class="deleted-log-info-label">حذفها:</span>
+                <strong>${deleters.map(esc).join('، ')}</strong>
+              </span>
+              <span class="deleted-log-info-item">
+                <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+                <span>${timeStr}</span>
+              </span>
+            </div>
+
+            <div class="deleted-log-actions">
+              <button onclick="viewDeletedThread('${t.threadId}')" class="deleted-log-btn view">
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+                <span>عرض</span>
+              </button>
+              <button onclick="restoreDeletedThread('${t.threadId}')" class="deleted-log-btn restore">
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+                <span>استعادة</span>
+              </button>
+              <button onclick="permanentDeleteThread('${t.threadId}')" class="deleted-log-btn delete">
+                <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+                <span>حذف نهائي</span>
+              </button>
+            </div>
           </div>
         </div>
       `;
