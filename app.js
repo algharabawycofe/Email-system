@@ -3193,5 +3193,267 @@ window.markAllRead = async () => {
   await batch.commit();
   hideStyle($('#notifDropdown'));
 };
+/* ═══════════════════════════════════════════════════════
+   DELETED LOG (v9.9) — سجل المحذوفات
+   ═══════════════════════════════════════════════════════ */
+async function renderDeletedLog() {
+  if (!isAdmin()) {
+    $('#pageContent').innerHTML = `
+      <div class="dashboard">
+        <div class="empty-state" style="padding:60px 20px;">
+          <i data-lucide="shield-x" style="width:64px;height:64px;color:var(--danger);"></i>
+          <p style="margin-top:12px;">غير مسموح — مسئول السيستم بس</p>
+        </div>
+      </div>
+    `;
+    icons();
+    return;
+  }
 
+  $('#pageContent').innerHTML = `
+    <div class="dashboard" style="max-width:1100px;">
+      <div class="page-header" style="padding:0 0 20px;border:none;">
+        <div>
+          <h1 class="dashboard-title">سجل المحذوفات</h1>
+          <p class="dashboard-date">جاري التحميل...</p>
+        </div>
+      </div>
+      <div class="data-table-wrapper" style="padding:20px;">
+        ${renderSkeletonInbox()}
+      </div>
+    </div>
+  `;
+  icons();
+
+  try {
+    const snap = await getDocs(collection(db, 'messages'));
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const deleted = all.filter(m => m.deletedBy && Object.keys(m.deletedBy).length > 0);
+
+    if (deleted.length === 0) {
+      $('#pageContent').innerHTML = `
+        <div class="dashboard" style="max-width:1100px;">
+          <div class="page-header" style="padding:0 0 20px;border:none;">
+            <div>
+              <h1 class="dashboard-title">سجل المحذوفات</h1>
+              <p class="dashboard-date">0 رسالة محذوفة</p>
+            </div>
+          </div>
+          <div class="empty-state" style="padding:60px 20px;">
+            <i data-lucide="archive" style="width:64px;height:64px;"></i>
+            <p style="margin-top:12px;">لا توجد رسائل محذوفة</p>
+          </div>
+        </div>
+      `;
+      icons();
+      updateDeletedLogBadge(0);
+      return;
+    }
+
+    // تجميع حسب threadId
+    const threadsMap = {};
+    deleted.forEach(m => {
+      const tid = m.threadId || m.id;
+      if (!threadsMap[tid]) {
+        threadsMap[tid] = {
+          threadId: tid,
+          messages: [],
+          allDeleters: new Set(),
+          latestDeleteTime: 0
+        };
+      }
+      threadsMap[tid].messages.push(m);
+
+      Object.entries(m.deletedBy).forEach(([uid, timeStr]) => {
+        threadsMap[tid].allDeleters.add(uid);
+        const t = timeStr ? new Date(timeStr).getTime() : 0;
+        if (t > threadsMap[tid].latestDeleteTime) {
+          threadsMap[tid].latestDeleteTime = t;
+        }
+      });
+    });
+
+    const threads = Object.values(threadsMap).sort((a, b) => b.latestDeleteTime - a.latestDeleteTime);
+
+    const rows = threads.map(t => {
+      const firstMsg = t.messages[0];
+      const lastMsg = t.messages[t.messages.length - 1];
+      const subject = firstMsg.subject || '(بدون موضوع)';
+      const preview = (lastMsg.body || '').slice(0, 100);
+
+      const deleters = Array.from(t.allDeleters).map(uid => {
+        const u = state.allUsersCache.find(x => x.id === uid);
+        return u ? u.name : 'مستخدم';
+      });
+
+      const sender = state.allUsersCache.find(u => u.id === firstMsg.fromUserId);
+      const recipient = state.allUsersCache.find(u => u.id === firstMsg.toUserId);
+      const fromName = sender ? sender.name : (firstMsg.fromUserName || 'مستخدم');
+      const toName = recipient ? recipient.name : (firstMsg.toUserName || 'مستخدم');
+
+      const timeStr = t.latestDeleteTime
+        ? new Date(t.latestDeleteTime).toLocaleString('ar-EG', {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          })
+        : '—';
+
+      return `
+        <div class="deleted-log-item">
+          <div class="deleted-log-header">
+            <div class="deleted-log-avatars">
+              <div class="user-cell-avatar ${getAvatarGradient(fromName)}" style="width:32px;height:32px;font-size:12px;">${initials(fromName)}</div>
+              <i data-lucide="arrow-left" class="w-3 h-3 deleted-log-arrow"></i>
+              <div class="user-cell-avatar ${getAvatarGradient(toName)}" style="width:32px;height:32px;font-size:12px;">${initials(toName)}</div>
+            </div>
+            <div class="deleted-log-main">
+              <div class="deleted-log-subject">${esc(subject)}</div>
+              <div class="deleted-log-preview">${esc(preview)}</div>
+            </div>
+          </div>
+
+          <div class="deleted-log-meta">
+            <div class="deleted-log-deleters">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+              <span>حذفها من عندهم: <strong>${deleters.map(esc).join('، ')}</strong></span>
+            </div>
+            <div class="deleted-log-time">
+              <i data-lucide="clock" class="w-3 h-3"></i>
+              ${timeStr}
+            </div>
+          </div>
+
+          <div class="deleted-log-actions">
+            <button onclick="viewDeletedThread('${t.threadId}')" class="btn btn-ghost btn-sm">
+              <i data-lucide="eye" class="w-3.5 h-3.5"></i>
+              <span>عرض</span>
+            </button>
+            <button onclick="restoreDeletedThread('${t.threadId}')" class="btn btn-primary btn-sm">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+              <span>استعادة للكل</span>
+            </button>
+            <button onclick="permanentDeleteThread('${t.threadId}')" class="btn btn-danger btn-sm">
+              <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
+              <span>حذف نهائي</span>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    $('#pageContent').innerHTML = `
+      <div class="dashboard" style="max-width:1100px;">
+        <div class="page-header" style="padding:0 0 20px;border:none;">
+          <div>
+            <h1 class="dashboard-title">سجل المحذوفات</h1>
+            <p class="dashboard-date">${threads.length} محادثة · ${deleted.length} رسالة</p>
+          </div>
+          <button onclick="renderDeletedLog()" class="btn btn-ghost btn-sm">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            <span>تحديث</span>
+          </button>
+        </div>
+
+        <div class="deleted-log-list">
+          ${rows}
+        </div>
+      </div>
+    `;
+    icons();
+    updateDeletedLogBadge(deleted.length);
+
+  } catch (e) {
+    console.error('Deleted log error:', e);
+    $('#pageContent').innerHTML = `
+      <div class="dashboard">
+        <div class="empty-state">
+          <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
+          <p>خطأ في تحميل السجل</p>
+        </div>
+      </div>
+    `;
+    icons();
+  }
+}
+window.renderDeletedLog = renderDeletedLog;
+
+window.viewDeletedThread = (threadId) => {
+  state.currentFilter = 'inbox';
+  navigate('inbox');
+  setTimeout(() => {
+    if (window.openThread) window.openThread(threadId);
+  }, 400);
+};
+
+window.restoreDeletedThread = async (threadId) => {
+  const ok = await confirmDialog('استعادة للكل', 'هيتم إرجاع الرسائل لكل المستخدمين. متأكد؟');
+  if (!ok) return;
+
+  try {
+    const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
+    const snap = await getDocs(q);
+
+    for (const d of snap.docs) {
+      await updateDoc(doc(db, 'messages', d.id), { deletedBy: {} });
+    }
+
+    showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', {
+      type: 'success', icon: 'check-circle', duration: 2500
+    });
+    renderDeletedLog();
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+window.permanentDeleteThread = async (threadId) => {
+  const ok = await confirmDialog('حذف نهائي', 'هيتم حذف الرسائل نهائياً من النظام. متأكد؟');
+  if (!ok) return;
+
+  try {
+    const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
+    const snap = await getDocs(q);
+
+    for (const d of snap.docs) {
+      await deleteDoc(doc(db, 'messages', d.id));
+    }
+
+    showToastAdvanced('تم الحذف النهائي 🗑️', '', {
+      type: 'success', icon: 'trash-2', duration: 2500
+    });
+    renderDeletedLog();
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+async function updateDeletedLogBadge(count) {
+  if (!isAdmin()) return;
+
+  if (typeof count !== 'number') {
+    try {
+      const snap = await getDocs(collection(db, 'messages'));
+      count = snap.docs.filter(d => {
+        const data = d.data();
+        return data.deletedBy && Object.keys(data.deletedBy).length > 0;
+      }).length;
+    } catch (e) { count = 0; }
+  }
+
+  const els = [
+    document.getElementById('sidebarDeletedLogCount'),
+    document.getElementById('drawerDeletedLogCount')
+  ];
+
+  els.forEach(el => {
+    if (!el) return;
+    if (count > 0) {
+      el.textContent = count > 99 ? '99+' : count;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  });
+}
 console.log('🚀 Mail System v9.7 loaded — Drawer + Drafts + GoFile');
