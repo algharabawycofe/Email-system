@@ -1,18 +1,17 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.4 - Enterprise Application
-   Features: Pro Compose + Permissions + Admin Templates
+   Mail System v9.6 - Enterprise Application
+   Features: Pro Compose + Permissions + GoFile Uploads
    ═══════════════════════════════════════════════════════════ */
 
 import {
-  auth, db, storage, messaging,
+  auth, db, messaging,
   EMAIL_DOMAIN, VAPID_KEY, SW_PATH, APP_URL,
   createAuthUser, resetUserPassword,
   signInWithEmailAndPassword, signOut, onAuthStateChanged,
   setPersistence, browserLocalPersistence, browserSessionPersistence,
   getToken, onMessage,
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
-  query, where, serverTimestamp, onSnapshot, writeBatch,
-  ref, uploadBytesResumable, getDownloadURL, deleteObject
+  query, where, serverTimestamp, onSnapshot, writeBatch
 } from './firebase.js';
 
 import {
@@ -43,12 +42,8 @@ let userTags = [];
 let selectedTags = [];
 let currentTagFilter = null;
 
-// ⭐ Recipients chips state
-let recipientChips = {
-  to: [],
-  cc: [],
-  bcc: []
-};
+// Recipients chips state
+let recipientChips = { to: [], cc: [], bcc: [] };
 let activeChipField = 'to';
 let activeSuggestionIdx = -1;
 let currentSuggestions = [];
@@ -140,7 +135,7 @@ function roleNeedsDept(role) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   LOADER
+   GLOBAL LOADER
    ═══════════════════════════════════════════════════════ */
 function showLoader() {
   const l = document.getElementById('globalLoader');
@@ -152,7 +147,7 @@ function hideLoader() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   SKELETONS
+   SKELETON LOADERS
    ═══════════════════════════════════════════════════════ */
 function renderSkeletonInbox() {
   let html = '';
@@ -264,7 +259,6 @@ function setupKeyboardShortcuts() {
     if (e.key === 'Escape') {
       const cm = $('#composeModal');
       if (cm && cm.style.display === 'flex') {
-        // Only close if no suggestions open
         const openSuggestions = document.querySelector('.chips-suggestions:not(.hidden)');
         if (!openSuggestions) closeCompose();
       }
@@ -456,7 +450,7 @@ function updateUIForRole() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   TAGS
+   TAGS SYSTEM
    ═══════════════════════════════════════════════════════ */
 async function loadUserTags() {
   try {
@@ -881,7 +875,6 @@ window.quickSendToDept = async (deptId) => {
   await window.openCompose();
   const cb = $('#cDept'); const sel = $('#deptSelect');
   if (cb && sel) { sel.value = deptId; cb.checked = true; window.toggleDeptSend(); }
-  // Open options
   const optionsField = $('#optionsField');
   if (optionsField) show(optionsField);
 };
@@ -945,6 +938,14 @@ async function renderUsers() {
     `;
   }).join('');
 
+  const roleOptions = `
+    <option value="user">مستخدم</option>
+    <option value="manager">مدير قسم</option>
+    <option value="chairman">رئيس مجلس الإدارة</option>
+    <option value="vice_chairman">نائب رئيس مجلس الإدارة</option>
+    <option value="admin">مسئول السيستم</option>
+  `;
+
   $('#pageContent').innerHTML = `
     <div class="dashboard">
       <div class="page-header" style="padding:0 0 20px;border:none;">
@@ -959,13 +960,7 @@ async function renderUsers() {
           <div class="form-group"><label class="form-label">اسم المستخدم</label><input id="nuUser" class="form-input" placeholder="mohamed" /></div>
           <div class="form-group"><label class="form-label">كلمة السر</label><input id="nuPass" type="text" class="form-input" placeholder="6+ حروف" /></div>
           <div class="form-group"><label class="form-label">الدور</label><select id="nuRole" class="form-input" onchange="onRoleChange('nu')">
-            <option value="user">مستخدم</option>
-            <option value="manager">مدير قسم</option>
-            ${isOwner() ? `
-              <option value="chairman">رئيس مجلس الإدارة</option>
-              <option value="vice_chairman">نائب رئيس مجلس الإدارة</option>
-              <option value="admin">أدمن</option>
-            ` : ''}
+            ${roleOptions}
           </select></div>
         </div>
 
@@ -1008,13 +1003,7 @@ async function renderUsers() {
           <div class="form-group"><label class="form-label">الاسم</label><input id="euName" class="form-input" /></div>
           <div class="form-group"><label class="form-label">اسم المستخدم</label><input id="euUser" class="form-input form-input-disabled" disabled /></div>
           <div class="form-group"><label class="form-label">الدور</label><select id="euRole" class="form-input" onchange="onRoleChange('eu')">
-            <option value="user">مستخدم</option>
-            <option value="manager">مدير قسم</option>
-            ${isOwner() ? `
-              <option value="chairman">رئيس مجلس الإدارة</option>
-              <option value="vice_chairman">نائب رئيس مجلس الإدارة</option>
-              <option value="admin">أدمن</option>
-            ` : ''}
+            ${roleOptions}
           </select></div>
         </div>
 
@@ -1065,6 +1054,7 @@ async function renderUsers() {
   icons();
 }
 
+/* ═══ Permissions UI ═══ */
 function renderPermissionsList(containerId, selectedPerms) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -1699,23 +1689,24 @@ function renderThreadReading() {
       </div>
     ` : '';
 
+    // ⭐ GoFile: كل المرفقات تفتح في تاب جديد
     const attachmentsHtml = (m.attachments || []).length > 0 ? `
       <div class="message-attachments">
         <div class="message-attachments-title">📎 ${m.attachments.length} مرفق</div>
         <div class="message-attachments-grid">
           ${m.attachments.map(att => {
-            const isImage = (att.type || '').startsWith('image/');
             const iconName = getFileIconLucide(att.type, att.name);
+            const isImage = (att.type || '').startsWith('image/');
             return `
-              <div class="message-attachment" onclick="${isImage ? `openImageViewer('${att.url}')` : `window.open('${att.url}', '_blank')`}">
+              <div class="message-attachment" onclick="window.open('${att.url}', '_blank')">
                 ${isImage
-                  ? `<img src="${att.url}" class="message-attachment-thumb" loading="lazy" />`
+                  ? `<div class="message-attachment-thumb-icon"><i data-lucide="image" class="w-5 h-5"></i></div>`
                   : `<div class="message-attachment-thumb-icon"><i data-lucide="${iconName}" class="w-5 h-5"></i></div>`}
                 <div class="message-attachment-info">
                   <div class="message-attachment-name">${esc(att.name)}</div>
                   <div class="message-attachment-size">${formatFileSize(att.size || 0)}</div>
                 </div>
-                <i data-lucide="download" class="message-attachment-download w-4 h-4"></i>
+                <i data-lucide="external-link" class="message-attachment-download w-4 h-4"></i>
               </div>
             `;
           }).join('')}
@@ -1972,7 +1963,7 @@ window.toggleStar = async (threadId) => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   TRASH
+   TRASH — per user deletion
    ═══════════════════════════════════════════════════════ */
 window.trashThread = async (threadId, isTrash) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
@@ -2012,12 +2003,8 @@ window.permanentDelete = async (threadId) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
 
+  // ⭐ لم نعد نحذف ملفات Firebase Storage — GoFile مسؤول عن ملفاته
   for (const m of t.messages) {
-    if (m.attachments?.length) {
-      for (const att of m.attachments) {
-        try { await deleteObject(ref(storage, att.path)); } catch (e) {}
-      }
-    }
     await deleteDoc(doc(db, 'messages', m.id));
   }
 
@@ -2103,19 +2090,17 @@ async function renderSent() {
 }
 
 /* ═══════════════════════════════════════════════════════
-   COMPOSE v9.4 (Pro Email Style)
+   COMPOSE v9.6 (Pro Style + GoFile)
    ═══════════════════════════════════════════════════════ */
 window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
 
-  // Reset state
   recipientChips = { to: [], cc: [], bcc: [] };
   activeChipField = 'to';
   activeSuggestionIdx = -1;
   currentSuggestions = [];
 
-  // Reset fields
   $('#cSubject').value = '';
   $('#cBody').value = '';
   $('#cBody').dataset.fromTemplate = '';
@@ -2125,7 +2110,6 @@ window.openCompose = async () => {
   $('#cDept').checked = false;
   $('#cBroadcast').checked = false;
 
-  // Reset chips
   $('#toChips').innerHTML = '';
   $('#ccChips').innerHTML = '';
   $('#bccChips').innerHTML = '';
@@ -2135,14 +2119,12 @@ window.openCompose = async () => {
   $('#toChipsWrapper').style.opacity = '1';
   $('#toInput').disabled = false;
 
-  // Hide extra rows
   hide($('#ccRow'));
   hide($('#bccRow'));
   hide($('#optionsField'));
   hide($('#templateRow'));
   $('#extraFieldsIcon')?.setAttribute('data-lucide', 'plus');
 
-  // Reset dept select
   const deptSel = $('#deptSelect');
   const deptToggleWrap = $('#deptToggleWrap');
   if (isAdmin()) {
@@ -2158,7 +2140,6 @@ window.openCompose = async () => {
     if (deptToggleWrap) deptToggleWrap.style.display = 'none';
   }
 
-  // Broadcast toggle
   const broadcastWrap = $('#broadcastToggleWrap');
   if (broadcastWrap) {
     const canBroadcast = isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast');
@@ -2182,7 +2163,6 @@ window.openCompose = async () => {
   icons();
   setTimeout(() => $('#toInput').focus(), 150);
 
-  // Setup chip inputs
   setupChipInput('to');
   setupChipInput('cc');
   setupChipInput('bcc');
@@ -2227,7 +2207,6 @@ function setupChipInput(field) {
   const suggestions = document.getElementById(field + 'Suggestions');
   if (!input || !suggestions) return;
 
-  // Remove old listeners by cloning
   const newInput = input.cloneNode(true);
   input.parentNode.replaceChild(newInput, input);
 
@@ -2278,7 +2257,6 @@ function setupChipInput(field) {
     }
   });
 
-  // Click outside
   document.addEventListener('click', (e) => {
     if (!e.target.closest('#' + field + 'ChipsWrapper')) {
       suggestions.classList.add('hidden');
@@ -2476,13 +2454,13 @@ window.toggleDeptSend = () => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   FILE UPLOAD
+   FILE UPLOAD — GoFile (v9.6)
    ═══════════════════════════════════════════════════════ */
 window.handleFiles = async (event) => {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
 
-  const maxSize = 10 * 1024 * 1024;
+  const maxSize = 100 * 1024 * 1024; // 100MB
   const maxFiles = 10;
 
   for (const file of files) {
@@ -2491,7 +2469,7 @@ window.handleFiles = async (event) => {
       break;
     }
     if (file.size > maxSize) {
-      showToastAdvanced('الملف كبير', `${file.name} أكبر من 10MB`, { type: 'error', icon: 'alert-circle' });
+      showToastAdvanced('الملف كبير', `${file.name} أكبر من 100MB`, { type: 'error', icon: 'alert-circle' });
       continue;
     }
 
@@ -2517,36 +2495,48 @@ window.handleFiles = async (event) => {
 async function uploadFile(fileObj) {
   try {
     fileObj.status = 'uploading';
+    fileObj.progress = 10;
     renderAttachments();
 
-    const safeName = fileObj.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-    const path = `attachments/${state.currentUser.uid}/${Date.now()}_${safeName}`;
-    const storageRef = ref(storage, path);
+    // ⭐ رفع إلى GoFile
+    const formData = new FormData();
+    formData.append('file', fileObj.file);
 
-    const uploadTask = uploadBytesResumable(storageRef, fileObj.file);
-
-    await new Promise((resolve, reject) => {
-      uploadTask.on('state_changed',
-        (snapshot) => {
-          fileObj.progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-          updateAttachmentProgress(fileObj.id, fileObj.progress);
-        },
-        reject,
-        resolve
-      );
+    const response = await fetch('https://upload.gofile.io/uploadfile', {
+      method: 'POST',
+      body: formData
     });
 
-    const url = await getDownloadURL(storageRef);
-    fileObj.url = url;
-    fileObj.path = path;
+    fileObj.progress = 90;
+    renderAttachments();
+
+    if (!response.ok) {
+      throw new Error(`فشل الرفع: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (result.status !== 'ok') {
+      throw new Error(result.status || 'فشل الرفع');
+    }
+
+    // ⭐ حفظ بيانات الملف من GoFile
+    fileObj.url = result.data.downloadPage;
+    fileObj.path = result.data.id;
+    fileObj.size = result.data.size || fileObj.size;
     fileObj.status = 'done';
     fileObj.progress = 100;
     renderAttachments();
+
+    showToastAdvanced('تم الرفع ✅', fileObj.name, {
+      type: 'success', icon: 'check-circle', duration: 2000
+    });
+
   } catch (e) {
-    console.error('Upload error:', e);
+    console.error('GoFile upload error:', e);
     fileObj.status = 'error';
     renderAttachments();
-    showToastAdvanced('فشل الرفع', fileObj.name, { type: 'error', icon: 'alert-circle' });
+    showToastAdvanced('فشل الرفع', e.message, { type: 'error', icon: 'alert-circle' });
   }
 }
 
@@ -2591,15 +2581,10 @@ function renderAttachments() {
   icons();
 }
 
-window.removeAttachment = async (fileId) => {
+window.removeAttachment = (fileId) => {
   const idx = attachedFiles.findIndex(f => f.id === fileId);
   if (idx === -1) return;
-  const f = attachedFiles[idx];
-
-  if (f.path) {
-    try { await deleteObject(ref(storage, f.path)); } catch (e) {}
-  }
-
+  // GoFile: لا نحذف من السيرفر (الملفات تبقى هناك)
   attachedFiles.splice(idx, 1);
   renderAttachments();
 };
@@ -2644,7 +2629,6 @@ window.sendMessage = async () => {
     return;
   }
 
-  // Validation
   if (!broadcast && !deptSend) {
     for (const recipient of recipientChips.to) {
       if (!canSendTo(recipient)) {
@@ -2938,119 +2922,4 @@ async function registerFCMToken() {
     if (!('Notification' in window)) return;
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') return;
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (!token) return;
-    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-    console.log('✅ FCM Token saved');
-  } catch (e) { console.error('FCM error:', e); }
-}
-
-if (messaging) {
-  onMessage(messaging, (payload) => {
-    const { title, body } = payload.notification || {};
-    const data = payload.data || {};
-    showToastAdvanced(title || 'رسالة جديدة', body || '', {
-      type: 'info', icon: 'mail', duration: 6000,
-      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
-    });
-  });
-}
-
-function setupServiceWorkerMessages() {
-  if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (window.__refreshing) return;
-    window.__refreshing = true;
-    window.location.reload();
-  });
-  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
-}
-
-function startMessagesListener() {
-  if (state.unsubMessages) state.unsubMessages();
-  const q = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
-  state.unsubMessages = onSnapshot(q, (snap) => {
-    const all = [];
-    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
-    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-    const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
-    state.unreadMessages = visibleUnread;
-    updateNotificationUI();
-
-    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
-      const m = visibleUnread[0];
-      if (m && m.fromUserId !== state.currentUser.uid) {
-        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
-          type: 'info', icon: 'mail', actionLabel: 'فتح',
-          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
-          duration: 6000
-        });
-      }
-    }
-    state.lastUnreadCount = visibleUnread.length;
-
-    if (document.getElementById('inboxList')) renderInbox();
-  });
-}
-
-function updateNotificationUI() {
-  const count = state.unreadMessages.length;
-  const el = $('#inboxCount');
-  const elM = $('#inboxCountM');
-  const notifBadge = $('#notifBadge');
-
-  if (count > 0) {
-    if (el) { el.textContent = count; show(el); }
-    if (elM) { elM.textContent = count; show(elM); }
-    if (notifBadge) { notifBadge.textContent = count > 9 ? '9+' : count; notifBadge.classList.remove('hidden'); }
-  } else {
-    if (el) hide(el);
-    if (elM) hide(elM);
-    if (notifBadge) notifBadge.classList.add('hidden');
-  }
-  renderNotifDropdown();
-}
-
-function renderNotifDropdown() {
-  const list = $('#notifList');
-  if (!list) return;
-
-  if (state.unreadMessages.length === 0) {
-    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><i data-lucide="bell-off" style="width:40px;height:40px;"></i><p style="font-size:13px;">لا إشعارات</p></div>`;
-    icons();
-    return;
-  }
-
-  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
-    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
-      <div class="msg-avatar ${getAvatarGradient(m.fromUserName)}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;justify-content:space-between;gap:8px;">
-          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
-          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
-        </div>
-        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
-      </div>
-    </div>
-  `).join('');
-  icons();
-}
-
-window.openNotifMsg = (msgId, threadId) => {
-  hideStyle($('#notifDropdown'));
-  navigate('inbox');
-  setTimeout(() => window.openThread(threadId), 400);
-};
-
-window.markAllRead = async () => {
-  if (state.unreadMessages.length === 0) return;
-  const batch = writeBatch(db);
-  state.unreadMessages.forEach(m => batch.update(doc(db, 'messages', m.id), { read: true }));
-  await batch.commit();
-  hideStyle($('#notifDropdown'));
-};
-
-console.log('🚀 Mail System v9.4 loaded — Pro Compose + Permissions');
+    const reg = await navigator.service
