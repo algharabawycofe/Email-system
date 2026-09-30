@@ -233,6 +233,11 @@
           <i data-lucide="building-2" class="w-4 h-4"></i>
           <span class="nav-label">الأقسام</span>
         </button>
+             <button data-page="deletedlog" data-admin-only class="nav-item">
+          <i data-lucide="archive" class="w-4 h-4"></i>
+          <span class="nav-label">سجل المحذوفات</span>
+          <span id="sidebarDeletedLogCount" class="nav-badge hidden">0</span>
+        </button>
       </nav>
 
       <div class="sidebar-footer"><span class="text-xs">v9.8</span></div>
@@ -311,7 +316,11 @@
         <i data-lucide="building-2" class="w-5 h-5"></i>
         <span>الأقسام</span>
       </button>
-
+  <button class="drawer-item" data-admin-only onclick="drawerNavigate('deletedlog')">
+        <i data-lucide="archive" class="w-5 h-5"></i>
+        <span>سجل المحذوفات</span>
+        <span id="drawerDeletedLogCount" class="nav-badge hidden">0</span>
+      </button>
       <div class="drawer-divider"></div>
 
       <button class="drawer-item" onclick="closeMobileDrawer(); setTimeout(openProfile, 200);">
