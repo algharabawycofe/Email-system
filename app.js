@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.6 - Enterprise Application
+   Mail System v9.7 - Enterprise Application
    Features: Pro Compose + Permissions + GoFile Uploads
+             Mobile Drawer + Drafts + Notifications
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -31,9 +32,7 @@ import {
   getAvatarColor, unlockAudioOnFirstClick
 } from './utils.js';
 
-/* ═══════════════════════════════════════════════════════
-   STATE
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ STATE ═══════ */
 let deferredPrompt = null;
 let pendingSendTimeout = null;
 let lastSentData = null;
@@ -42,33 +41,18 @@ let userTags = [];
 let selectedTags = [];
 let currentTagFilter = null;
 
-// Recipients chips state
 let recipientChips = { to: [], cc: [], bcc: [] };
 let activeChipField = 'to';
 let activeSuggestionIdx = -1;
 let currentSuggestions = [];
 
-/* ═══════════════════════════════════════════════════════
-   ADMIN MESSAGE TEMPLATES
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ ADMIN TEMPLATES ═══════ */
 const ADMIN_MESSAGE_TEMPLATES = [
-  {
-    id: 'complaint',
-    label: 'شكوى',
-    icon: 'alert-triangle',
-    body: 'أود التقدم بشكوى بخصوص:\n\n\n\n\nالتفاصيل:\n'
-  },
-  {
-    id: 'inquiry',
-    label: 'استفسار',
-    icon: 'help-circle',
-    body: 'أرجو الإفادة بخصوص:\n\n\n\n\nالتفاصيل:\n'
-  }
+  { id: 'complaint', label: 'شكوى', icon: 'alert-triangle', body: 'أود التقدم بشكوى بخصوص:\n\n\n\n\nالتفاصيل:\n' },
+  { id: 'inquiry', label: 'استفسار', icon: 'help-circle', body: 'أرجو الإفادة بخصوص:\n\n\n\n\nالتفاصيل:\n' }
 ];
 
-/* ═══════════════════════════════════════════════════════
-   HELPERS
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ HELPERS ═══════ */
 function getAvatarGradient(name) {
   let hash = 0;
   const str = name || '?';
@@ -134,9 +118,6 @@ function roleNeedsDept(role) {
   return role === 'user' || role === 'manager';
 }
 
-/* ═══════════════════════════════════════════════════════
-   GLOBAL LOADER
-   ═══════════════════════════════════════════════════════ */
 function showLoader() {
   const l = document.getElementById('globalLoader');
   if (l) l.classList.remove('hidden');
@@ -146,9 +127,7 @@ function hideLoader() {
   if (l) l.classList.add('hidden');
 }
 
-/* ═══════════════════════════════════════════════════════
-   SKELETON LOADERS
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ SKELETONS ═══════ */
 function renderSkeletonInbox() {
   let html = '';
   for (let i = 0; i < 5; i++) {
@@ -181,9 +160,7 @@ function renderSkeletonTable() {
   return html;
 }
 
-/* ═══════════════════════════════════════════════════════
-   ADVANCED TOAST
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ ADVANCED TOAST ═══════ */
 function showToastAdvanced(title, body, options = {}) {
   const {
     type = 'info', icon = 'mail', actionLabel = null,
@@ -217,9 +194,7 @@ function showToastAdvanced(title, body, options = {}) {
   if (duration > 0) setTimeout(() => { if (toast.parentElement) toast.remove(); }, duration);
 }
 
-/* ═══════════════════════════════════════════════════════
-   INIT
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ INIT ═══════ */
 document.addEventListener('DOMContentLoaded', () => {
   loadTheme();
   loadSoundSetting();
@@ -242,9 +217,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkAuthState();
 });
 
-/* ═══════════════════════════════════════════════════════
-   KEYBOARD SHORTCUTS
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ KEYBOARD SHORTCUTS ═══════ */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -266,14 +239,13 @@ function setupKeyboardShortcuts() {
       hide($('#settingsModal'));
       hide($('#forgotModal'));
       hide($('#tagsModal'));
+      closeMobileDrawer();
       closeImageViewer();
     }
   });
 }
 
-/* ═══════════════════════════════════════════════════════
-   PWA
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ PWA ═══════ */
 function setupPWAHandlers() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -306,9 +278,7 @@ window.installPWA = async () => {
   if (btn) btn.classList.add('hidden');
 };
 
-/* ═══════════════════════════════════════════════════════
-   LOGIN UI
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ LOGIN ═══════ */
 function setupLoginUI() {
   const loginBtn = $('#loginBtn');
   if (loginBtn) loginBtn.onclick = handleLogin;
@@ -390,9 +360,7 @@ window.sendPasswordReset = async () => {
   }
 };
 
-/* ═══════════════════════════════════════════════════════
-   AUTH STATE
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ AUTH STATE ═══════ */
 function checkAuthState() {
   onAuthStateChanged(auth, async (user) => {
     if (!user) {
@@ -423,6 +391,7 @@ function checkAuthState() {
 
     startMessagesListener();
     setTimeout(registerFCMToken, 1500);
+    setTimeout(() => updateDraftsBadge(), 2000);
   });
 }
 
@@ -442,6 +411,14 @@ function updateUIForRole() {
   if (menuEmail) menuEmail.textContent = state.currentUser.email || '';
   if (menuAvatar) { menuAvatar.textContent = initial; applyAvatar(menuAvatar, state.currentUser.name); }
 
+  // Drawer
+  const drawerNameEl = document.getElementById('drawerName');
+  const drawerRoleEl = document.getElementById('drawerRole');
+  const drawerAvatarEl = document.getElementById('drawerAvatar');
+  if (drawerNameEl) drawerNameEl.textContent = state.currentUser.name;
+  if (drawerRoleEl) drawerRoleEl.textContent = roleLabels[state.currentUser.role] || state.currentUser.role;
+  if (drawerAvatarEl) { drawerAvatarEl.textContent = initial; applyAvatar(drawerAvatarEl, state.currentUser.name); }
+
   const admin = isAdmin();
   $$('[data-admin-only]').forEach(el => admin ? el.classList.remove('hidden') : el.classList.add('hidden'));
 
@@ -449,9 +426,7 @@ function updateUIForRole() {
   $$('[data-manager-only]').forEach(el => manager ? el.classList.remove('hidden') : el.classList.add('hidden'));
 }
 
-/* ═══════════════════════════════════════════════════════
-   TAGS SYSTEM
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ TAGS ═══════ */
 async function loadUserTags() {
   try {
     const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'tags'));
@@ -547,9 +522,7 @@ window.filterByTag = (tagId) => {
   navigate('inbox');
 };
 
-/* ═══════════════════════════════════════════════════════
-   SIDEBAR
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ SIDEBAR + MOBILE DRAWER ═══════ */
 function initSidebar() {
   const sidebar = $('#sidebar');
   const mobileNav = $('#mobileNav');
@@ -575,15 +548,56 @@ function initSidebar() {
 }
 
 window.toggleSidebar = function () {
+  if (window.innerWidth < 768) {
+    openMobileDrawer();
+    return;
+  }
   const sidebar = $('#sidebar');
   state.sidebarCollapsed = !state.sidebarCollapsed;
   sidebar.classList.toggle('collapsed', state.sidebarCollapsed);
   try { localStorage.setItem('sidebarCollapsed', state.sidebarCollapsed ? '1' : '0'); } catch (e) {}
 };
 
-/* ═══════════════════════════════════════════════════════
-   GLOBAL LISTENERS
-   ═══════════════════════════════════════════════════════ */
+window.openMobileDrawer = () => {
+  const drawer = document.getElementById('mobileDrawer');
+  if (!drawer) return;
+
+  const u = state.currentUser;
+  if (u) {
+    const avatar = document.getElementById('drawerAvatar');
+    const nameEl = document.getElementById('drawerName');
+    const roleEl = document.getElementById('drawerRole');
+    if (avatar) { avatar.textContent = initials(u.name); applyAvatar(avatar, u.name); }
+    if (nameEl) nameEl.textContent = u.name;
+    if (roleEl) roleEl.textContent = roleLabels[u.role] || u.role;
+  }
+
+  const c = state.unreadMessages.length;
+  const el = document.getElementById('drawerInboxCount');
+  if (el) {
+    if (c > 0) { el.textContent = c; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+  }
+
+  updateDraftsBadge();
+  drawer.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  icons();
+};
+
+window.closeMobileDrawer = (event) => {
+  if (event && event.target && event.target.id !== 'mobileDrawer') return;
+  const drawer = document.getElementById('mobileDrawer');
+  if (drawer) drawer.classList.add('hidden');
+  document.body.style.overflow = '';
+};
+
+window.drawerNavigate = (page) => {
+  closeMobileDrawer();
+  setTimeout(() => navigate(page), 100);
+};
+
+/* ═══════ GLOBAL LISTENERS ═══════ */
 function setupGlobalListeners() {
   const toggleBtn = $('#toggleSidebar');
   if (toggleBtn) toggleBtn.onclick = window.toggleSidebar;
@@ -654,9 +668,7 @@ function setupGlobalListeners() {
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   INSTANT SEARCH
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ INSTANT SEARCH ═══════ */
 function setupInstantSearch() {
   const input = $('#globalSearch');
   const clearBtn = $('#clearSearchBtn');
@@ -764,14 +776,13 @@ async function handleLogout() {
 
 window.signOutApp = handleLogout;
 
-/* ═══════════════════════════════════════════════════════
-   NAVIGATION
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ NAVIGATION ═══════ */
 const ROUTES = {
   inbox: renderInbox,
   sent: renderSent,
   starred: renderStarred,
   trash: renderTrash,
+  drafts: renderDrafts,
   myteam: renderMyTeam,
   users: renderUsers,
   departments: renderDepartments
@@ -788,9 +799,169 @@ export function navigate(page) {
 
 window.navigate = navigate;
 
-/* ═══════════════════════════════════════════════════════
-   MY TEAM
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ DRAFTS ═══════ */
+async function renderDrafts() {
+  $('#pageContent').innerHTML = `
+    <div class="dashboard" style="max-width:900px;">
+      <div class="page-header" style="padding:0 0 20px;border:none;">
+        <div>
+          <h1 class="dashboard-title">المسودات</h1>
+          <p class="dashboard-date">جاري التحميل...</p>
+        </div>
+      </div>
+      <div class="data-table-wrapper" style="padding:20px;">
+        ${renderSkeletonInbox()}
+      </div>
+    </div>
+  `;
+  icons();
+
+  try {
+    const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'drafts'));
+    const drafts = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
+
+    if (drafts.length === 0) {
+      $('#pageContent').innerHTML = `
+        <div class="dashboard" style="max-width:900px;">
+          <div class="page-header" style="padding:0 0 20px;border:none;">
+            <div>
+              <h1 class="dashboard-title">المسودات</h1>
+              <p class="dashboard-date">0 مسودة</p>
+            </div>
+          </div>
+          <div class="empty-state" style="padding:60px 20px;">
+            <i data-lucide="file-text" style="width:64px;height:64px;"></i>
+            <p style="margin-top:12px;">لا توجد مسودات</p>
+            <button onclick="openCompose()" class="btn btn-primary" style="margin-top:16px;">
+              <i data-lucide="pencil" class="w-4 h-4"></i>
+              <span>إنشاء مسودة جديدة</span>
+            </button>
+          </div>
+        </div>
+      `;
+      icons();
+      return;
+    }
+
+    const rows = drafts.map(d => {
+      const toUser = d.toUserId ? state.allUsersCache.find(u => u.id === d.toUserId) : null;
+      const toName = toUser ? toUser.name : '— لم يُحدد —';
+      return `
+        <div class="draft-item" onclick="openDraft('${d.id}')">
+          <div class="draft-avatar">
+            <i data-lucide="file-text" class="w-5 h-5"></i>
+          </div>
+          <div class="draft-info">
+            <div class="draft-to">إلى: ${esc(toName)}</div>
+            <div class="draft-subject">${esc(d.subject || '(بدون موضوع)')}</div>
+            <div class="draft-preview">${esc((d.body || '').slice(0, 80))}</div>
+          </div>
+          <div class="draft-time">${timeAgo(d.updatedAt || d.createdAt)}</div>
+          <button class="draft-delete" onclick="event.stopPropagation(); deleteDraft('${d.id}')" title="حذف">
+            <i data-lucide="trash-2" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    $('#pageContent').innerHTML = `
+      <div class="dashboard" style="max-width:900px;">
+        <div class="page-header" style="padding:0 0 20px;border:none;">
+          <div>
+            <h1 class="dashboard-title">المسودات</h1>
+            <p class="dashboard-date">${drafts.length} مسودة</p>
+          </div>
+          <button onclick="openCompose()" class="btn btn-primary btn-sm">
+            <i data-lucide="pencil" class="w-4 h-4"></i>
+            <span>جديدة</span>
+          </button>
+        </div>
+        <div class="data-table-wrapper" style="padding:0;overflow:hidden;">
+          ${rows}
+        </div>
+      </div>
+    `;
+    icons();
+    updateDraftsBadge(drafts.length);
+  } catch (e) {
+    console.error('Drafts load error:', e);
+    $('#pageContent').innerHTML = `
+      <div class="dashboard">
+        <div class="empty-state">
+          <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
+          <p>خطأ في تحميل المسودات</p>
+        </div>
+      </div>
+    `;
+    icons();
+  }
+}
+
+window.renderDrafts = renderDrafts;
+
+window.openDraft = async (draftId) => {
+  try {
+    const snap = await getDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId));
+    if (!snap.exists()) {
+      showToastAdvanced('المسودة مش موجودة', '', { type: 'error', icon: 'alert-circle' });
+      return;
+    }
+    const d = snap.data();
+
+    await window.openCompose();
+
+    if (d.toUserId) {
+      const toUser = state.allUsersCache.find(u => u.id === d.toUserId);
+      if (toUser) window.addRecipient('to', toUser);
+    }
+    $('#cSubject').value = d.subject || '';
+    $('#cBody').value = d.body || '';
+    $('#cDraftId').value = draftId;
+    $('#composeTitle').textContent = 'تعديل مسودة';
+
+    showToastAdvanced('تم فتح المسودة ✅', 'تعديل وحفظ', { type: 'info', icon: 'file-text', duration: 2000 });
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+window.deleteDraft = async (draftId) => {
+  const ok = await confirmDialog('حذف المسودة', 'هيتم حذف المسودة نهائياً. متأكد؟');
+  if (!ok) return;
+  try {
+    await deleteDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId));
+    showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2000 });
+    renderDrafts();
+    updateDraftsBadge();
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+async function updateDraftsBadge(count) {
+  const drawerEl = document.getElementById('drawerDraftsCount');
+  const sidebarEl = document.getElementById('sidebarDraftsCount');
+
+  if (typeof count !== 'number') {
+    try {
+      const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'drafts'));
+      count = snap.size;
+    } catch (e) { count = 0; }
+  }
+
+  [drawerEl, sidebarEl].forEach(el => {
+    if (!el) return;
+    if (count > 0) {
+      el.textContent = count;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  });
+}
+
+/* ═══════ MY TEAM ═══════ */
 async function renderMyTeam() {
   await loadUsersCache();
   await loadDepartmentsCache();
@@ -886,9 +1057,7 @@ window.quickSendToTeam = async () => {
   if (optionsField) show(optionsField);
 };
 
-/* ═══════════════════════════════════════════════════════
-   USERS MANAGEMENT
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ USERS MANAGEMENT ═══════ */
 async function renderUsers() {
   $('#pageContent').innerHTML = `
     <div class="dashboard">
@@ -1054,7 +1223,6 @@ async function renderUsers() {
   icons();
 }
 
-/* ═══ Permissions UI ═══ */
 function renderPermissionsList(containerId, selectedPerms) {
   const container = document.getElementById(containerId);
   if (!container) return;
@@ -1280,9 +1448,7 @@ window.deleteUserDoc = async (uid) => {
   renderUsers();
 };
 
-/* ═══════════════════════════════════════════════════════
-   DEPARTMENTS
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ DEPARTMENTS ═══════ */
 async function renderDepartments() {
   await loadDepartmentsCache();
   await loadUsersCache();
@@ -1396,9 +1562,7 @@ window.deleteDept = async (id) => {
   renderDepartments();
 };
 
-/* ═══════════════════════════════════════════════════════
-   INBOX
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ INBOX ═══════ */
 async function renderInbox() {
   const filter = state.currentFilter;
   const title = currentTagFilter
@@ -1408,6 +1572,7 @@ async function renderInbox() {
         sent: 'المُرسلة',
         starred: 'المميزة',
         trash: 'سلة المهملات',
+        drafts: 'المسودات',
         search: 'نتائج البحث'
       }[filter] || 'صندوق الوارد';
 
@@ -1689,7 +1854,6 @@ function renderThreadReading() {
       </div>
     ` : '';
 
-    // ⭐ GoFile: كل المرفقات تفتح في تاب جديد
     const attachmentsHtml = (m.attachments || []).length > 0 ? `
       <div class="message-attachments">
         <div class="message-attachments-title">📎 ${m.attachments.length} مرفق</div>
@@ -1962,9 +2126,7 @@ window.toggleStar = async (threadId) => {
   renderThreadReading();
 };
 
-/* ═══════════════════════════════════════════════════════
-   TRASH — per user deletion
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ TRASH ═══════ */
 window.trashThread = async (threadId, isTrash) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
@@ -2003,7 +2165,6 @@ window.permanentDelete = async (threadId) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
 
-  // ⭐ لم نعد نحذف ملفات Firebase Storage — GoFile مسؤول عن ملفاته
   for (const m of t.messages) {
     await deleteDoc(doc(db, 'messages', m.id));
   }
@@ -2037,9 +2198,7 @@ window.restoreThreadForAll = async (threadId) => {
 async function renderStarred() { state.currentFilter = 'starred'; state.searchQuery = ''; await renderInbox(); }
 async function renderTrash() { state.currentFilter = 'trash'; state.searchQuery = ''; await renderInbox(); }
 
-/* ═══════════════════════════════════════════════════════
-   SENT
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ SENT ═══════ */
 async function renderSent() {
   const q = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
   const snap = await getDocs(q);
@@ -2089,9 +2248,7 @@ async function renderSent() {
   icons();
 }
 
-/* ═══════════════════════════════════════════════════════
-   COMPOSE v9.6 (Pro Style + GoFile)
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ COMPOSE ═══════ */
 window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
@@ -2175,9 +2332,7 @@ window.closeCompose = () => {
   selectedTags = [];
 };
 
-/* ═══════════════════════════════════════════════════════
-   RECIPIENT CHIPS SYSTEM
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ RECIPIENT CHIPS ═══════ */
 function renderRecipientChips() {
   ['to', 'cc', 'bcc'].forEach(field => {
     const container = document.getElementById(field + 'Chips');
@@ -2453,14 +2608,12 @@ window.toggleDeptSend = () => {
   }
 };
 
-/* ═══════════════════════════════════════════════════════
-   FILE UPLOAD — GoFile (v9.6)
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ FILE UPLOAD — GoFile ═══════ */
 window.handleFiles = async (event) => {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
 
-  const maxSize = 100 * 1024 * 1024; // 100MB
+  const maxSize = 100 * 1024 * 1024;
   const maxFiles = 10;
 
   for (const file of files) {
@@ -2498,7 +2651,6 @@ async function uploadFile(fileObj) {
     fileObj.progress = 10;
     renderAttachments();
 
-    // ⭐ رفع إلى GoFile
     const formData = new FormData();
     formData.append('file', fileObj.file);
 
@@ -2520,7 +2672,6 @@ async function uploadFile(fileObj) {
       throw new Error(result.status || 'فشل الرفع');
     }
 
-    // ⭐ حفظ بيانات الملف من GoFile
     fileObj.url = result.data.downloadPage;
     fileObj.path = result.data.id;
     fileObj.size = result.data.size || fileObj.size;
@@ -2531,18 +2682,12 @@ async function uploadFile(fileObj) {
     showToastAdvanced('تم الرفع ✅', fileObj.name, {
       type: 'success', icon: 'check-circle', duration: 2000
     });
-
   } catch (e) {
     console.error('GoFile upload error:', e);
     fileObj.status = 'error';
     renderAttachments();
     showToastAdvanced('فشل الرفع', e.message, { type: 'error', icon: 'alert-circle' });
   }
-}
-
-function updateAttachmentProgress(fileId, progress) {
-  const bar = document.querySelector(`[data-file-id="${fileId}"] .attachment-progress-bar`);
-  if (bar) bar.style.width = progress + '%';
 }
 
 function renderAttachments() {
@@ -2584,7 +2729,6 @@ function renderAttachments() {
 window.removeAttachment = (fileId) => {
   const idx = attachedFiles.findIndex(f => f.id === fileId);
   if (idx === -1) return;
-  // GoFile: لا نحذف من السيرفر (الملفات تبقى هناك)
   attachedFiles.splice(idx, 1);
   renderAttachments();
 };
@@ -2594,9 +2738,7 @@ window.clearAttachments = () => {
   renderAttachments();
 };
 
-/* ═══════════════════════════════════════════════════════
-   SEND
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ SEND ═══════ */
 window.sendMessage = async () => {
   const broadcast = $('#cBroadcast').checked && (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast'));
   const deptSend = $('#cDept').checked;
@@ -2791,21 +2933,38 @@ window.saveDraft = async () => {
   const body = $('#cBody').value.trim();
   const status = $('#cStatus');
 
-  if (!subject && !body) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب حاجة'; return; }
+  if (!subject && !body) {
+    status.style.color = 'var(--danger)';
+    status.textContent = 'اكتب حاجة';
+    return;
+  }
 
   try {
     const draftId = $('#cDraftId').value;
-    const draftData = { toUserId: toUserId || null, subject, body, updatedAt: serverTimestamp() };
-    if (draftId) await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
-    else {
+    const draftData = {
+      toUserId: toUserId || null,
+      subject,
+      body,
+      updatedAt: serverTimestamp()
+    };
+
+    if (draftId) {
+      await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
+    } else {
       draftData.createdAt = serverTimestamp();
       const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
       $('#cDraftId').value = r.id;
     }
-    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة', { type: 'success', icon: 'file-text', duration: 2000 });
+
+    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة في "المسودات"', {
+      type: 'success', icon: 'file-text', duration: 2500
+    });
+
+    updateDraftsBadge();
     setTimeout(() => closeCompose(), 1000);
   } catch (e) {
-    status.style.color = 'var(--danger)'; status.textContent = e.message;
+    status.style.color = 'var(--danger)';
+    status.textContent = e.message;
   }
 };
 
@@ -2821,9 +2980,7 @@ window.replyToThread = async (userId, userName, threadId, subject) => {
   setTimeout(() => $('#cBody').focus(), 200);
 };
 
-/* ═══════════════════════════════════════════════════════
-   IMAGE VIEWER
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ IMAGE VIEWER ═══════ */
 window.openImageViewer = (url) => {
   const viewer = document.getElementById('imageViewer');
   const img = document.getElementById('imageViewerImg');
@@ -2840,201 +2997,4 @@ window.closeImageViewer = () => {
   document.body.style.overflow = '';
 };
 
-/* ═══════════════════════════════════════════════════════
-   PROFILE / SETTINGS
-   ═══════════════════════════════════════════════════════ */
-window.openProfile = () => {
-  const u = state.currentUser;
-  if (!u) return;
-  $('#profileName').value = u.name || '';
-  $('#profileUsername').value = u.username || '';
-  $('#profileEmail').value = u.email || '';
-  $('#profileRole').value = roleLabels[u.role] || u.role;
-  const avatarEl = $('#profileAvatar');
-  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
-  hideStyle($('#userMenu'));
-  show($('#profileModal'));
-  icons();
-};
-
-window.closeProfile = () => hide($('#profileModal'));
-
-window.saveProfile = async () => {
-  const name = $('#profileName').value.trim();
-  const status = $('#profileStatus');
-  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
-  try {
-    await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
-    state.currentUser.name = name;
-    status.className = 'alert alert-success';
-    status.textContent = '✅ تم الحفظ';
-    show(status);
-    showToastAdvanced('تم الحفظ ✅', 'الاسم اتحدّث', { type: 'success', icon: 'check', duration: 2000 });
-    setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
-  } catch (e) {
-    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
-  }
-};
-
-window.openSettings = () => {
-  hideStyle($('#userMenu'));
-  $('#darkModeToggle').checked = state.settings.darkMode;
-  const installBtn = $('#installPwaBtn');
-  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
-  show($('#settingsModal'));
-  icons();
-};
-
-window.closeSettings = () => hide($('#settingsModal'));
-
-window.toggleDarkMode = () => {
-  const isDark = toggleDarkMode();
-  const icon = $('#themeToggle i');
-  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
-  icons();
-};
-
-window.enablePushNotifications = async () => {
-  const btn = $('#enablePushBtn');
-  btn.disabled = true;
-  btn.textContent = '...';
-  try {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (token) {
-      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-      btn.textContent = '✅ مفعّل';
-      btn.className = 'btn btn-sm btn-success';
-    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
-  } catch (e) {
-    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
-  }
-};
-
-/* ═══════════════════════════════════════════════════════
-   NOTIFICATIONS
-   ═══════════════════════════════════════════════════════ */
-async function registerFCMToken() {
-  try {
-    if (!messaging) return;
-    if (!('Notification' in window)) return;
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (!token) return;
-    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-    console.log('✅ FCM Token saved');
-  } catch (e) { console.error('FCM error:', e); }
-}
-
-if (messaging) {
-  onMessage(messaging, (payload) => {
-    const { title, body } = payload.notification || {};
-    const data = payload.data || {};
-    showToastAdvanced(title || 'رسالة جديدة', body || '', {
-      type: 'info', icon: 'mail', duration: 6000,
-      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
-    });
-  });
-}
-
-function setupServiceWorkerMessages() {
-  if (!('serviceWorker' in navigator)) return;
-  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (window.__refreshing) return;
-    window.__refreshing = true;
-    window.location.reload();
-  });
-  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
-}
-
-function startMessagesListener() {
-  if (state.unsubMessages) state.unsubMessages();
-  const q = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
-  state.unsubMessages = onSnapshot(q, (snap) => {
-    const all = [];
-    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
-    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
-
-    const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
-    state.unreadMessages = visibleUnread;
-    updateNotificationUI();
-
-    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
-      const m = visibleUnread[0];
-      if (m && m.fromUserId !== state.currentUser.uid) {
-        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
-          type: 'info', icon: 'mail', actionLabel: 'فتح',
-          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
-          duration: 6000
-        });
-      }
-    }
-    state.lastUnreadCount = visibleUnread.length;
-
-    if (document.getElementById('inboxList')) renderInbox();
-  });
-}
-
-function updateNotificationUI() {
-  const count = state.unreadMessages.length;
-  const el = $('#inboxCount');
-  const elM = $('#inboxCountM');
-  const notifBadge = $('#notifBadge');
-
-  if (count > 0) {
-    if (el) { el.textContent = count; show(el); }
-    if (elM) { elM.textContent = count; show(elM); }
-    if (notifBadge) { notifBadge.textContent = count > 9 ? '9+' : count; notifBadge.classList.remove('hidden'); }
-  } else {
-    if (el) hide(el);
-    if (elM) hide(elM);
-    if (notifBadge) notifBadge.classList.add('hidden');
-  }
-  renderNotifDropdown();
-}
-
-function renderNotifDropdown() {
-  const list = $('#notifList');
-  if (!list) return;
-
-  if (state.unreadMessages.length === 0) {
-    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><i data-lucide="bell-off" style="width:40px;height:40px;"></i><p style="font-size:13px;">لا إشعارات</p></div>`;
-    icons();
-    return;
-  }
-
-  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
-    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
-      <div class="msg-avatar ${getAvatarGradient(m.fromUserName)}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;justify-content:space-between;gap:8px;">
-          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
-          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
-        </div>
-        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
-      </div>
-    </div>
-  `).join('');
-  icons();
-}
-
-window.openNotifMsg = (msgId, threadId) => {
-  hideStyle($('#notifDropdown'));
-  navigate('inbox');
-  setTimeout(() => window.openThread(threadId), 400);
-};
-
-window.markAllRead = async () => {
-  if (state.unreadMessages.length === 0) return;
-  const batch = writeBatch(db);
-  state.unreadMessages.forEach(m => batch.update(doc(db, 'messages', m.id), { read: true }));
-  await batch.commit();
-  hideStyle($('#notifDropdown'));
-};
-
-console.log('🚀 Mail System v9.6 loaded — GoFile Uploads + Permissions + Templates');
+/* ═══════ PROFILE / SETTINGS
