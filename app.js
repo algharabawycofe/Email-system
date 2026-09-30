@@ -2135,7 +2135,7 @@ window.toggleStar = async (threadId) => {
 };
 
 /* ═══════ TRASH ═══════ */
-window.trashThread = async (threadId, isTrash) => {
+window.trashThread = async (threadId, isTrash, permanent = false) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
 
@@ -2143,22 +2143,49 @@ window.trashThread = async (threadId, isTrash) => {
 
   for (const m of t.messages) {
     const deletedBy = m.deletedBy || {};
+    const permanentlyDeletedBy = m.permanentlyDeletedBy || {};
 
-    if (isTrash) {
+    if (isTrash && permanent) {
+      // ⭐ حذف نهائي من السلة → يروح لسجل الأدمن
+      const newDeletedBy = { ...deletedBy };
+      delete newDeletedBy[myUID];
+      const newPermanent = { ...permanentlyDeletedBy, [myUID]: new Date().toISOString() };
+      await updateDoc(doc(db, 'messages', m.id), {
+        deletedBy: newDeletedBy,
+        permanentlyDeletedBy: newPermanent
+      }).catch(() => {});
+      m.deletedBy = newDeletedBy;
+      m.permanentlyDeletedBy = newPermanent;
+    } else if (isTrash) {
+      // استعادة من السلة
       const newDeletedBy = { ...deletedBy };
       delete newDeletedBy[myUID];
       await updateDoc(doc(db, 'messages', m.id), { deletedBy: newDeletedBy }).catch(() => {});
       m.deletedBy = newDeletedBy;
     } else {
+      // حذف → سلة المهملات
       const newDeletedBy = { ...deletedBy, [myUID]: new Date().toISOString() };
       await updateDoc(doc(db, 'messages', m.id), { deletedBy: newDeletedBy }).catch(() => {});
       m.deletedBy = newDeletedBy;
     }
   }
 
-  if (state.currentFilter === 'trash' && isTrash) renderInbox();
-  else if (state.currentFilter !== 'trash' && !isTrash) renderInbox();
+  if (state.currentFilter === 'trash') renderInbox();
+  else if (state.currentFilter !== 'trash') renderInbox();
   else renderThreadReading();
+};
+
+// ⭐ دالة جديدة: حذف نهائي من السلة
+window.permanentDeleteFromTrash = async (threadId) => {
+  const ok = await confirmDialog(
+    'حذف نهائي',
+    'الرسالة هتتشال من عندك نهائياً ومش هترجع. متأكد؟'
+  );
+  if (!ok) return;
+  await window.trashThread(threadId, true, true);
+  showToastAdvanced('تم الحذف النهائي 🗑️', 'اختفت من عندك', {
+    type: 'success', icon: 'trash-2', duration: 2500
+  });
 };
 
 window.permanentDelete = async (threadId) => {
@@ -3236,8 +3263,10 @@ async function renderDeletedLog() {
     const snap = await getDocs(collection(db, 'messages'));
     const all = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    const deleted = all.filter(m => m.deletedBy && Object.keys(m.deletedBy).length > 0);
-
+    const deleted = all.filter(m => 
+      m.permanentlyDeletedBy && Object.keys(m.permanentlyDeletedBy).length > 0
+    );
+     
     if (deleted.length === 0) {
       $('#pageContent').innerHTML = `
         <div class="dashboard" style="max-width:1100px;">
@@ -3272,14 +3301,13 @@ async function renderDeletedLog() {
       }
       threadsMap[tid].messages.push(m);
 
-      Object.entries(m.deletedBy).forEach(([uid, timeStr]) => {
+         Object.entries(m.permanentlyDeletedBy).forEach(([uid, timeStr]) => {
         threadsMap[tid].allDeleters.add(uid);
         const t = timeStr ? new Date(timeStr).getTime() : 0;
         if (t > threadsMap[tid].latestDeleteTime) {
           threadsMap[tid].latestDeleteTime = t;
         }
       });
-    });
 
     const threads = Object.values(threadsMap).sort((a, b) => b.latestDeleteTime - a.latestDeleteTime);
 
@@ -3415,11 +3443,13 @@ window.restoreDeletedThread = async (threadId) => {
   try {
     const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
     const snap = await getDocs(q);
-
+     
     for (const d of snap.docs) {
-      await updateDoc(doc(db, 'messages', d.id), { deletedBy: {} });
+      await updateDoc(doc(db, 'messages', d.id), { 
+        permanentlyDeletedBy: {},
+        deletedBy: {}
+      });
     }
-
     showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', {
       type: 'success', icon: 'check-circle', duration: 2500
     });
@@ -3456,9 +3486,9 @@ async function updateDeletedLogBadge(count) {
   if (typeof count !== 'number') {
     try {
       const snap = await getDocs(collection(db, 'messages'));
-      count = snap.docs.filter(d => {
+           count = snap.docs.filter(d => {
         const data = d.data();
-        return data.deletedBy && Object.keys(data.deletedBy).length > 0;
+        return data.permanentlyDeletedBy && Object.keys(data.permanentlyDeletedBy).length > 0;
       }).length;
     } catch (e) { count = 0; }
   }
