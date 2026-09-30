@@ -2369,4 +2369,331 @@ async function performSend(data) {
           fromUserName: data.fromUserName,
           fromUserUsername: data.fromUserUsername,
           toUserId: u.id, toUserName: u.name,
-          read: false, isBroad
+          read: false, isBroadcast: true,
+          threadId: msgRef.id,
+          notified: false, starred: false,
+          deletedBy: {},
+          attachments: data.attachments || [],
+          tags: data.tags || [],
+          createdAt: serverTimestamp()
+        });
+      }
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} مستخدم`, { type: 'success', icon: 'check-circle', duration: 3500 });
+    } else if (data.deptSend) {
+      const recipients = getUsersByDept(data.deptId).filter(u => u.id !== state.currentUser.uid);
+      for (const u of recipients) {
+        const msgRef = doc(collection(db, 'messages'));
+        await setDoc(msgRef, {
+          subject: data.subject, body: data.body, priority: data.priority,
+          fromUserId: data.fromUserId,
+          fromUserName: data.fromUserName,
+          fromUserUsername: data.fromUserUsername,
+          toUserId: u.id, toUserName: u.name,
+          read: false, isBroadcast: false,
+          threadId: msgRef.id,
+          notified: false, starred: false,
+          deletedBy: {},
+          attachments: data.attachments || [],
+          tags: data.tags || [],
+          createdAt: serverTimestamp()
+        });
+      }
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
+    } else {
+      const toUser = state.allUsersCache.find(u => u.id === data.toUserId);
+      const ccUser = data.ccUserId ? state.allUsersCache.find(u => u.id === data.ccUserId) : null;
+      const bccUser = data.bccUserId ? state.allUsersCache.find(u => u.id === data.bccUserId) : null;
+
+      const msgRef = doc(collection(db, 'messages'));
+      await setDoc(msgRef, {
+        subject: data.subject, body: data.body, priority: data.priority,
+        fromUserId: data.fromUserId,
+        fromUserName: data.fromUserName,
+        fromUserUsername: data.fromUserUsername,
+        toUserId: data.toUserId, toUserName: toUser?.name || '',
+        ccUserId: data.ccUserId || null,
+        ccUserName: ccUser?.name || null,
+        bccUserId: data.bccUserId || null,
+        bccUserName: bccUser?.name || null,
+        read: false,
+        threadId: data.replyToThread || msgRef.id,
+        parentId: data.replyToThread ? (state._currentThreadLastMsgId || null) : null,
+        notified: false, starred: false,
+        deletedBy: {},
+        attachments: data.attachments || [],
+        tags: data.tags || [],
+        createdAt: serverTimestamp()
+      });
+
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${toUser?.name || ''}`, { type: 'success', icon: 'check-circle', duration: 3000 });
+    }
+
+    if (document.getElementById('inboxList')) renderInbox();
+  } catch (e) {
+    console.error('SEND ERROR:', e);
+    showToastAdvanced('خطأ في الإرسال', e.message, {
+      type: 'error', icon: 'alert-circle',
+      actionLabel: 'إعادة',
+      onAction: () => performSend(data),
+      duration: 8000
+    });
+  }
+}
+
+window.saveDraft = async () => {
+  const toUserId = $('#cTo').value;
+  const subject = $('#cSubject').value.trim();
+  const body = $('#cBody').value.trim();
+  const status = $('#cStatus');
+
+  if (!subject && !body) { status.style.color = 'var(--danger)'; status.textContent = 'اكتب حاجة'; return; }
+
+  try {
+    const draftId = $('#cDraftId').value;
+    const draftData = { toUserId: toUserId || null, subject, body, updatedAt: serverTimestamp() };
+    if (draftId) await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
+    else {
+      draftData.createdAt = serverTimestamp();
+      const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
+      $('#cDraftId').value = r.id;
+    }
+    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة', { type: 'success', icon: 'file-text', duration: 2000 });
+    setTimeout(() => closeCompose(), 1000);
+  } catch (e) {
+    status.style.color = 'var(--danger)'; status.textContent = e.message;
+  }
+};
+
+window.replyToThread = async (userId, userName, threadId, subject) => {
+  await window.openCompose();
+  $('#cTo').value = userId;
+  $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
+  $('#cThreadId').value = threadId;
+  $('#cBroadcast').checked = false;
+  $('#cDept').checked = false;
+  $('#toBox').classList.remove('hidden');
+  $('#composeTitle').textContent = `رد على ${userName}`;
+  // ⭐ شغّل مراقبة المستلم عشان يظهر القوالب لو المستقبل أدمن
+  setTimeout(() => {
+    window.onRecipientChange();
+    $('#cBody').focus();
+  }, 150);
+};
+
+/* ═══════════════════════════════════════════════════════
+   IMAGE VIEWER
+   ═══════════════════════════════════════════════════════ */
+window.openImageViewer = (url) => {
+  const viewer = document.getElementById('imageViewer');
+  const img = document.getElementById('imageViewerImg');
+  if (!viewer || !img) return;
+  img.src = url;
+  viewer.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  icons();
+};
+
+window.closeImageViewer = () => {
+  const viewer = document.getElementById('imageViewer');
+  if (viewer) viewer.style.display = 'none';
+  document.body.style.overflow = '';
+};
+
+/* ═══════════════════════════════════════════════════════
+   PROFILE / SETTINGS
+   ═══════════════════════════════════════════════════════ */
+window.openProfile = () => {
+  const u = state.currentUser;
+  if (!u) return;
+  $('#profileName').value = u.name || '';
+  $('#profileUsername').value = u.username || '';
+  $('#profileEmail').value = u.email || '';
+  $('#profileRole').value = roleLabels[u.role] || u.role;
+  const avatarEl = $('#profileAvatar');
+  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
+  hideStyle($('#userMenu'));
+  show($('#profileModal'));
+  icons();
+};
+
+window.closeProfile = () => hide($('#profileModal'));
+
+window.saveProfile = async () => {
+  const name = $('#profileName').value.trim();
+  const status = $('#profileStatus');
+  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
+  try {
+    await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
+    state.currentUser.name = name;
+    status.className = 'alert alert-success';
+    status.textContent = '✅ تم الحفظ';
+    show(status);
+    showToastAdvanced('تم الحفظ ✅', 'الاسم اتحدّث', { type: 'success', icon: 'check', duration: 2000 });
+    setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
+  } catch (e) {
+    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
+  }
+};
+
+window.openSettings = () => {
+  hideStyle($('#userMenu'));
+  $('#darkModeToggle').checked = state.settings.darkMode;
+  const installBtn = $('#installPwaBtn');
+  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
+  show($('#settingsModal'));
+  icons();
+};
+
+window.closeSettings = () => hide($('#settingsModal'));
+
+window.toggleDarkMode = () => {
+  const isDark = toggleDarkMode();
+  const icon = $('#themeToggle i');
+  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  icons();
+};
+
+window.enablePushNotifications = async () => {
+  const btn = $('#enablePushBtn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (token) {
+      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
+      btn.textContent = '✅ مفعّل';
+      btn.className = 'btn btn-sm btn-success';
+    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
+  } catch (e) {
+    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
+  }
+};
+
+/* ═══════════════════════════════════════════════════════
+   NOTIFICATIONS
+   ═══════════════════════════════════════════════════════ */
+async function registerFCMToken() {
+  try {
+    if (!messaging) return;
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) return;
+    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
+    console.log('✅ FCM Token saved');
+  } catch (e) { console.error('FCM error:', e); }
+}
+
+if (messaging) {
+  onMessage(messaging, (payload) => {
+    const { title, body } = payload.notification || {};
+    const data = payload.data || {};
+    showToastAdvanced(title || 'رسالة جديدة', body || '', {
+      type: 'info', icon: 'mail', duration: 6000,
+      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
+    });
+  });
+}
+
+function setupServiceWorkerMessages() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.addEventListener('message', (event) => { if (event.data?.type === 'PLAY_SOUND') playNotifSound(); });
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (window.__refreshing) return;
+    window.__refreshing = true;
+    window.location.reload();
+  });
+  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
+}
+
+function startMessagesListener() {
+  if (state.unsubMessages) state.unsubMessages();
+  const q = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
+  state.unsubMessages = onSnapshot(q, (snap) => {
+    const all = [];
+    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
+    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
+    state.unreadMessages = visibleUnread;
+    updateNotificationUI();
+
+    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
+      const m = visibleUnread[0];
+      if (m && m.fromUserId !== state.currentUser.uid) {
+        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
+          type: 'info', icon: 'mail', actionLabel: 'فتح',
+          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
+          duration: 6000
+        });
+      }
+    }
+    state.lastUnreadCount = visibleUnread.length;
+
+    if (document.getElementById('inboxList')) renderInbox();
+  });
+}
+
+function updateNotificationUI() {
+  const count = state.unreadMessages.length;
+  const el = $('#inboxCount');
+  const elM = $('#inboxCountM');
+  const notifBadge = $('#notifBadge');
+
+  if (count > 0) {
+    if (el) { el.textContent = count; show(el); }
+    if (elM) { elM.textContent = count; show(elM); }
+    if (notifBadge) { notifBadge.textContent = count > 9 ? '9+' : count; notifBadge.classList.remove('hidden'); }
+  } else {
+    if (el) hide(el);
+    if (elM) hide(elM);
+    if (notifBadge) notifBadge.classList.add('hidden');
+  }
+  renderNotifDropdown();
+}
+
+function renderNotifDropdown() {
+  const list = $('#notifList');
+  if (!list) return;
+
+  if (state.unreadMessages.length === 0) {
+    list.innerHTML = `<div class="empty-state" style="padding:40px 20px;"><i data-lucide="bell-off" style="width:40px;height:40px;"></i><p style="font-size:13px;">لا إشعارات</p></div>`;
+    icons();
+    return;
+  }
+
+  list.innerHTML = state.unreadMessages.slice(0, 10).map(m => `
+    <div onclick="openNotifMsg('${m.id}', '${m.threadId || m.id}')" style="padding:12px 16px;border-bottom:1px solid var(--border-subtle);cursor:pointer;display:flex;gap:12px;">
+      <div class="msg-avatar ${getAvatarGradient(m.fromUserName)}" style="width:36px;height:36px;font-size:13px;">${initials(m.fromUserName)}</div>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;justify-content:space-between;gap:8px;">
+          <span style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(m.fromUserName)}</span>
+          <span style="font-size:11px;color:var(--text-tertiary);flex-shrink:0;">${timeAgo(m.createdAt)}</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--text-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px;">${esc(m.subject)}</div>
+      </div>
+    </div>
+  `).join('');
+  icons();
+}
+
+window.openNotifMsg = (msgId, threadId) => {
+  hideStyle($('#notifDropdown'));
+  navigate('inbox');
+  setTimeout(() => window.openThread(threadId), 400);
+};
+
+window.markAllRead = async () => {
+  if (state.unreadMessages.length === 0) return;
+  const batch = writeBatch(db);
+  state.unreadMessages.forEach(m => batch.update(doc(db, 'messages', m.id), { read: true }));
+  await batch.commit();
+  hideStyle($('#notifDropdown'));
+};
+
+console.log('🚀 Mail System v9.2 loaded - Permissions + Admin Templates');
