@@ -2928,49 +2928,122 @@ body.dark ::-webkit-scrollbar-thumb {
   }
 }
 /* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9) — سجل المحذوفات
+   DELETED LOG (v9.9.1) — سجل المحذوفات (محسّن)
    ═══════════════════════════════════════════════════════ */
 .deleted-log-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .deleted-log-item {
   background: var(--bg-surface);
   border: 1px solid var(--border-default);
-  border-radius: 10px;
-  padding: 16px;
+  border-radius: 12px;
+  padding: 14px 16px;
   transition: all 0.15s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.deleted-log-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--danger);
+  opacity: 0.5;
 }
 
 .deleted-log-item:hover {
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
   border-color: var(--border-strong);
+  transform: translateY(-1px);
 }
 
-.deleted-log-header {
+/* ─── Row 1: From → To ─── */
+.deleted-log-row-1 {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
-.deleted-log-avatars {
+.deleted-log-from-to {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.deleted-log-from-to .user-cell-avatar {
+  width: 34px;
+  height: 34px;
+  font-size: 12px;
+  border: 2px solid var(--bg-surface);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
+.deleted-log-arrow {
+  color: var(--text-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-subtle);
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.deleted-log-names {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.deleted-log-from {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deleted-log-to {
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deleted-log-badges {
   display: flex;
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
 
-.deleted-log-arrow {
-  color: var(--text-tertiary);
-  transform: rotate(-90deg);
+.deleted-log-thread-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  background: var(--brand-primary-light);
+  color: var(--brand-primary);
+  border-radius: 10px;
 }
 
-.deleted-log-main {
-  flex: 1;
-  min-width: 0;
+/* ─── Row 2: Subject + Preview ─── */
+.deleted-log-row-2 {
+  margin-bottom: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--border-subtle);
 }
 
 .deleted-log-subject {
@@ -2985,83 +3058,190 @@ body.dark ::-webkit-scrollbar-thumb {
 
 .deleted-log-preview {
   font-size: 12.5px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.5;
 }
 
-.deleted-log-meta {
+/* ─── Row 3: Info + Actions ─── */
+.deleted-log-row-3 {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8px 0;
-  border-top: 1px solid var(--border-subtle);
-  border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: 12px;
+  justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.deleted-log-deleters {
+.deleted-log-info {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12.5px;
-  color: var(--danger);
+  gap: 14px;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
 }
 
-.deleted-log-deleters strong {
+.deleted-log-info-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.deleted-log-info-item i {
+  color: var(--danger);
+  flex-shrink: 0;
+}
+
+.deleted-log-info-item strong {
   color: var(--danger);
   font-weight: 700;
 }
 
-.deleted-log-time {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11.5px;
-  color: var(--text-tertiary);
+.deleted-log-info-label {
+  color: var(--text-secondary);
 }
 
+/* ─── Action Buttons ─── */
 .deleted-log-actions {
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
+.deleted-log-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.deleted-log-btn i {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.deleted-log-btn.view {
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  border-color: var(--border-default);
+}
+.deleted-log-btn.view:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}
+
+.deleted-log-btn.restore {
+  background: var(--brand-primary-light);
+  color: var(--brand-primary);
+  border-color: transparent;
+}
+.deleted-log-btn.restore:hover {
+  background: var(--brand-primary);
+  color: white;
+  box-shadow: 0 3px 10px rgba(0, 120, 212, 0.3);
+}
+
+.deleted-log-btn.delete {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border-color: transparent;
+}
+.deleted-log-btn.delete:hover {
+  background: var(--danger);
+  color: white;
+  box-shadow: 0 3px 10px rgba(209, 52, 56, 0.3);
+}
+
+/* ═══ Responsive — Mobile ═══ */
 @media (max-width: 767px) {
   .deleted-log-item {
-    padding: 12px;
+    padding: 12px 12px 12px 14px;
+    border-radius: 10px;
   }
 
-  .deleted-log-actions {
-    justify-content: stretch;
-    gap: 6px;
+  .deleted-log-from-to .user-cell-avatar {
+    width: 30px;
+    height: 30px;
+    font-size: 11px;
   }
 
-  .deleted-log-actions .btn {
-    flex: 1;
-    min-width: 0;
-    padding: 8px 10px;
-    font-size: 12px;
-    min-height: 36px;
+  .deleted-log-arrow {
+    width: 18px;
+    height: 18px;
   }
 
-  .deleted-log-meta {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 6px;
+  .deleted-log-from {
+    font-size: 13px;
   }
 
   .deleted-log-subject {
-    font-size: 13px;
+    font-size: 13.5px;
   }
 
   .deleted-log-preview {
     font-size: 12px;
   }
+
+  .deleted-log-row-3 {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .deleted-log-info {
+    gap: 10px;
+  }
+
+  .deleted-log-info-item {
+    font-size: 11.5px;
+  }
+
+  .deleted-log-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .deleted-log-btn {
+    justify-content: center;
+    padding: 9px 6px;
+    font-size: 11.5px;
+    min-height: 38px;
+  }
+
+  .deleted-log-btn span {
+    display: none;
+  }
+
+  .deleted-log-btn i {
+    width: 18px;
+    height: 18px;
+  }
+
+  .deleted-log-btn.view {
+    border-color: var(--border-strong);
+  }
 }
 
+@media (max-width: 380px) {
+  .deleted-log-btn {
+    min-height: 36px;
+  }
+}
+
+/* END v9.9.1 */
 /* END v9.9 */
