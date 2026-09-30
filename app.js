@@ -785,7 +785,8 @@ const ROUTES = {
   drafts: renderDrafts,
   myteam: renderMyTeam,
   users: renderUsers,
-  departments: renderDepartments
+  departments: renderDepartments,
+  deletedlog: renderDeletedLog
 };
 
 export function navigate(page) {
