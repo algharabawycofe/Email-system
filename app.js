@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.7 - Enterprise Application
+   Mail System v9.9.2 - Enterprise Application
    Features: Pro Compose + Permissions + GoFile Uploads
-             Mobile Drawer + Drafts + Notifications
+             Mobile Drawer + Drafts + Notifications + Deleted Log
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -393,6 +393,7 @@ function checkAuthState() {
     startMessagesListener();
     setTimeout(registerFCMToken, 1500);
     setTimeout(() => updateDraftsBadge(), 2000);
+    setTimeout(() => updateDeletedLogBadge(), 2500);
   });
 }
 
@@ -425,6 +426,8 @@ function updateUIForRole() {
 
   const manager = isManagerOrAbove();
   $$('[data-manager-only]').forEach(el => manager ? el.classList.remove('hidden') : el.classList.add('hidden'));
+
+  if (admin) setTimeout(() => updateDeletedLogBadge(), 500);
 }
 
 /* ═══════ TAGS ═══════ */
@@ -1958,7 +1961,7 @@ function renderThreadReading() {
         <button onclick="toggleStar('${t.threadId}')" class="toolbar-btn ${threadStarred ? 'primary' : ''}"><i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i><span>${threadStarred ? 'مميزة' : 'تمييز'}</span></button>
       ` : ''}
 
-        ${isTrash ? `
+      ${isTrash ? `
         <button onclick="trashThread('${t.threadId}', true)" class="toolbar-btn primary">
           <i data-lucide="rotate-ccw" class="w-4 h-4"></i><span>استعادة</span>
         </button>
@@ -1971,13 +1974,11 @@ function renderThreadReading() {
         </button>
       `}
 
-      ${isAdmin() && (deletedUsers.length > 0 || t.messages.some(m => Object.keys(m.deletedBy || {}).length > 0)) ? `
+      ${isAdmin() && !isTrash && (deletedUsers.length > 0 || t.messages.some(m => Object.keys(m.deletedBy || {}).length > 0)) ? `
         <button onclick="restoreThreadForAll('${t.threadId}')" class="toolbar-btn primary" title="استعادة الرسائل للجميع">
           <i data-lucide="rotate-ccw" class="w-4 h-4"></i><span>استعادة للكل</span>
         </button>
       ` : ''}
-
-      ${isTrash && isAdmin() ? `<button onclick="permanentDelete('${t.threadId}')" class="toolbar-btn danger"><i data-lucide="x-circle" class="w-4 h-4"></i><span>حذف نهائي</span></button>` : ''}
 
       <div class="toolbar-spacer"></div>
 
@@ -3236,8 +3237,9 @@ window.markAllRead = async () => {
   await batch.commit();
   hideStyle($('#notifDropdown'));
 };
+
 /* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9.2) — سجل المحذوفات (مصحح نهائياً)
+   DELETED LOG (v9.9.2) — سجل المحذوفات
    ═══════════════════════════════════════════════════════ */
 async function renderDeletedLog() {
   if (!isAdmin()) {
@@ -3296,7 +3298,6 @@ async function renderDeletedLog() {
       return;
     }
 
-    // تجميع حسب threadId
     const threadsMap = {};
 
     deleted.forEach(m => {
@@ -3440,7 +3441,62 @@ async function renderDeletedLog() {
   }
 }
 window.renderDeletedLog = renderDeletedLog;
-console.log('🚀 Mail System v9.7 loaded — Drawer + Drafts + GoFile');
+
+/* ⭐ دالة جديدة: عرض المحادثة */
+window.viewDeletedThread = (threadId) => {
+  state.currentFilter = 'inbox';
+  navigate('inbox');
+  setTimeout(() => {
+    if (window.openThread) window.openThread(threadId);
+  }, 400);
+};
+
+/* ⭐ دالة جديدة: استعادة للكل */
+window.restoreDeletedThread = async (threadId) => {
+  const ok = await confirmDialog('استعادة للكل', 'هيتم إرجاع الرسائل لكل المستخدمين. متأكد؟');
+  if (!ok) return;
+
+  try {
+    const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
+    const snap = await getDocs(q);
+
+    for (const d of snap.docs) {
+      await updateDoc(doc(db, 'messages', d.id), {
+        permanentlyDeletedBy: {},
+        deletedBy: {}
+      });
+    }
+    showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', {
+      type: 'success', icon: 'check-circle', duration: 2500
+    });
+    renderDeletedLog();
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+/* ⭐ دالة جديدة: حذف نهائي من السجل */
+window.permanentDeleteThread = async (threadId) => {
+  const ok = await confirmDialog('حذف نهائي', 'هيتم حذف الرسائل نهائياً من النظام. متأكد؟');
+  if (!ok) return;
+
+  try {
+    const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
+    const snap = await getDocs(q);
+
+    for (const d of snap.docs) {
+      await deleteDoc(doc(db, 'messages', d.id));
+    }
+
+    showToastAdvanced('تم الحذف النهائي 🗑️', '', {
+      type: 'success', icon: 'trash-2', duration: 2500
+    });
+    renderDeletedLog();
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
 /* ═══════════════════════════════════════════════════════
    DELETED LOG BADGE — v9.9.2
    ═══════════════════════════════════════════════════════ */
@@ -3474,3 +3530,5 @@ async function updateDeletedLogBadge(count) {
     }
   });
 }
+
+console.log('🚀 Mail System v9.9.2 loaded — Full Features');
