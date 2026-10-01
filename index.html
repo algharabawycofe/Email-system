@@ -28,7 +28,7 @@
   <div class="spinner"></div>
 </div>
 
-<!-- LOGIN -->
+<!-- Login Screen -->
 <div id="loginScreen" class="login-screen hidden">
   <div class="login-bg-shapes">
     <div class="shape shape-1"></div>
@@ -76,12 +76,12 @@
         </button>
       </div>
 
-      <div class="login-footer"><span>Mail System v9.9.8</span></div>
+      <div class="login-footer"><span>Mail System</span></div>
     </div>
   </div>
 </div>
 
-<!-- FORGOT PASSWORD -->
+<!-- Forgot Password Modal -->
 <div id="forgotModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-sm fade-in">
     <div class="modal-header">
@@ -99,7 +99,7 @@
           <input id="forgotEmail" type="text" placeholder="username" class="form-input" autocomplete="off" />
         </div>
         <p style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px;">
-          💡 اكتب اسم المستخدم بس (بدون @)
+          اكتب اسم المستخدم بس (بدون @)
         </p>
       </div>
       <p id="forgotStatus" class="alert hidden"></p>
@@ -114,7 +114,7 @@
   </div>
 </div>
 
-<!-- APP -->
+<!-- App Shell -->
 <div id="app" class="app-shell hidden">
   <header class="app-header">
     <div class="header-start">
@@ -272,7 +272,7 @@
         </button>
       </nav>
 
-      <div class="sidebar-footer"><span class="text-xs">v9.9.8</span></div>
+      <div class="sidebar-footer"><span class="text-xs">Mail System</span></div>
     </aside>
 
     <nav id="mobileNav" class="mobile-nav" style="display:none">
@@ -294,7 +294,7 @@
   </div>
 </div>
 
-<!-- MOBILE DRAWER -->
+<!-- Mobile Drawer -->
 <div id="mobileDrawer" class="mobile-drawer-overlay hidden" onclick="closeMobileDrawer(event)">
   <aside class="mobile-drawer" onclick="event.stopPropagation()">
     <div class="mobile-drawer-header">
@@ -393,7 +393,7 @@
   </aside>
 </div>
 
-<!-- COMPOSE MODAL -->
+<!-- Compose Modal -->
 <div id="composeModal" class="compose-modal" style="display:none">
   <div class="compose-dialog">
     <div class="compose-titlebar">
@@ -450,18 +450,18 @@
         <label class="mini-toggle">
           <input type="checkbox" id="cUrgent">
           <span class="mini-toggle-track"></span>
-          <span class="mini-toggle-label">🔴 عاجل</span>
+          <span class="mini-toggle-label">عاجل</span>
         </label>
         <label class="mini-toggle" id="deptToggleWrap">
           <input type="checkbox" id="cDept" onchange="toggleDeptSend()">
           <span class="mini-toggle-track"></span>
-          <span class="mini-toggle-label" id="deptSendLabel">📢 قسم كامل</span>
+          <span class="mini-toggle-label" id="deptSendLabel">قسم كامل</span>
         </label>
         <select id="deptSelect" class="dept-select-compact"></select>
         <label class="mini-toggle" id="broadcastToggleWrap">
           <input type="checkbox" id="cBroadcast" onchange="toggleBroadcast()">
           <span class="mini-toggle-track"></span>
-          <span class="mini-toggle-label">🌐 للجميع (<span id="broadcastCount">0</span>)</span>
+          <span class="mini-toggle-label">للجميع (<span id="broadcastCount">0</span>)</span>
         </label>
       </div>
     </div>
@@ -480,7 +480,7 @@
 
     <div id="attachmentsSection" class="compose-attachments" style="display:none;">
       <div class="attachments-header">
-        <span>📎 المرفقات (<span id="attachmentsCount">0</span>)</span>
+        <span>المرفقات (<span id="attachmentsCount">0</span>)</span>
         <button onclick="clearAttachments()" class="link-btn-sm">حذف الكل</button>
       </div>
       <div id="attachmentsList" class="attachments-list"></div>
@@ -521,7 +521,7 @@
   </div>
 </div>
 
-<!-- TAGS MANAGER -->
+<!-- Tags Manager Modal -->
 <div id="tagsModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -545,7 +545,7 @@
   </div>
 </div>
 
-<!-- ⭐ NEW: GROUPS MANAGER -->
+<!-- Contact Groups Modal -->
 <div id="groupsModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -571,7 +571,7 @@
   </div>
 </div>
 
-<!-- ⭐ NEW: AUTO-REPLY SETTINGS -->
+<!-- Auto-Reply Settings Modal -->
 <div id="autoReplyModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -608,7 +608,7 @@
   </div>
 </div>
 
-<!-- PROFILE -->
+<!-- Profile Modal -->
 <div id="profileModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -635,7 +635,7 @@
   </div>
 </div>
 
-<!-- SETTINGS -->
+<!-- Settings Modal -->
 <div id="settingsModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-md fade-in">
     <div class="modal-header">
@@ -682,7 +682,7 @@
   </div>
 </div>
 
-<!-- CHANGE PASSWORD MODAL -->
+<!-- Change Password / Reset Password Modal -->
 <div id="changePasswordModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-sm fade-in">
     <div class="modal-header">
@@ -723,13 +723,13 @@
   </div>
 </div>
 
-<!-- IMAGE VIEWER -->
+<!-- Image Viewer -->
 <div id="imageViewer" class="image-viewer" style="display:none;" onclick="closeImageViewer()">
   <button class="image-viewer-close"><i data-lucide="x" class="w-6 h-6"></i></button>
   <img id="imageViewerImg" src="" alt="" onclick="event.stopPropagation()" />
 </div>
 
-<!-- CONFIRM -->
+<!-- Confirm Dialog -->
 <div id="confirmModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-xs fade-in">
     <div class="modal-body text-center">
