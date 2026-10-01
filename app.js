@@ -1,8 +1,4 @@
-/* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.8 - Enterprise Application
-   Features: Password Reset (Secure) + CC/BCC + Rate Limit 
-            + Auto-Save + Forward + Auto-Reply + Groups + Schedule
-   ═══════════════════════════════════════════════════════════ */
+/* Mail System — Internal Messaging Platform */
 
 import {
   auth, db, messaging,
@@ -35,7 +31,7 @@ import {
   getAvatarColor, unlockAudioOnFirstClick
 } from './utils.js';
 
-/* ═══════ STATE ═══════ */
+/* State */
 let deferredPrompt = null;
 let pendingSendTimeout = null;
 let lastSentData = null;
@@ -49,20 +45,19 @@ let activeChipField = 'to';
 let activeSuggestionIdx = -1;
 let currentSuggestions = [];
 
-// ⭐ v9.9.8
 let autoSaveInterval = null;
 let lastAutoSavedHash = '';
 let scheduledCheckInterval = null;
 let userGroupsCache = [];
-let autoReplyChecked = new Set();  // لتجنب إرسال auto-reply أكثر من مرة لنفس المرسل
+let autoReplyChecked = new Set();
 
-/* ═══════ ADMIN TEMPLATES ═══════ */
+/* Admin Templates */
 const ADMIN_MESSAGE_TEMPLATES = [
   { id: 'complaint', label: 'شكوى', icon: 'alert-triangle', body: 'أود التقدم بشكوى بخصوص:\n\n\n\n\nالتفاصيل:\n' },
   { id: 'inquiry', label: 'استفسار', icon: 'help-circle', body: 'أرجو الإفادة بخصوص:\n\n\n\n\nالتفاصيل:\n' }
 ];
 
-/* ═══════ HELPERS ═══════ */
+/* Helpers */
 function getAvatarGradient(name) {
   let hash = 0;
   const str = name || '?';
@@ -129,7 +124,7 @@ function roleNeedsDept(role) {
   return role === 'user' || role === 'manager';
 }
 
-/* ═══════ SKELETONS ═══════ */
+/* Skeletons */
 function renderSkeletonInbox() {
   let html = '';
   for (let i = 0; i < 5; i++) {
@@ -162,7 +157,7 @@ function renderSkeletonTable() {
   return html;
 }
 
-/* ═══════ ADVANCED TOAST ═══════ */
+/* Toast */
 function showToastAdvanced(title, body, options = {}) {
   const {
     type = 'info', icon = 'mail', actionLabel = null,
@@ -196,7 +191,7 @@ function showToastAdvanced(title, body, options = {}) {
   if (duration > 0) setTimeout(() => { if (toast.parentElement) toast.remove(); }, duration);
 }
 
-/* ═══════ RATE LIMITING ═══════ */
+/* Rate Limiting */
 async function checkRateLimit() {
   const user = state.currentUser;
   const limit = user.rateLimitPerHour || 50;
@@ -237,7 +232,7 @@ async function checkRateLimit() {
   }
 }
 
-/* ═══════ INIT ═══════ */
+/* Init */
 document.addEventListener('DOMContentLoaded', () => {
   loadTheme();
   loadSoundSetting();
@@ -258,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
   checkAuthState();
 });
 
-/* ═══════ KEYBOARD SHORTCUTS ═══════ */
+/* Keyboard Shortcuts */
 function setupKeyboardShortcuts() {
   document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -288,7 +283,7 @@ function setupKeyboardShortcuts() {
   });
 }
 
-/* ═══════ PWA ═══════ */
+/* PWA */
 function setupPWAHandlers() {
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
@@ -301,7 +296,7 @@ function setupPWAHandlers() {
     deferredPrompt = null;
     const btn = document.getElementById('installPwaBtn');
     if (btn) btn.classList.add('hidden');
-    showToastAdvanced('تم التثبيت 🎉', 'التطبيق مثبّت على جهازك', { type: 'success', icon: 'check' });
+    showToastAdvanced('تم التثبيت', 'التطبيق مثبّت على جهازك', { type: 'success', icon: 'check' });
   });
 
   if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
@@ -321,7 +316,7 @@ window.installPWA = async () => {
   if (btn) btn.classList.add('hidden');
 };
 
-/* ═══════ LOGIN UI ═══════ */
+/* Login */
 function setupLoginUI() {
   const loginBtn = $('#loginBtn');
   if (loginBtn) loginBtn.onclick = handleLogin;
@@ -386,7 +381,6 @@ window.closeForgotModal = () => {
   const st = $('#forgotStatus'); if (st) { st.classList.add('hidden'); st.textContent = ''; }
 };
 
-/* ✅ PASSWORD RESET via Firebase Auth (آمن) */
 window.sendPasswordReset = async () => {
   const username = ($('#forgotEmail')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
   const status = $('#forgotStatus');
@@ -407,7 +401,7 @@ window.sendPasswordReset = async () => {
     await sendPasswordResetEmail(auth, email);
 
     status.className = 'alert alert-success';
-    status.textContent = '✅ تم إرسال رابط استعادة كلمة السر لإيميلك الرسمي — افتح الإيميل واتبع الرابط';
+    status.textContent = 'تم إرسال رابط استعادة كلمة السر لإيميلك الرسمي';
     show(status);
     setTimeout(() => closeForgotModal(), 5000);
 
@@ -424,7 +418,7 @@ window.sendPasswordReset = async () => {
   }
 };
 
-/* ═══════ AUTH STATE ═══════ */
+/* Auth State */
 async function checkAuthState() {
   try {
     await setPersistence(auth, browserLocalPersistence);
@@ -466,7 +460,7 @@ async function checkAuthState() {
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (!snap.exists()) {
-        alert('لا يوجد ملف مستخدم في Firestore');
+        alert('لا يوجد ملف مستخدم في قاعدة البيانات');
         await signOut(auth);
         return;
       }
@@ -541,7 +535,7 @@ function updateUIForRole() {
   }
 }
 
-/* ═══════ TAGS ═══════ */
+/* Tags */
 async function loadUserTags() {
   try {
     const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'tags'));
@@ -608,7 +602,7 @@ window.createTag = async () => {
     $('#newTagColor').value = '#0078D4';
     renderTagsManager();
     renderSidebarTags();
-    showToastAdvanced('تم الإضافة ✅', `"${name}" اتعمل`, { type: 'success', icon: 'tag', duration: 2500 });
+    showToastAdvanced('تم الإضافة', `"${name}" اتعمل`, { type: 'success', icon: 'tag', duration: 2500 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -637,7 +631,7 @@ window.filterByTag = (tagId) => {
   navigate('inbox');
 };
 
-/* ═══════ CONTACT GROUPS ═══════ */
+/* Contact Groups */
 async function loadUserGroups() {
   try {
     const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'groups'));
@@ -698,8 +692,7 @@ window.createGroup = async () => {
     userGroupsCache.push({ id: r.id, name, members: [] });
     $('#newGroupName').value = '';
     renderGroupsManager();
-    showToastAdvanced('تم الإضافة ✅', `مجموعة "${name}" اتعملت`, { type: 'success', icon: 'users', duration: 2500 });
-    // افتح نافذة إضافة الأعضاء
+    showToastAdvanced('تم الإضافة', `مجموعة "${name}" اتعملت`, { type: 'success', icon: 'users', duration: 2500 });
     window.editGroupMembers(r.id);
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
@@ -713,6 +706,7 @@ window.editGroupMembers = async (groupId) => {
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.id = 'groupMembersModal';
+  modal.style.zIndex = '10000';
   const allowed = getAllowedRecipients();
   const currentMembers = g.members || [];
 
@@ -750,7 +744,7 @@ window.saveGroupMembers = async (groupId) => {
     if (g) g.members = members;
     document.getElementById('groupMembersModal')?.remove();
     renderGroupsManager();
-    showToastAdvanced('تم الحفظ ✅', `${members.length} عضو`, { type: 'success', icon: 'users', duration: 2000 });
+    showToastAdvanced('تم الحفظ', `${members.length} عضو`, { type: 'success', icon: 'users', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -765,7 +759,7 @@ window.deleteGroup = async (groupId) => {
     await deleteDoc(doc(db, 'users', state.currentUser.uid, 'groups', groupId));
     userGroupsCache = userGroupsCache.filter(x => x.id !== groupId);
     renderGroupsManager();
-    showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2000 });
+    showToastAdvanced('تم الحذف', '', { type: 'success', icon: 'trash-2', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -785,10 +779,10 @@ window.useGroupInCompose = async (groupId) => {
     const fullUser = state.allUsersCache.find(x => x.id === m.id);
     if (fullUser) window.addRecipient('to', fullUser);
   });
-  showToastAdvanced('تم الإضافة ✅', `${g.members.length} عضو من "${g.name}"`, { type: 'success', icon: 'users', duration: 2000 });
+  showToastAdvanced('تم الإضافة', `${g.members.length} عضو من "${g.name}"`, { type: 'success', icon: 'users', duration: 2000 });
 };
 
-/* ═══════ SIDEBAR ═══════ */
+/* Sidebar */
 function initSidebar() {
   const sidebar = $('#sidebar');
   const mobileNav = $('#mobileNav');
@@ -863,7 +857,7 @@ window.drawerNavigate = (page) => {
   setTimeout(() => navigate(page), 100);
 };
 
-/* ═══════ GLOBAL LISTENERS ═══════ */
+/* Global Listeners */
 function setupGlobalListeners() {
   const toggleBtn = $('#toggleSidebar');
   if (toggleBtn) toggleBtn.onclick = window.toggleSidebar;
@@ -934,7 +928,7 @@ function setupGlobalListeners() {
   }
 }
 
-/* ═══════ INSTANT SEARCH ═══════ */
+/* Instant Search */
 function setupInstantSearch() {
   const input = $('#globalSearch');
   const clearBtn = $('#clearSearchBtn');
@@ -1053,7 +1047,7 @@ async function handleLogout() {
 
 window.signOutApp = handleLogout;
 
-/* ═══════ NAVIGATION ═══════ */
+/* Navigation */
 const ROUTES = {
   inbox: renderInbox,
   sent: renderSent,
@@ -1079,7 +1073,7 @@ export function navigate(page) {
 
 window.navigate = navigate;
 
-/* ═══════ AUTO-SAVE DRAFTS ═══════ */
+/* Auto-Save Drafts */
 async function autoSaveDraft() {
   const subject = $('#cSubject')?.value?.trim() || '';
   const body = $('#cBody')?.value?.trim() || '';
@@ -1117,18 +1111,17 @@ async function autoSaveDraft() {
       $('#cDraftId').value = r.id;
     }
     lastAutoSavedHash = hash;
-    console.log('💾 Auto-saved at', new Date().toLocaleTimeString());
     updateDraftsBadge();
   } catch (e) {
     console.warn('Auto-save failed:', e);
   }
 }
 
-/* ═══════ SCHEDULED MESSAGES ═══════ */
+/* Scheduled Messages */
 function startScheduledMessagesChecker() {
   if (scheduledCheckInterval) clearInterval(scheduledCheckInterval);
-  checkScheduledMessages();  // فحص فوري
-  scheduledCheckInterval = setInterval(checkScheduledMessages, 60000);  // كل دقيقة
+  checkScheduledMessages();
+  scheduledCheckInterval = setInterval(checkScheduledMessages, 60000);
 }
 
 async function checkScheduledMessages() {
@@ -1143,7 +1136,7 @@ async function checkScheduledMessages() {
         try {
           await performSend(data.payload);
           await deleteDoc(doc(db, 'users', state.currentUser.uid, 'scheduledMessages', d.id));
-          showToastAdvanced('📤 تم إرسال رسالة مجدولة', data.payload.subject, {
+          showToastAdvanced('تم إرسال رسالة مجدولة', data.payload.subject, {
             type: 'success', icon: 'send', duration: 4000
           });
           updateScheduledBadge();
@@ -1216,7 +1209,7 @@ async function renderScheduled() {
         <div class="draft-item">
           <div class="draft-avatar" style="background:#FFF4E5;color:#C28A2E;"><i data-lucide="clock" class="w-5 h-5"></i></div>
           <div class="draft-info">
-            <div class="draft-to">🕐 ${when}</div>
+            <div class="draft-to">${when}</div>
             <div class="draft-subject">${esc(p.subject || '(بدون موضوع)')}</div>
             <div class="draft-preview">${esc((p.body || '').slice(0, 80))}</div>
           </div>
@@ -1249,13 +1242,13 @@ window.cancelScheduled = async (id) => {
   try {
     await deleteDoc(doc(db, 'users', state.currentUser.uid, 'scheduledMessages', id));
     renderScheduled();
-    showToastAdvanced('تم الإلغاء ⏹️', '', { type: 'info', icon: 'x-circle', duration: 2000 });
+    showToastAdvanced('تم الإلغاء', '', { type: 'info', icon: 'x-circle', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
 };
 
-/* ═══════ DRAFTS ═══════ */
+/* Drafts */
 async function renderDrafts() {
   $('#pageContent').innerHTML = `
     <div class="dashboard" style="max-width:900px;">
@@ -1307,7 +1300,7 @@ async function renderDrafts() {
         <div class="draft-item" onclick="openDraft('${d.id}')">
           <div class="draft-avatar"><i data-lucide="file-text" class="w-5 h-5"></i></div>
           <div class="draft-info">
-            <div class="draft-to">إلى: ${esc(toName)} ${d.autoSaved ? '<span style="color:var(--text-tertiary);font-size:10px;">(محفوظة تلقائياً)</span>' : ''}</div>
+            <div class="draft-to">إلى: ${esc(toName)}</div>
             <div class="draft-subject">${esc(d.subject || '(بدون موضوع)')}</div>
             <div class="draft-preview">${esc((d.body || '').slice(0, 80))}</div>
           </div>
@@ -1384,7 +1377,7 @@ window.openDraft = async (draftId) => {
     $('#cBody').value = d.body || '';
     $('#cDraftId').value = draftId;
     $('#composeTitle').textContent = 'تعديل مسودة';
-    showToastAdvanced('تم فتح المسودة ✅', 'تعديل وحفظ', { type: 'info', icon: 'file-text', duration: 2000 });
+    showToastAdvanced('تم فتح المسودة', 'تعديل وحفظ', { type: 'info', icon: 'file-text', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -1395,7 +1388,7 @@ window.deleteDraft = async (draftId) => {
   if (!ok) return;
   try {
     await deleteDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId));
-    showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2000 });
+    showToastAdvanced('تم الحذف', '', { type: 'success', icon: 'trash-2', duration: 2000 });
     renderDrafts();
     updateDraftsBadge();
   } catch (e) {
@@ -1425,7 +1418,7 @@ async function updateDraftsBadge(count) {
   });
 }
 
-/* ═══════ MY TEAM ═══════ */
+/* My Team */
 async function renderMyTeam() {
   await loadUsersCache();
   await loadDepartmentsCache();
@@ -1521,7 +1514,7 @@ window.quickSendToTeam = async () => {
   if (optionsField) show(optionsField);
 };
 
-/* ═══════ USERS MANAGEMENT ═══════ */
+/* Users Management */
 async function renderUsers() {
   $('#pageContent').innerHTML = `
     <div class="dashboard">
@@ -1563,7 +1556,7 @@ async function renderUsers() {
         <td>
           <div class="row-actions">
             <button onclick="editUser('${u.id}')" class="row-action primary" title="تعديل"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
-            <button onclick="openChangePasswordModal('${u.id}', '${esc(u.username)}', '${esc(u.email || '')}', '${esc(u.name)}')" class="row-action primary" title="تغيير كلمة السر"><i data-lucide="key-round" class="w-3.5 h-3.5"></i></button>
+            <button onclick="openChangePasswordModal('${u.id}', '${esc(u.username)}', '${esc(u.email || '')}', '${esc(u.name)}')" class="row-action primary" title="استعادة كلمة السر"><i data-lucide="key-round" class="w-3.5 h-3.5"></i></button>
             <button onclick="toggleUser('${u.id}', ${u.isActive === false})" class="row-action" title="${u.isActive === false ? 'تفعيل' : 'تعطيل'}"><i data-lucide="${u.isActive === false ? 'user-check' : 'user-x'}" class="w-3.5 h-3.5"></i></button>
             <button onclick="deleteUserDoc('${u.id}')" class="row-action danger" title="حذف"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
           </div>
@@ -1605,13 +1598,13 @@ async function renderUsers() {
           <label class="check-inline" style="cursor:pointer;">
             <input type="checkbox" id="nuIsManager" class="check-input" onchange="onIsManagerChange('nu')" />
             <span class="check-box"></span>
-            <span class="check-label" style="font-weight:700;color:var(--text-primary);">👔 مدير قسم</span>
+            <span class="check-label" style="font-weight:700;color:var(--text-primary);">مدير قسم</span>
           </label>
         </div>
 
         <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
+            <span style="font-weight:700;font-size:13px;">صلاحيات الإرسال</span>
             <span style="font-size:11px;color:var(--text-tertiary);">هيتم تعبئتها تلقائياً حسب الدور</span>
           </div>
           <div id="nuPermissionsList" class="permissions-list"></div>
@@ -1643,13 +1636,13 @@ async function renderUsers() {
           <label class="check-inline" style="cursor:pointer;">
             <input type="checkbox" id="euIsManager" class="check-input" onchange="onIsManagerChange('eu')" />
             <span class="check-box"></span>
-            <span class="check-label" style="font-weight:700;color:var(--text-primary);">👔 مدير قسم</span>
+            <span class="check-label" style="font-weight:700;color:var(--text-primary);">مدير قسم</span>
           </label>
         </div>
 
         <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
+            <span style="font-weight:700;font-size:13px;">صلاحيات الإرسال</span>
           </div>
           <div id="euPermissionsList" class="permissions-list"></div>
         </div>
@@ -1800,8 +1793,8 @@ window.createNewUser = async () => {
       await updateDoc(doc(db, 'departments', deptId), { managerId: uid });
     }
 
-    err.className = 'alert alert-success'; err.textContent = `✅ تم إنشاء ${user}`;
-    showToastAdvanced('تم الإنشاء ✅', `${user} أضيف`, { type: 'success', icon: 'user-check', duration: 2500 });
+    err.className = 'alert alert-success'; err.textContent = `تم إنشاء ${user}`;
+    showToastAdvanced('تم الإنشاء', `${user} أضيف`, { type: 'success', icon: 'user-check', duration: 2500 });
     $('#nuName').value = ''; $('#nuUser').value = ''; $('#nuPass').value = '';
     setTimeout(() => { hide($('#addUserForm')); renderUsers(); }, 1200);
   } catch (e) {
@@ -1885,7 +1878,7 @@ window.saveEditUser = async () => {
     }
 
     hide($('#editUserForm'));
-    showToastAdvanced('تم الحفظ ✅', '', { type: 'success', icon: 'check', duration: 2000 });
+    showToastAdvanced('تم الحفظ', '', { type: 'success', icon: 'check', duration: 2000 });
     renderUsers();
   } catch (e) {
     err.className = 'alert alert-error'; err.textContent = e.message; show(err);
@@ -1898,13 +1891,13 @@ window.toggleUser = async (uid, activate) => {
 };
 
 window.deleteUserDoc = async (uid) => {
-  const ok = await confirmDialog('حذف المستخدم', 'هيتحذف من Firestore فقط. متأكد؟');
+  const ok = await confirmDialog('حذف المستخدم', 'هيتحذف من قاعدة البيانات. متأكد؟');
   if (!ok) return;
   await deleteDoc(doc(db, 'users', uid));
   renderUsers();
 };
 
-/* ═══════ DEPARTMENTS ═══════ */
+/* Departments */
 async function renderDepartments() {
   await loadDepartmentsCache();
   await loadUsersCache();
@@ -1925,7 +1918,7 @@ async function renderDepartments() {
         <div class="dept-card-desc">${esc(d.description || 'بدون وصف')}</div>
         <div class="dept-card-footer">
           <div style="display:flex;align-items:center;gap:6px;"><i data-lucide="users" class="w-3.5 h-3.5"></i><span>${members.length} عضو</span></div>
-          ${manager ? `<div style="display:flex;align-items:center;gap:6px;"><div style="width:22px;height:22px;border-radius:50%;background:#8764B8;color:white;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;">${initials(manager.name)}</div><span style="font-size:11.5px;color:#8764B8;font-weight:600;">${esc(manager.name)}</span></div>` : `<button onclick="editDept('${d.id}')" style="background:none;border:none;color:#E8A100;font-size:11.5px;cursor:pointer;font-weight:600;">⚠ بدون مدير</button>`}
+          ${manager ? `<div style="display:flex;align-items:center;gap:6px;"><div style="width:22px;height:22px;border-radius:50%;background:#8764B8;color:white;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;">${initials(manager.name)}</div><span style="font-size:11.5px;color:#8764B8;font-weight:600;">${esc(manager.name)}</span></div>` : `<button onclick="editDept('${d.id}')" style="background:none;border:none;color:#E8A100;font-size:11.5px;cursor:pointer;font-weight:600;">بدون مدير</button>`}
         </div>
       </div>
     `;
@@ -1964,7 +1957,7 @@ window.addDept = async () => {
   const managerId = $('#dManager').value;
   if (!name) return alert('اكتب اسم القسم');
   await addDoc(collection(db, 'departments'), { name, description, managerId: managerId || null, createdAt: serverTimestamp() });
-  showToastAdvanced('تم الإضافة ✅', `قسم ${name}`, { type: 'success', icon: 'building-2', duration: 2500 });
+  showToastAdvanced('تم الإضافة', `قسم ${name}`, { type: 'success', icon: 'building-2', duration: 2500 });
   renderDepartments();
 };
 
@@ -1979,6 +1972,7 @@ window.editDept = async (id) => {
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.id = 'deptEditModal';
+  modal.style.zIndex = '10000';
   modal.innerHTML = `
     <div class="modal-panel modal-md fade-in">
       <div class="modal-header">
@@ -2018,7 +2012,7 @@ window.deleteDept = async (id) => {
   renderDepartments();
 };
 
-/* ═══════ INBOX ═══════ */
+/* Inbox */
 async function renderInbox() {
   const filter = state.currentFilter;
   const title = currentTagFilter
@@ -2083,7 +2077,6 @@ async function renderInbox() {
       return !!deletedBy[myUID];
     }
 
-    // ⭐ فصل رسائل الأدمن: في صندوق الوارد نشيل الرسائل اللي هو بعتها
     if (state.currentFilter === 'inbox') {
       if (m.fromUserId === myUID) return false;
     }
@@ -2186,7 +2179,7 @@ function renderThreadList() {
               <span class="msg-time">${timeAgo(last.createdAt)}</span>
             </div>
             <div class="msg-subject">
-              ${t.starred ? '⭐ ' : ''}
+              ${t.starred ? '★ ' : ''}
               ${last.priority === 'urgent' ? '🔴 ' : ''}
               ${esc(t.subject)}
             </div>
@@ -2194,7 +2187,7 @@ function renderThreadList() {
             ${deletedBadgeHtml}
             ${tagsHtml}
             <div class="msg-meta">
-              ${t.messages.length > 1 ? `<span class="msg-thread-count">💬 ${t.messages.length}</span>` : ''}
+              ${t.messages.length > 1 ? `<span class="msg-thread-count">${t.messages.length} رسائل</span>` : ''}
               ${t.unread ? `<span class="msg-unread-badge">${t.unread}</span>` : ''}
             </div>
           </div>
@@ -2256,13 +2249,13 @@ function setupSwipeGestures() {
   });
 }
 
-window.swipeStar = async (threadId) => { await window.toggleStar(threadId); showToastAdvanced('تم التمييز ⭐', '', { type: 'success', icon: 'star', duration: 1500 }); };
+window.swipeStar = async (threadId) => { await window.toggleStar(threadId); showToastAdvanced('تم التمييز', '', { type: 'success', icon: 'star', duration: 1500 }); };
 
 window.swipeDelete = async (threadId) => {
   const ok = await confirmDialog('حذف المحادثة', 'متأكد؟');
   if (!ok) return;
   await window.trashThread(threadId, false);
-  showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 1500 });
+  showToastAdvanced('تم الحذف', '', { type: 'success', icon: 'trash-2', duration: 1500 });
 };
 
 window.renderInbox = renderInbox;
@@ -2380,7 +2373,7 @@ function renderThreadReading() {
 
     const attachmentsHtml = (m.attachments || []).length > 0 ? `
       <div class="message-attachments">
-        <div class="message-attachments-title">📎 ${m.attachments.length} مرفق</div>
+        <div class="message-attachments-title">${m.attachments.length} مرفق</div>
         <div class="message-attachments-grid">
           ${m.attachments.map(att => {
             const iconName = getFileIconLucide(att.type, att.name);
@@ -2419,8 +2412,8 @@ function renderThreadReading() {
             <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;">
               <span class="email-message-from">${isMe ? 'أنت' : esc(m.fromUserName)}</span>
               ${!isMe && senderEmail ? `<span style="font-size:11.5px;color:var(--text-tertiary);font-family:monospace;direction:ltr;">&lt;${esc(senderEmail)}&gt;</span>` : ''}
-              ${m.priority === 'urgent' ? '<span class="priority-urgent">🔴 عاجل</span>' : ''}
-              ${m.autoReply ? '<span style="font-size:10.5px;background:#F0E5FA;color:#8764B8;padding:2px 8px;border-radius:4px;font-weight:600;">🤖 رد تلقائي</span>' : ''}
+              ${m.priority === 'urgent' ? '<span class="priority-urgent">عاجل</span>' : ''}
+              ${m.autoReply ? '<span style="font-size:10.5px;background:#F0E5FA;color:#8764B8;padding:2px 8px;border-radius:4px;font-weight:600;">رد تلقائي</span>' : ''}
               ${isLatest && t.messages.length > 1 ? '<span style="font-size:10.5px;background:var(--brand-primary-light);color:var(--brand-primary);padding:2px 8px;border-radius:4px;font-weight:600;">الأحدث</span>' : ''}
             </div>
             ${recipientsChipsHtml}
@@ -2558,8 +2551,8 @@ window.sendInlineReply = async (toUserId, threadId, subject) => {
       createdAt: serverTimestamp()
     });
 
-    if (status) { status.style.color = 'var(--success)'; status.textContent = '✅ تم الإرسال!'; }
-    showToastAdvanced('تم الإرسال ✅', '', { type: 'success', icon: 'send', duration: 2000 });
+    if (status) { status.style.color = 'var(--success)'; status.textContent = 'تم الإرسال'; }
+    showToastAdvanced('تم الإرسال', '', { type: 'success', icon: 'send', duration: 2000 });
     document.getElementById('inlineReplyText').value = '';
     setTimeout(() => { toggleInlineReply(); renderInbox(); }, 800);
   } catch (e) {
@@ -2567,7 +2560,7 @@ window.sendInlineReply = async (toUserId, threadId, subject) => {
   }
 };
 
-/* ═══════ FORWARD ═══════ */
+/* Forward */
 window.forwardThread = async (threadId) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
@@ -2594,7 +2587,7 @@ ${lastMsg.ccUserNames?.length ? 'Cc: ' + lastMsg.ccUserNames.join('، ') : ''}
   $('#cBody').value = forwardHeader + (lastMsg.body || '');
 
   if (lastMsg.attachments?.length) {
-    const attachList = lastMsg.attachments.map(a => `📎 ${a.name} — ${a.url}`).join('\n');
+    const attachList = lastMsg.attachments.map(a => `${a.name} — ${a.url}`).join('\n');
     $('#cBody').value += '\n\nالمرفقات:\n' + attachList;
   }
 
@@ -2686,7 +2679,7 @@ window.toggleStar = async (threadId) => {
   renderThreadReading();
 };
 
-/* ═══════ TRASH ═══════ */
+/* Trash */
 window.trashThread = async (threadId, isTrash, permanent = false) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
@@ -2726,13 +2719,13 @@ window.permanentDeleteFromTrash = async (threadId) => {
   const ok = await confirmDialog('حذف نهائي', 'الرسالة هتتشال من عندك نهائياً ومش هترجع. متأكد؟');
   if (!ok) return;
   await window.trashThread(threadId, true, true);
-  showToastAdvanced('تم الحذف النهائي 🗑️', 'اختفت من عندك', { type: 'success', icon: 'trash-2', duration: 2500 });
+  showToastAdvanced('تم الحذف النهائي', 'اختفت من عندك', { type: 'success', icon: 'trash-2', duration: 2500 });
 };
 
 async function renderStarred() { state.currentFilter = 'starred'; state.searchQuery = ''; await renderInbox(); }
 async function renderTrash() { state.currentFilter = 'trash'; state.searchQuery = ''; await renderInbox(); }
 
-/* ═══════ SENT ═══════ */
+/* Sent */
 async function renderSent() {
   const q = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
   const snap = await getDocs(q);
@@ -2759,7 +2752,7 @@ async function renderSent() {
         </div>
         <div class="msg-content">
           <div class="msg-row-1">
-            <span class="msg-from">${m.isBroadcast ? `📢 إعلان عام (${m.count})` : `إلى: ${esc(m.toUserName || '')}`}</span>
+            <span class="msg-from">${m.isBroadcast ? `إعلان عام (${m.count})` : `إلى: ${esc(m.toUserName || '')}`}</span>
             <span class="msg-time">${timeAgo(m.createdAt)}</span>
           </div>
           <div class="msg-subject">${esc(m.subject)}</div>
@@ -2782,7 +2775,7 @@ async function renderSent() {
   icons();
 }
 
-/* ═══════ COMPOSE ═══════ */
+/* Compose */
 window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
@@ -2817,19 +2810,18 @@ window.openCompose = async () => {
   hide($('#templateRow'));
   $('#extraFieldsIcon')?.setAttribute('data-lucide', 'plus');
 
-  // إظهار زر المجموعات
   renderGroupsButtonInCompose();
 
   const deptSel = $('#deptSelect');
   const deptToggleWrap = $('#deptToggleWrap');
   if (isAdmin()) {
     if (deptSel) deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + state.allDeptsCache.map(d => `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`).join('');
-    const label = $('#deptSendLabel'); if (label) label.textContent = '📢 قسم كامل';
+    const label = $('#deptSendLabel'); if (label) label.textContent = 'قسم كامل';
     if (deptToggleWrap) deptToggleWrap.style.display = 'inline-flex';
   } else if (isDeptManager()) {
     const myDepts = getMyManagedDepts();
     if (deptSel) deptSel.innerHTML = '<option value="">— اختر قسم —</option>' + myDepts.map(d => `<option value="${d.id}">${esc(d.name)} (${getUsersByDept(d.id).length})</option>`).join('');
-    const label = $('#deptSendLabel'); if (label) label.textContent = '📢 فريقي';
+    const label = $('#deptSendLabel'); if (label) label.textContent = 'فريقي';
     if (deptToggleWrap) deptToggleWrap.style.display = 'inline-flex';
   } else {
     if (deptToggleWrap) deptToggleWrap.style.display = 'none';
@@ -2862,7 +2854,6 @@ window.openCompose = async () => {
   setupChipInput('cc');
   setupChipInput('bcc');
 
-  // ✅ بدء Auto-Save
   if (autoSaveInterval) clearInterval(autoSaveInterval);
   lastAutoSavedHash = '';
   autoSaveInterval = setInterval(autoSaveDraft, 30000);
@@ -2886,7 +2877,6 @@ window.closeCompose = () => {
   $('#composeTitle').textContent = 'رسالة جديدة';
   attachedFiles = [];
   selectedTags = [];
-  // ✅ إيقاف Auto-Save
   if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null; }
   lastAutoSavedHash = '';
 };
@@ -3004,8 +2994,8 @@ function showSuggestions(field, query) {
   }
 
   const roleTagMap = {
-    owner: '👑', chairman: '🎩', vice_chairman: '🎗️',
-    admin: '🛡️', manager: '👔', user: '👤'
+    owner: '', chairman: '', vice_chairman: '',
+    admin: '', manager: '', user: ''
   };
 
   suggestions.innerHTML = matches.map((u, idx) => {
@@ -3014,7 +3004,7 @@ function showSuggestions(field, query) {
       <div class="suggestion-item" data-idx="${idx}" onmousedown="event.preventDefault()" onclick="addRecipientFromSuggestion('${field}', ${idx})">
         <div class="suggestion-avatar ${getAvatarGradient(u.name)}">${initials(u.name)}</div>
         <div class="suggestion-info">
-          <div class="suggestion-name">${esc(u.name)} <span class="suggestion-role-tag">${roleTagMap[u.role] || ''} ${roleLabels[u.role] || ''}</span></div>
+          <div class="suggestion-name">${esc(u.name)} <span class="suggestion-role-tag">${roleLabels[u.role] || ''}</span></div>
           <div class="suggestion-sub">@${esc(u.username)}${dept ? ' · ' + esc(dept.name) : ''}</div>
         </div>
       </div>
@@ -3129,7 +3119,7 @@ window.applyAdminTemplate = (templateId) => {
   bodyEl.focus();
   bodyEl.setSelectionRange(bodyEl.value.length, bodyEl.value.length);
 
-  showToastAdvanced('تم تطبيق القالب ✅', `${tpl.label} — أضف ملاحظتك`, {
+  showToastAdvanced('تم تطبيق القالب', `${tpl.label} — أضف ملاحظتك`, {
     type: 'info', icon: 'file-text', duration: 2500
   });
 };
@@ -3158,7 +3148,7 @@ window.toggleDeptSend = () => {
   }
 };
 
-/* ═══════ FILE UPLOAD ═══════ */
+/* File Upload */
 window.handleFiles = async (event) => {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
@@ -3218,9 +3208,9 @@ async function uploadFile(fileObj) {
     fileObj.progress = 100;
     renderAttachments();
 
-    showToastAdvanced('تم الرفع ✅', fileObj.name, { type: 'success', icon: 'check-circle', duration: 2000 });
+    showToastAdvanced('تم الرفع', fileObj.name, { type: 'success', icon: 'check-circle', duration: 2000 });
   } catch (e) {
-    console.error('GoFile upload error:', e);
+    console.error('Upload error:', e);
     fileObj.status = 'error';
     renderAttachments();
     showToastAdvanced('فشل الرفع', e.message, { type: 'error', icon: 'alert-circle' });
@@ -3275,7 +3265,7 @@ window.clearAttachments = () => {
   renderAttachments();
 };
 
-/* ═══════ SEND with RATE LIMIT + SCHEDULE OPTION ═══════ */
+/* Send Message */
 window.sendMessage = async (options = {}) => {
   const broadcast = $('#cBroadcast').checked && (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast'));
   const deptSend = $('#cDept').checked;
@@ -3310,13 +3300,12 @@ window.sendMessage = async (options = {}) => {
     return;
   }
 
-  // ✅ Rate Limit
   if (!options.skipRateLimit) {
     const rl = await checkRateLimit();
     if (!rl.allowed) {
       status.style.color = 'var(--danger)';
       status.textContent = rl.message;
-      showToastAdvanced('⏱️ تجاوزت الحد', rl.message, {
+      showToastAdvanced('تجاوزت الحد', rl.message, {
         type: 'warning', icon: 'clock', duration: 5000
       });
       return;
@@ -3358,7 +3347,6 @@ window.sendMessage = async (options = {}) => {
     tags: selectedTags.slice()
   };
 
-  // ✅ Scheduled Send
   if (options.scheduledFor) {
     try {
       await addDoc(collection(db, 'users', state.currentUser.uid, 'scheduledMessages'), {
@@ -3367,7 +3355,7 @@ window.sendMessage = async (options = {}) => {
         createdAt: serverTimestamp()
       });
       closeCompose();
-      showToastAdvanced('⏰ تم الجدولة', `هيتم الإرسال في ${options.scheduledFor.toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, {
+      showToastAdvanced('تم الجدولة', `هيتم الإرسال في ${options.scheduledFor.toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, {
         type: 'success', icon: 'clock', duration: 5000
       });
       updateScheduledBadge();
@@ -3378,7 +3366,6 @@ window.sendMessage = async (options = {}) => {
     return;
   }
 
-  // الإرسال الفوري
   closeCompose();
 
   const undoToast = document.createElement('div');
@@ -3410,7 +3397,7 @@ window.undoSend = () => {
     pendingSendTimeout = null;
     lastSentData = null;
     document.getElementById('undoSendToast')?.remove();
-    showToastAdvanced('تم الإلغاء ⏹️', '', { type: 'info', icon: 'x-circle', duration: 2500 });
+    showToastAdvanced('تم الإلغاء', '', { type: 'info', icon: 'x-circle', duration: 2500 });
   }
 };
 
@@ -3434,7 +3421,7 @@ async function performSend(data) {
           createdAt: serverTimestamp()
         });
       }
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} مستخدم`, { type: 'success', icon: 'check-circle', duration: 3500 });
+      showToastAdvanced('تم الإرسال', `وصلت لـ ${recipients.length} مستخدم`, { type: 'success', icon: 'check-circle', duration: 3500 });
     } else if (data.deptSend) {
       const recipients = getUsersByDept(data.deptId).filter(u => u.id !== state.currentUser.uid);
       for (const u of recipients) {
@@ -3453,7 +3440,7 @@ async function performSend(data) {
           createdAt: serverTimestamp()
         });
       }
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
+      showToastAdvanced('تم الإرسال', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
     } else {
       const toIds = data.toUsers.map(u => u.id);
       const toNames = data.toUsers.map(u => u.name);
@@ -3480,7 +3467,7 @@ async function performSend(data) {
       });
 
       const summary = [...toNames, ...ccNames].filter(Boolean).join('، ') || bccNames.join('، ');
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${summary}`, { type: 'success', icon: 'check-circle', duration: 3000 });
+      showToastAdvanced('تم الإرسال', `وصلت لـ ${summary}`, { type: 'success', icon: 'check-circle', duration: 3000 });
     }
 
     if (document.getElementById('inboxList')) renderInbox();
@@ -3523,7 +3510,7 @@ window.saveDraft = async () => {
       const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
       $('#cDraftId').value = r.id;
     }
-    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة في "المسودات"', { type: 'success', icon: 'file-text', duration: 2500 });
+    showToastAdvanced('تم الحفظ', 'المسودة محفوظة في "المسودات"', { type: 'success', icon: 'file-text', duration: 2500 });
     updateDraftsBadge();
     setTimeout(() => closeCompose(), 1000);
   } catch (e) {
@@ -3532,7 +3519,7 @@ window.saveDraft = async () => {
   }
 };
 
-/* ═══════ SCHEDULED SEND UI ═══════ */
+/* Scheduled Send UI */
 window.openScheduleModal = () => {
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -3542,9 +3529,9 @@ window.openScheduleModal = () => {
   };
 
   const modal = document.createElement('div');
- modal.className = 'modal-backdrop';
-modal.id = 'scheduleModal';
-modal.style.zIndex = '10000';
+  modal.className = 'modal-backdrop';
+  modal.id = 'scheduleModal';
+  modal.style.zIndex = '10000';
   modal.innerHTML = `
     <div class="modal-panel modal-md fade-in">
       <div class="modal-header">
@@ -3612,7 +3599,7 @@ window.confirmSchedule = async () => {
   await window.sendMessage({ scheduledFor: dt, skipRateLimit: true });
 };
 
-/* ═══════ AUTO-REPLY ═══════ */
+/* Auto Reply */
 window.openAutoReplySettings = () => {
   hideStyle($('#userMenu'));
   const u = state.currentUser;
@@ -3641,7 +3628,7 @@ window.saveAutoReply = async () => {
     state.currentUser.autoReplyEnabled = enabled;
     state.currentUser.autoReplyMessage = message;
     closeAutoReplySettings();
-    showToastAdvanced(enabled ? '✅ تم التفعيل' : '⏹️ تم الإيقاف',
+    showToastAdvanced(enabled ? 'تم التفعيل' : 'تم الإيقاف',
       enabled ? 'الرد التلقائي شغال' : 'الرد التلقائي متوقف',
       { type: 'success', icon: 'zap', duration: 2500 });
   } catch (e) {
@@ -3653,12 +3640,10 @@ async function trySendAutoReply(originalMsg) {
   const u = state.currentUser;
   if (!u.autoReplyEnabled || !u.autoReplyMessage) return;
 
-  // تجنب الرد على نفس المرسل مرتين خلال 24 ساعة
   const key = `autoreply_${originalMsg.fromUserId}_${new Date().toDateString()}`;
   if (autoReplyChecked.has(key)) return;
   autoReplyChecked.add(key);
 
-  // متبعتش رد تلقائي لنفسك أو لرسائل الرد التلقائي
   if (originalMsg.fromUserId === u.uid) return;
   if (originalMsg.autoReply) return;
 
@@ -3670,7 +3655,7 @@ async function trySendAutoReply(originalMsg) {
     const msgRef = doc(collection(db, 'messages'));
     await setDoc(msgRef, {
       subject: 'رد: ' + (originalMsg.subject || ''),
-      body: `🤖 رسالة تلقائية:\n\n${u.autoReplyMessage}`,
+      body: `رسالة تلقائية:\n\n${u.autoReplyMessage}`,
       priority: 'normal',
       fromUserId: u.uid,
       fromUserName: u.name,
@@ -3688,13 +3673,12 @@ async function trySendAutoReply(originalMsg) {
       autoReply: true,
       createdAt: serverTimestamp()
     });
-    console.log('✅ Auto-reply sent to', fromUser.name);
   } catch (e) {
     console.warn('Auto-reply failed:', e);
   }
 }
 
-/* ═══════ MESSAGES LISTENER ═══════ */
+/* Messages Listener */
 function startMessagesListener() {
   if (state.unsubMessages) state.unsubMessages();
   const myUID = state.currentUser.uid;
@@ -3728,7 +3712,6 @@ function startMessagesListener() {
           const data = { id: change.doc.id, ...change.doc.data() };
           merged.set(change.doc.id, data);
 
-          // ✅ Trigger Auto-Reply للرسائل الجديدة فقط
           if (change.type === 'added' && !seenMsgIds.has(change.doc.id)) {
             seenMsgIds.add(change.doc.id);
             if (data.fromUserId !== myUID && !data.autoReply) {
@@ -3739,7 +3722,7 @@ function startMessagesListener() {
       });
       rebuildUI();
     }, (err) => {
-      console.warn('Listener error (need index?):', err.message);
+      console.warn('Listener error:', err.message);
     });
     unsubs.push(unsub);
   });
@@ -3807,7 +3790,7 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-/* ═══════ DELETED LOG ═══════ */
+/* Deleted Log */
 async function renderDeletedLog() {
   if (!isAdmin()) {
     $('#pageContent').innerHTML = `
@@ -3950,7 +3933,7 @@ window.restoreDeletedThread = async (threadId) => {
     for (const d of snap.docs) {
       await updateDoc(doc(db, 'messages', d.id), { permanentlyDeletedBy: {}, deletedBy: {} });
     }
-    showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', { type: 'success', icon: 'check-circle', duration: 2500 });
+    showToastAdvanced('تم الاستعادة', 'الرسائل رجعت للكل', { type: 'success', icon: 'check-circle', duration: 2500 });
     renderDeletedLog();
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
@@ -3964,7 +3947,7 @@ window.permanentDeleteThread = async (threadId) => {
     const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
     const snap = await getDocs(q);
     for (const d of snap.docs) await deleteDoc(doc(db, 'messages', d.id));
-    showToastAdvanced('تم الحذف النهائي 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2500 });
+    showToastAdvanced('تم الحذف النهائي', '', { type: 'success', icon: 'trash-2', duration: 2500 });
     renderDeletedLog();
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
@@ -3990,7 +3973,7 @@ async function updateDeletedLogBadge(count) {
   });
 }
 
-/* ═══════ CHANGE PASSWORD UI (NEW - Firebase Auth) ═══════ */
+/* Change Password */
 window.openChangePasswordModal = (userId, username, email, displayName) => {
   if (!isAdmin()) {
     showToastAdvanced('غير مسموح', 'مسئول السيستم بس', { type: 'error', icon: 'shield-x' });
@@ -4000,6 +3983,8 @@ window.openChangePasswordModal = (userId, username, email, displayName) => {
   $('#cpUsername').value = username || '';
   $('#cpEmail').value = email || '';
   $('#changePasswordSubtitle').textContent = displayName || username || '';
+  const emailDisplay = document.getElementById('cpEmailDisplay');
+  if (emailDisplay) emailDisplay.value = email || 'غير متوفر';
   const status = $('#cpStatus');
   status.className = 'alert hidden';
   status.textContent = '';
@@ -4038,8 +4023,8 @@ window.saveUserPassword = async () => {
     try { await deleteApp(secondaryApp); } catch (x) {}
 
     status.className = 'alert alert-success';
-    status.textContent = '✅ تم إرسال رابط استعادة كلمة السر لإيميل المستخدم';
-    showToastAdvanced('تم الإرسال ✅', `رابط الإرسال لـ ${email}`, { type: 'success', icon: 'mail', duration: 5000 });
+    status.textContent = 'تم إرسال رابط استعادة كلمة السر لإيميل المستخدم';
+    showToastAdvanced('تم الإرسال', `رابط الإرسال لـ ${email}`, { type: 'success', icon: 'mail', duration: 5000 });
 
     if (window._currentResetReqId) {
       try {
@@ -4062,7 +4047,7 @@ window.saveUserPassword = async () => {
   }
 };
 
-/* ═══════ PASSWORD RESET REQUESTS PAGE ═══════ */
+/* Password Reset Requests */
 async function renderPasswordResetRequests() {
   if (!isAdmin()) {
     $('#pageContent').innerHTML = `<div class="dashboard"><div class="empty-state" style="padding:60px 20px;"><i data-lucide="shield-x" style="width:64px;height:64px;color:var(--danger);"></i><p style="margin-top:12px;">غير مسموح</p></div></div>`;
@@ -4107,7 +4092,7 @@ async function renderPasswordResetRequests() {
               <span class="deleted-log-to">@${esc(r.username || '')} ${r.userEmail ? '· ' + esc(r.userEmail) : ''}</span>
             </div>
             <div class="deleted-log-badges">
-              ${isPending ? '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--warning-bg);color:#7A5D00;border-radius:10px;">⏳ معلق</span>' : '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--success-bg);color:var(--success);border-radius:10px;">✅ تم الحل</span>'}
+              ${isPending ? '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--warning-bg);color:#7A5D00;border-radius:10px;">معلق</span>' : '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--success-bg);color:var(--success);border-radius:10px;">تم الحل</span>'}
             </div>
           </div>
           <div class="deleted-log-row-2">
@@ -4140,8 +4125,8 @@ async function renderPasswordResetRequests() {
           <button onclick="renderPasswordResetRequests()" class="btn btn-ghost btn-sm"><i data-lucide="refresh-cw" class="w-4 h-4"></i>تحديث</button>
         </div>
         <div class="deleted-log-list">
-          ${pending.length > 0 ? `<h3 style="font-size:14px;font-weight:700;margin:8px 0;">⏳ الطلبات المعلقة (${pending.length})</h3>${pending.map(renderRequest).join('')}` : ''}
-          ${resolved.length > 0 ? `<h3 style="font-size:14px;font-weight:700;margin:20px 0 8px;">✅ تم حلها (${resolved.length})</h3>${resolved.slice(0, 20).map(renderRequest).join('')}` : ''}
+          ${pending.length > 0 ? `<h3 style="font-size:14px;font-weight:700;margin:8px 0;">الطلبات المعلقة (${pending.length})</h3>${pending.map(renderRequest).join('')}` : ''}
+          ${resolved.length > 0 ? `<h3 style="font-size:14px;font-weight:700;margin:20px 0 8px;">تم حلها (${resolved.length})</h3>${resolved.slice(0, 20).map(renderRequest).join('')}` : ''}
         </div>
       </div>
     `;
@@ -4181,7 +4166,7 @@ window.deletePasswordResetRequest = async (reqId) => {
   if (!ok) return;
   try {
     await deleteDoc(doc(db, 'passwordResetRequests', reqId));
-    showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2000 });
+    showToastAdvanced('تم الحذف', '', { type: 'success', icon: 'trash-2', duration: 2000 });
     renderPasswordResetRequests();
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
@@ -4204,7 +4189,7 @@ async function updatePasswordResetBadge(count) {
   });
 }
 
-/* ═══════ PROFILE / SETTINGS ═══════ */
+/* Profile / Settings */
 window.openProfile = () => {
   const u = state.currentUser;
   if (!u) return;
@@ -4229,7 +4214,7 @@ window.saveProfile = async () => {
     await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
     state.currentUser.name = name;
     status.className = 'alert alert-success';
-    status.textContent = '✅ تم الحفظ';
+    status.textContent = 'تم الحفظ';
     show(status);
     setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
   } catch (e) {
@@ -4267,7 +4252,7 @@ window.enablePushNotifications = async () => {
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if (token) {
       await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-      btn.textContent = '✅ مفعّل';
+      btn.textContent = 'مفعّل';
       btn.className = 'btn btn-sm btn-success';
     } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
   } catch (e) {
@@ -4275,7 +4260,7 @@ window.enablePushNotifications = async () => {
   }
 };
 
-/* ═══════ NOTIFICATIONS ═══════ */
+/* Notifications */
 async function registerFCMToken() {
   try {
     if (!messaging) return;
@@ -4286,7 +4271,6 @@ async function registerFCMToken() {
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if (!token) return;
     await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-    console.log('✅ FCM Token saved');
   } catch (e) { console.error('FCM error:', e); }
 }
 
@@ -4314,10 +4298,10 @@ function setupServiceWorkerMessages() {
     sessionStorage.removeItem('app_updating');
     window.location.reload();
   });
-  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
+  navigator.serviceWorker.register(SW_PATH).catch(() => {});
 }
 
-/* ═══════ IMAGE VIEWER ═══════ */
+/* Image Viewer */
 window.openImageViewer = (url) => {
   const viewer = document.getElementById('imageViewer');
   const img = document.getElementById('imageViewerImg');
@@ -4343,5 +4327,3 @@ window.replyToThread = async (userId, userName, threadId, subject) => {
   $('#composeTitle').textContent = `رد على ${userName}`;
   setTimeout(() => $('#cBody').focus(), 200);
 };
-
-console.log('🚀 Mail System v9.9.8 loaded — Password + CC/BCC + Rate Limit + Auto-Save + Forward + Auto-Reply + Groups + Schedule');
