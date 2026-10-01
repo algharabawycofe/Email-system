@@ -1,13 +1,9 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.4 - Utilities & Helpers
-   WhatsApp Sound + Roles + Permissions + Admin Templates
+   Mail System v9.9.5 - Utilities & Helpers
    ═══════════════════════════════════════════════════════════ */
 
 import { auth, db, doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from './firebase.js';
 
-/* ═══════════════════════════════════════════════════════
-   GLOBAL STATE
-   ═══════════════════════════════════════════════════════ */
 export const state = {
   currentUser: null,
   allUsersCache: [],
@@ -27,9 +23,6 @@ export const state = {
   }
 };
 
-/* ═══════════════════════════════════════════════════════
-   DOM HELPERS
-   ═══════════════════════════════════════════════════════ */
 export const $ = (s) => document.querySelector(s);
 export const $$ = (s) => document.querySelectorAll(s);
 
@@ -39,9 +32,6 @@ export const hide = (el) => { if (el) el.classList.add('hidden'); };
 export const showStyle = (el, display = 'block') => { if (el) el.style.display = display; };
 export const hideStyle = (el) => { if (el) el.style.display = 'none'; };
 
-/* ═══════════════════════════════════════════════════════
-   STRING HELPERS
-   ═══════════════════════════════════════════════════════ */
 export const esc = (s = '') => s.toString().replace(/[&<>"']/g, c => ({
   '&': '&amp;',
   '<': '&lt;',
@@ -61,9 +51,6 @@ export const truncate = (str, len = 60) => {
   return str.length > len ? str.slice(0, len) + '...' : str;
 };
 
-/* ═══════════════════════════════════════════════════════
-   DATE HELPERS
-   ═══════════════════════════════════════════════════════ */
 export const timeAgo = (ts) => {
   if (!ts || !ts.seconds) return '';
   const d = new Date(ts.seconds * 1000);
@@ -97,9 +84,6 @@ export const todayArabic = () => {
   });
 };
 
-/* ═══════════════════════════════════════════════════════
-   ROLE HELPERS
-   ═══════════════════════════════════════════════════════ */
 export const isOwner = () => state.currentUser?.role === 'owner';
 export const isAdmin = () => state.currentUser?.role === 'admin' || isOwner();
 export const isChairman = () => state.currentUser?.role === 'chairman';
@@ -131,9 +115,6 @@ export const roleColors = {
   user: 'bg-slate-100 text-slate-700'
 };
 
-/* ═══════════════════════════════════════════════════════
-   ICONS
-   ═══════════════════════════════════════════════════════ */
 let iconsScheduled = false;
 export const icons = () => {
   if (!window.lucide || !window.lucide.createIcons) return;
@@ -145,9 +126,6 @@ export const icons = () => {
   });
 };
 
-/* ═══════════════════════════════════════════════════════
-   THEME
-   ═══════════════════════════════════════════════════════ */
 export function applyTheme(dark) {
   state.settings.darkMode = dark;
   if (dark) document.body.classList.add('dark');
@@ -173,9 +151,6 @@ export function toggleDarkMode() {
   return isDark;
 }
 
-/* ═══════════════════════════════════════════════════════
-   SOUND
-   ═══════════════════════════════════════════════════════ */
 let audioCtx = null;
 
 function getAudioContext() {
@@ -230,9 +205,6 @@ export function loadSoundSetting() {
   } catch (e) {}
 }
 
-/* ═══════════════════════════════════════════════════════
-   CONFIRM MODAL
-   ═══════════════════════════════════════════════════════ */
 export function confirmDialog(title, message) {
   return new Promise((resolve) => {
     const modal = document.getElementById('confirmModal');
@@ -258,9 +230,6 @@ export function confirmDialog(title, message) {
   });
 }
 
-/* ═══════════════════════════════════════════════════════
-   TOAST
-   ═══════════════════════════════════════════════════════ */
 export function showToast(title, body, onClick, playSound = true) {
   if (playSound) playNotifSound();
   const container = document.getElementById('toastContainer');
@@ -283,9 +252,6 @@ export function showToast(title, body, onClick, playSound = true) {
   setTimeout(() => { if (toast.parentElement) toast.remove(); }, 6000);
 }
 
-/* ═══════════════════════════════════════════════════════
-   CACHE LOADERS
-   ═══════════════════════════════════════════════════════ */
 export async function loadUsersCache() {
   try {
     const snap = await getDocs(collection(db, 'users'));
@@ -308,9 +274,6 @@ export async function loadDepartmentsCache() {
   }
 }
 
-/* ═══════════════════════════════════════════════════════
-   USER LOOKUP
-   ═══════════════════════════════════════════════════════ */
 export function getUserById(uid) {
   return state.allUsersCache.find(u => u.id === uid);
 }
@@ -332,9 +295,6 @@ export function getDeptById(id) {
   return state.allDeptsCache.find(d => d.id === id);
 }
 
-/* ═══════════════════════════════════════════════════════
-   DEPT MANAGER HELPERS
-   ═══════════════════════════════════════════════════════ */
 export function getMyManagedDepts() {
   if (!state.currentUser) return [];
   return state.allDeptsCache.filter(d => d.managerId === state.currentUser.uid);
@@ -360,9 +320,6 @@ export function getMyTeamMembers() {
   );
 }
 
-/* ═══════════════════════════════════════════════════════
-   SESSION
-   ═══════════════════════════════════════════════════════ */
 export function saveSession(user) {
   try {
     localStorage.setItem('lastUser', user.username || '');
@@ -374,17 +331,11 @@ export function loadLastUser() {
   try { return localStorage.getItem('lastUser') || ''; } catch (e) { return ''; }
 }
 
-/* ═══════════════════════════════════════════════════════
-   COPY TO CLIPBOARD
-   ═══════════════════════════════════════════════════════ */
 export async function copyToClipboard(text) {
   try { await navigator.clipboard.writeText(text); return true; }
   catch (e) { return false; }
 }
 
-/* ═══════════════════════════════════════════════════════
-   SEARCH
-   ═══════════════════════════════════════════════════════ */
 export function matchesSearch(msg, queryStr) {
   if (!queryStr) return true;
   const q = queryStr.toLowerCase().trim();
@@ -397,9 +348,6 @@ export function matchesSearch(msg, queryStr) {
   );
 }
 
-/* ═══════════════════════════════════════════════════════
-   SANITIZE
-   ═══════════════════════════════════════════════════════ */
 export function sanitizeUsername(username) {
   return username.trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
 }
@@ -412,9 +360,6 @@ export function validatePassword(password) {
   return password && password.length >= 6;
 }
 
-/* ═══════════════════════════════════════════════════════
-   AVATAR COLORS
-   ═══════════════════════════════════════════════════════ */
 const AVATAR_COLORS = [
   'from-blue-500 to-blue-700',
   'from-green-500 to-green-700',
@@ -433,9 +378,6 @@ export function getAvatarColor(name) {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
-/* ═══════════════════════════════════════════════════════
-   UNLOCK AUDIO
-   ═══════════════════════════════════════════════════════ */
 export function unlockAudioOnFirstClick() {
   const unlock = () => {
     try {
@@ -458,10 +400,6 @@ export function unlockAudioOnFirstClick() {
   document.addEventListener('touchstart', unlock, { once: true });
   document.addEventListener('keydown', unlock, { once: true });
 }
-
-/* ═══════════════════════════════════════════════════════
-   PERMISSIONS
-   ═══════════════════════════════════════════════════════ */
 
 export const DEFAULT_PERMISSIONS = {
   owner: [
@@ -528,28 +466,22 @@ export function canSendTo(recipient) {
   const sRole = sender.role;
   const rRole = recipient.role;
 
-  // Owner / Admin → أي حد
   if (sRole === 'owner' || sRole === 'admin') return true;
 
-  // الصلاحيات المخصصة أو defaults الدور
   const perms = Array.isArray(sender.permissions) && sender.permissions.length > 0
     ? sender.permissions
     : (DEFAULT_PERMISSIONS[sRole] || []);
 
-  // "إرسال للجميع" → أي حد
   if (perms.includes('send_to_all')) return true;
 
-  // Owner / Admin
   if (rRole === 'owner' || rRole === 'admin') {
     return perms.includes('send_to_admins');
   }
 
-  // Chairman / Vice
   if (rRole === 'chairman' || rRole === 'vice_chairman') {
     return perms.includes('send_to_chairman');
   }
 
-  // Manager
   if (rRole === 'manager') {
     const senderDept = state.allDeptsCache.find(d => d.id === sender.departmentId);
     const isMyManager = senderDept && senderDept.managerId === recipient.id;
@@ -557,7 +489,6 @@ export function canSendTo(recipient) {
     return perms.includes('send_to_managers');
   }
 
-  // User عادي
   if (rRole === 'user') {
     return perms.includes('send_to_dept_members')
       && !!sender.departmentId
@@ -576,4 +507,4 @@ export function getAllowedRecipients() {
   );
 }
 
-console.log('🛠️ Utils v9.9.4 loaded - Permissions + Templates + Sound 🔔');
+console.log('🛠️ Utils v9.9.5 loaded 🔔');
