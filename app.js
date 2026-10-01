@@ -1,8 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.4 - Enterprise Application
-   Features: Pro Compose + Permissions + GoFile Uploads
-             Mobile Drawer + Drafts + Notifications + Deleted Log
-             Fixed: No logout flash on refresh
+   Mail System v9.9.5 - Enterprise Application
+   Fixed: Login/Logout hang issue
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -120,15 +118,6 @@ function roleNeedsDept(role) {
   return role === 'user' || role === 'manager';
 }
 
-function showLoader() {
-  const l = document.getElementById('globalLoader');
-  if (l) l.classList.remove('hidden');
-}
-function hideLoader() {
-  const l = document.getElementById('globalLoader');
-  if (l) l.classList.add('hidden');
-}
-
 /* ═══════ SKELETONS ═══════ */
 function renderSkeletonInbox() {
   let html = '';
@@ -212,8 +201,6 @@ document.addEventListener('DOMContentLoaded', () => {
   if (lastUser) {
     const inp = $('#loginUser');
     if (inp) inp.value = lastUser;
-    const pass = $('#loginPass');
-    if (pass) pass.focus();
   }
 
   checkAuthState();
@@ -280,7 +267,7 @@ window.installPWA = async () => {
   if (btn) btn.classList.add('hidden');
 };
 
-/* ═══════ LOGIN ═══════ */
+/* ═══════ LOGIN UI ═══════ */
 function setupLoginUI() {
   const loginBtn = $('#loginBtn');
   if (loginBtn) loginBtn.onclick = handleLogin;
@@ -319,12 +306,7 @@ async function handleLogin() {
   btn.querySelector('span').textContent = 'جاري الدخول...';
 
   try {
-    try {
-      await setPersistence(auth, browserLocalPersistence);
-    } catch (e) {
-      console.warn('setPersistence error:', e);
-    }
-
+    try { await setPersistence(auth, browserLocalPersistence); } catch (e) {}
     await signInWithEmailAndPassword(auth, email, p);
   } catch (e) {
     const messages = {
@@ -366,22 +348,23 @@ window.sendPasswordReset = async () => {
   }
 };
 
-/* ═══════ AUTH STATE (v9.9.4 — مع شاشة تحميل) ═══════ */
+/* ═══════════════════════════════════════════════════════
+   AUTH STATE (v9.9.5) — إصلاح مشكلة التعليق
+   ═══════════════════════════════════════════════════════ */
 async function checkAuthState() {
-  // ⭐ تأكد من الـ persistence
   try {
     await setPersistence(auth, browserLocalPersistence);
   } catch (e) {
     console.warn('setPersistence init error:', e);
   }
 
-  // ⭐ فلاج لمنع التنفيذ المزدوج
-  let authResolved = false;
+  // ⭐ فلاج لإخفاء شاشة التحميل أول مرة بس
+  let initialCheckDone = false;
 
-  // ⏱️ Timeout احتياطي — لو Firebase اتأخر أكتر من 3 ثواني
+  // ⏱️ Timeout احتياطي
   const authTimeout = setTimeout(() => {
-    if (!authResolved) {
-      authResolved = true;
+    if (!initialCheckDone) {
+      initialCheckDone = true;
       hide(document.getElementById('authLoading'));
       show($('#loginScreen'));
       hide($('#app'));
@@ -389,23 +372,26 @@ async function checkAuthState() {
   }, 3000);
 
   onAuthStateChanged(auth, async (user) => {
-    // 🛑 منع التنفيذ المزدوج
-    if (authResolved) return;
-    authResolved = true;
-    clearTimeout(authTimeout);
-
-    // 🔻 إخفاء شاشة التحميل
-    hide(document.getElementById('authLoading'));
+    // 🔻 إخفاء شاشة التحميل أول مرة فقط
+    if (!initialCheckDone) {
+      initialCheckDone = true;
+      clearTimeout(authTimeout);
+      hide(document.getElementById('authLoading'));
+    }
 
     if (!user) {
+      // 🔴 تسجيل خروج
       state.currentUser = null;
-      if (state.unsubMessages) { state.unsubMessages(); state.unsubMessages = null; }
+      if (state.unsubMessages) {
+        state.unsubMessages();
+        state.unsubMessages = null;
+      }
       hide($('#app'));
       show($('#loginScreen'));
       return;
     }
 
-    // 🔍 فحص المستخدم في Firestore
+    // 🟢 تسجيل دخول
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (!snap.exists()) {
@@ -3291,7 +3277,7 @@ window.markAllRead = async () => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9.4)
+   DELETED LOG
    ═══════════════════════════════════════════════════════ */
 async function renderDeletedLog() {
   if (!isAdmin()) {
@@ -3577,4 +3563,4 @@ async function updateDeletedLogBadge(count) {
   });
 }
 
-console.log('🚀 Mail System v9.9.4 loaded — No logout flash on refresh');
+console.log('🚀 Mail System v9.9.5 loaded');
