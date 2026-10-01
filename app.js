@@ -394,6 +394,7 @@ window.closeForgotModal = () => {
   const st = $('#forgotStatus'); if (st) { st.classList.add('hidden'); st.textContent = ''; }
 };
 
+/* ✅ FIXED: لا نقرأ users (الزائر مش مصرح له) — نبعت الطلب مباشرة */
 window.sendPasswordReset = async () => {
   const username = ($('#forgotEmail')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
   const status = $('#forgotStatus');
@@ -405,31 +406,23 @@ window.sendPasswordReset = async () => {
     return;
   }
 
+  if (username.length < 3) {
+    status.className = 'alert alert-error';
+    status.textContent = 'اسم المستخدم قصير جداً';
+    show(status);
+    return;
+  }
+
   status.className = 'alert alert-info';
   status.textContent = 'جاري إرسال الطلب...';
   show(status);
 
   try {
-    const usersSnap = await getDocs(collection(db, 'users'));
-    const userDoc = usersSnap.docs.find(d => {
-      const u = d.data();
-      return (u.username || '').toLowerCase() === username;
-    });
-
-    if (!userDoc) {
-      status.className = 'alert alert-error';
-      status.textContent = 'اسم المستخدم غير مسجل في النظام';
-      show(status);
-      return;
-    }
-
-    const u = userDoc.data();
-
     await addDoc(collection(db, 'passwordResetRequests'), {
-      username: u.username,
-      userName: u.name || '',
-      userEmail: u.email || '',
-      userId: userDoc.id,
+      username: username,
+      userName: '',
+      userEmail: '',
+      userId: '',
       status: 'pending',
       createdAt: serverTimestamp()
     });
@@ -1460,7 +1453,6 @@ window.createNewUser = async () => {
       createdAt: serverTimestamp()
     });
 
-    // ⭐ احفظ كلمة السر المشفرة
     try {
       await setDoc(doc(db, 'userSecrets', uid), {
         encPass: encryptPassword(pass),
@@ -3698,7 +3690,6 @@ window.saveUserPassword = async () => {
       type: 'success', icon: 'key-round', duration: 5000
     });
 
-    // ⭐ لو جاي من طلب → علّم الطلب "تم الحل"
     if (window._currentResetReqId) {
       try {
         await updateDoc(doc(db, 'passwordResetRequests', window._currentResetReqId), {
@@ -3712,7 +3703,6 @@ window.saveUserPassword = async () => {
 
     setTimeout(() => {
       closeChangePasswordModal();
-      // refresh الصفحة الحالية
       if (state.currentFilter === 'passwordreset') renderPasswordResetRequests();
       else if (state.currentFilter === 'users') renderUsers();
     }, 2500);
@@ -3801,6 +3791,12 @@ async function renderPasswordResetRequests() {
       const name = r.userName || r.username || 'مستخدم';
       const avatarClass = getAvatarGradient(name);
 
+      const safeId = String(r.id || '').replace(/'/g, '');
+      const safeUserId = String(r.userId || '').replace(/'/g, '');
+      const safeUsername = String(r.username || '').replace(/'/g, '');
+      const safeUserEmail = String(r.userEmail || '').replace(/'/g, '');
+      const safeUserName = String(r.userName || '').replace(/'/g, '');
+
       return `
         <div class="deleted-log-item" style="${isPending ? '' : 'opacity:0.6;'}">
           <div class="deleted-log-row-1">
@@ -3836,11 +3832,11 @@ async function renderPasswordResetRequests() {
             <div class="deleted-log-row-3">
               <div class="deleted-log-info"></div>
               <div class="deleted-log-actions">
-                <button onclick="changePasswordFromRequest('${r.id}', '${r.userId}', '${esc(r.username || '')}', '${esc(r.userEmail || '')}', '${esc(r.userName || '')}')" class="deleted-log-btn restore">
+                <button onclick="changePasswordFromRequest('${safeId}', '${safeUserId}', '${safeUsername}', '${safeUserEmail}', '${safeUserName}')" class="deleted-log-btn restore">
                   <i data-lucide="key-round" class="w-3.5 h-3.5"></i>
                   <span>تغيير كلمة السر</span>
                 </button>
-                <button onclick="deletePasswordResetRequest('${r.id}')" class="deleted-log-btn delete">
+                <button onclick="deletePasswordResetRequest('${safeId}')" class="deleted-log-btn delete">
                   <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                   <span>حذف</span>
                 </button>
@@ -3850,7 +3846,7 @@ async function renderPasswordResetRequests() {
             <div class="deleted-log-row-3">
               <div class="deleted-log-info"></div>
               <div class="deleted-log-actions">
-                <button onclick="deletePasswordResetRequest('${r.id}')" class="deleted-log-btn delete">
+                <button onclick="deletePasswordResetRequest('${safeId}')" class="deleted-log-btn delete">
                   <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                   <span>حذف</span>
                 </button>
@@ -3910,7 +3906,37 @@ async function renderPasswordResetRequests() {
 }
 window.renderPasswordResetRequests = renderPasswordResetRequests;
 
-window.changePasswordFromRequest = (reqId, userId, username, email, displayName) => {
+/* ✅ FIXED: البحث عن المستخدم بـ username لو البيانات ناقصة */
+window.changePasswordFromRequest = async (reqId, userId, username, email, displayName) => {
+  // لو البيانات ناقصة (الطلب جاي من مستخدم غير مسجل) → نبحث بـ username
+  if (!userId || !email) {
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const cleanUsername = (username || '').toLowerCase();
+      const userDoc = usersSnap.docs.find(d => {
+        const u = d.data();
+        return (u.username || '').toLowerCase() === cleanUsername;
+      });
+
+      if (!userDoc) {
+        showToastAdvanced('المستخدم مش موجود', `مفيش مستخدم باسم "${username}"`, {
+          type: 'error', icon: 'alert-circle', duration: 5000
+        });
+        return;
+      }
+
+      const u = userDoc.data();
+      userId = userDoc.id;
+      email = u.email || '';
+      displayName = displayName || u.name || '';
+
+    } catch (e) {
+      console.error('Lookup user error:', e);
+      showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+      return;
+    }
+  }
+
   window._currentResetReqId = reqId;
   window.openChangePasswordModal(userId, username, email, displayName);
 };
