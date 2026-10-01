@@ -1,6 +1,6 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.6 - Enterprise Application
-   Features: Password Change + Reset Requests + Full System
+   Mail System v9.9.7 - Enterprise Application
+   Features: Password Change + Reset Requests + CC/BCC Support
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -53,8 +53,8 @@ const ADMIN_MESSAGE_TEMPLATES = [
   { id: 'inquiry', label: 'استفسار', icon: 'help-circle', body: 'أرجو الإفادة بخصوص:\n\n\n\n\nالتفاصيل:\n' }
 ];
 
-/* ═══════ PASSWORD ENCRYPTION (v9.9.6) ═══════ */
-const SECRET_KEY = 'MSG_SYS_v996_2026_xK9mPq#Z!nB';
+/* ═══════ PASSWORD ENCRYPTION (v9.9.7) ═══════ */
+const SECRET_KEY = 'MSG_SYS_v997_2026_xK9mPq#Z!nB';
 
 function encryptPassword(text) {
   if (!text) return '';
@@ -441,7 +441,7 @@ window.sendPasswordReset = async () => {
   }
 };
 
-/* ═══════ AUTH STATE (v9.9.6) ═══════ */
+/* ═══════ AUTH STATE (v9.9.7) ═══════ */
 async function checkAuthState() {
   try {
     await setPersistence(auth, browserLocalPersistence);
@@ -835,12 +835,20 @@ async function performInstantSearch(query) {
   resultsBox.style.display = 'block';
 
   try {
-    const q1 = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
-    const q2 = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
-    const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+    const myUID = state.currentUser.uid;
+    const queries = [
+      query(collection(db, 'messages'), where('toUserId', '==', myUID)),
+      query(collection(db, 'messages'), where('toUserIds', 'array-contains', myUID)),
+      query(collection(db, 'messages'), where('ccUserIds', 'array-contains', myUID)),
+      query(collection(db, 'messages'), where('bccUserIds', 'array-contains', myUID)),
+      query(collection(db, 'messages'), where('fromUserId', '==', myUID))
+    ];
+    const results = await Promise.all(queries.map(q => getDocs(q).catch(() => ({ docs: [] }))));
 
     const all = new Map();
-    [...s1.docs, ...s2.docs].forEach(d => all.set(d.id, { id: d.id, ...d.data() }));
+    results.forEach(snap => {
+      snap.docs.forEach(d => all.set(d.id, { id: d.id, ...d.data() }));
+    });
 
     const matches = Array.from(all.values())
       .filter(m => !isHiddenFromMe(m) && matchesSearch(m, query))
@@ -975,7 +983,7 @@ async function renderDrafts() {
 
     const rows = drafts.map(d => {
       const toUser = d.toUserId ? state.allUsersCache.find(u => u.id === d.toUserId) : null;
-      const toName = toUser ? toUser.name : '— لم يُحدد —';
+      const toName = toUser ? toUser.name : (Array.isArray(d.toUsers) && d.toUsers[0] ? d.toUsers[0].name : '— لم يُحدد —');
       return `
         <div class="draft-item" onclick="openDraft('${d.id}')">
           <div class="draft-avatar"><i data-lucide="file-text" class="w-5 h-5"></i></div>
@@ -1032,10 +1040,41 @@ window.openDraft = async (draftId) => {
     }
     const d = snap.data();
     await window.openCompose();
-    if (d.toUserId) {
+
+    // استرجاع To
+    if (Array.isArray(d.toUsers) && d.toUsers.length) {
+      d.toUsers.forEach(u => {
+        const fullUser = state.allUsersCache.find(x => x.id === u.id);
+        if (fullUser) window.addRecipient('to', fullUser);
+      });
+    } else if (d.toUserId) {
       const toUser = state.allUsersCache.find(u => u.id === d.toUserId);
       if (toUser) window.addRecipient('to', toUser);
     }
+
+    // استرجاع CC
+    if (Array.isArray(d.ccUsers) && d.ccUsers.length) {
+      d.ccUsers.forEach(u => {
+        const fullUser = state.allUsersCache.find(x => x.id === u.id);
+        if (fullUser) window.addRecipient('cc', fullUser);
+      });
+    }
+
+    // استرجاع BCC
+    if (Array.isArray(d.bccUsers) && d.bccUsers.length) {
+      d.bccUsers.forEach(u => {
+        const fullUser = state.allUsersCache.find(x => x.id === u.id);
+        if (fullUser) window.addRecipient('bcc', fullUser);
+      });
+    }
+
+    // إظهار ccRow و bccRow لو فيه محتوى
+    if (recipientChips.cc.length > 0 || recipientChips.bcc.length > 0) {
+      show($('#ccRow'));
+      show($('#bccRow'));
+      show($('#optionsField'));
+    }
+
     $('#cSubject').value = d.subject || '';
     $('#cBody').value = d.body || '';
     $('#cDraftId').value = draftId;
@@ -1685,7 +1724,7 @@ window.deleteDept = async (id) => {
   renderDepartments();
 };
 
-/* ═══════ INBOX ═══════ */
+/* ═══════ INBOX (CC/BCC Support) ═══════ */
 async function renderInbox() {
   const filter = state.currentFilter;
   const title = currentTagFilter
@@ -1717,15 +1756,28 @@ async function renderInbox() {
   `;
   icons();
 
-  const q1 = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
-  const q2 = query(collection(db, 'messages'), where('fromUserId', '==', state.currentUser.uid));
-  const [s1, s2] = await Promise.all([getDocs(q1), getDocs(q2)]);
+  const myUID = state.currentUser.uid;
+
+  // 5 استعلامات لتغطية: toUserId (قديم)، toUserIds, ccUserIds, bccUserIds, fromUserId
+  const queries = [
+    query(collection(db, 'messages'), where('toUserId', '==', myUID)),
+    query(collection(db, 'messages'), where('toUserIds', 'array-contains', myUID)),
+    query(collection(db, 'messages'), where('ccUserIds', 'array-contains', myUID)),
+    query(collection(db, 'messages'), where('bccUserIds', 'array-contains', myUID)),
+    query(collection(db, 'messages'), where('fromUserId', '==', myUID))
+  ];
+
+  const results = await Promise.all(queries.map(q => getDocs(q).catch(err => {
+    console.warn('Query failed (need index?):', err.message);
+    return { docs: [] };
+  })));
 
   const all = new Map();
-  [...s1.docs, ...s2.docs].forEach(d => all.set(d.id, { id: d.id, ...d.data() }));
+  results.forEach(snap => {
+    snap.docs.forEach(d => all.set(d.id, { id: d.id, ...d.data() }));
+  });
 
   const isAdminUser = isAdmin();
-  const myUID = state.currentUser.uid;
 
   const visible = Array.from(all.values()).filter(m => {
     const deletedBy = m.deletedBy || {};
@@ -1755,12 +1807,17 @@ async function renderInbox() {
 
   let threads = Object.values(threadsMap).map(t => {
     t.messages.sort((a, b) => (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0));
-    const mine = t.messages.filter(m => m.toUserId === state.currentUser.uid);
+    const mine = t.messages.filter(m => {
+      const toIds = m.toUserIds || (m.toUserId ? [m.toUserId] : []);
+      const ccIds = m.ccUserIds || [];
+      const bccIds = m.bccUserIds || [];
+      return toIds.includes(myUID) || ccIds.includes(myUID) || bccIds.includes(myUID);
+    });
     t.unread = mine.filter(m => !m.read).length;
-    t.starred = t.messages.some(m => m.starred && m.toUserId === state.currentUser.uid);
+    t.starred = t.messages.some(m => m.starred);
     t.lastMsg = t.messages[t.messages.length - 1];
     t.lastAt = t.lastMsg.createdAt?.seconds || 0;
-    t.isFromMe = t.lastMsg.fromUserId === state.currentUser.uid;
+    t.isFromMe = t.lastMsg.fromUserId === myUID;
     t.tags = t.lastMsg.tags || [];
     return t;
   }).sort((a, b) => b.lastAt - a.lastAt);
@@ -1922,9 +1979,16 @@ window.openThread = (threadId) => {
   }
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (t) {
-    t.messages.filter(m => m.toUserId === state.currentUser.uid && !m.read).forEach(m => {
-      updateDoc(doc(db, 'messages', m.id), { read: true }).catch(() => {});
-      m.read = true;
+    const myUID = state.currentUser.uid;
+    t.messages.forEach(m => {
+      const toIds = m.toUserIds || (m.toUserId ? [m.toUserId] : []);
+      const ccIds = m.ccUserIds || [];
+      const bccIds = m.bccUserIds || [];
+      const isForMe = toIds.includes(myUID) || ccIds.includes(myUID) || bccIds.includes(myUID);
+      if (isForMe && !m.read) {
+        updateDoc(doc(db, 'messages', m.id), { read: true }).catch(() => {});
+        m.read = true;
+      }
     });
     setTimeout(updateNotificationUI, 300);
   }
@@ -1944,9 +2008,10 @@ function renderThreadReading() {
   state._currentThreadLastMsgId = t.lastMsg.id;
   const lastIdx = t.messages.length - 1;
   const isTrash = state.currentFilter === 'trash';
+  const myUID = state.currentUser.uid;
 
-  const replyUserId = t.lastMsg.fromUserId === state.currentUser.uid ? t.lastMsg.toUserId : t.lastMsg.fromUserId;
-  const replyUserName = t.lastMsg.fromUserId === state.currentUser.uid ? t.lastMsg.toUserName : t.lastMsg.fromUserName;
+  const replyUserId = t.lastMsg.fromUserId === myUID ? t.lastMsg.toUserId : t.lastMsg.fromUserId;
+  const replyUserName = t.lastMsg.fromUserId === myUID ? t.lastMsg.toUserName : t.lastMsg.fromUserName;
 
   const replyUserObj = state.allUsersCache.find(u => u.id === replyUserId);
   const canReply = replyUserObj ? canSendTo(replyUserObj) : false;
@@ -1964,13 +2029,49 @@ function renderThreadReading() {
   const showDeletedInfo = isAdmin() && deletedUsers.length > 0;
 
   const messagesHtml = t.messages.map((m, idx) => {
-    const isMe = m.fromUserId === state.currentUser.uid;
+    const isMe = m.fromUserId === myUID;
     const isLatest = idx === lastIdx;
     const isExpanded = state.expandedMsgs.has(idx);
     const open = isLatest || isExpanded;
     const senderEmail = m.fromUserUsername ? `${m.fromUserUsername}@${EMAIL_DOMAIN}` : '';
     const dateStr = formatDate(m.createdAt);
     const avatarClass = getAvatarGradient(m.fromUserName);
+
+    // 🆕 بناء قوائم To/CC/BCC
+    const toIds = m.toUserIds && m.toUserIds.length ? m.toUserIds : (m.toUserId ? [m.toUserId] : []);
+    const toNames = m.toUserNames && m.toUserNames.length ? m.toUserNames : (m.toUserName ? [m.toUserName] : []);
+    const ccIds = m.ccUserIds || [];
+    const ccNames = m.ccUserNames || [];
+    const bccIds = m.bccUserIds || [];
+    const bccNames = m.bccUserNames || [];
+
+    // هل أنا مستقبل BCC؟ لو أيوه، أقدر أشوف قائمة BCC
+    const iAmBcc = bccIds.includes(myUID);
+    const showBccList = isMe || iAmBcc || isAdmin();
+
+    // 🆕 بناء شرائط المستلمين
+    const recipientsChipsHtml = `
+      <div class="msg-recipients" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;font-size:11px;">
+        ${toNames.length ? `
+          <span style="display:inline-flex;align-items:center;gap:4px;background:#E5F0FA;color:#0078D4;padding:2px 8px;border-radius:10px;font-weight:600;">
+            <span>إلى:</span>
+            <span>${toNames.map(esc).join('، ')}</span>
+          </span>
+        ` : ''}
+        ${ccNames.length ? `
+          <span style="display:inline-flex;align-items:center;gap:4px;background:#F0E5FA;color:#8764B8;padding:2px 8px;border-radius:10px;font-weight:600;">
+            <span>Cc:</span>
+            <span>${ccNames.map(esc).join('، ')}</span>
+          </span>
+        ` : ''}
+        ${showBccList && bccNames.length ? `
+          <span style="display:inline-flex;align-items:center;gap:4px;background:#FAF0E5;color:#C28A2E;padding:2px 8px;border-radius:10px;font-weight:600;">
+            <span>Bcc:</span>
+            <span>${bccNames.map(esc).join('، ')}</span>
+          </span>
+        ` : ''}
+      </div>
+    `;
 
     const msgTagsHtml = (m.tags || []).length > 0 ? `
       <div class="msg-tags" style="margin-top:8px;">
@@ -2026,8 +2127,8 @@ function renderThreadReading() {
               ${m.priority === 'urgent' ? '<span class="priority-urgent">🔴 عاجل</span>' : ''}
               ${isLatest && t.messages.length > 1 ? '<span style="font-size:10.5px;background:var(--brand-primary-light);color:var(--brand-primary);padding:2px 8px;border-radius:4px;font-weight:600;">الأحدث</span>' : ''}
             </div>
-            <div class="email-message-to">إلى: ${isMe ? esc(m.toUserName) : esc(state.currentUser.name)}</div>
-            ${!open ? `<div class="email-message-preview">${esc((m.body || '').slice(0, 120))}</div>` : ''}
+            ${recipientsChipsHtml}
+            ${!open ? `<div class="email-message-preview" style="margin-top:6px;">${esc((m.body || '').slice(0, 120))}</div>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
             <span class="email-message-time">${dateStr}</span>
@@ -2175,6 +2276,9 @@ window.sendInlineReply = async (toUserId, threadId, subject) => {
       fromUserName: state.currentUser.name,
       fromUserUsername: state.currentUser.username,
       toUserId, toUserName: toUser?.name || '',
+      toUserIds: [toUserId], toUserNames: [toUser?.name || ''],
+      ccUserIds: [], ccUserNames: [],
+      bccUserIds: [], bccUserNames: [],
       read: false, threadId,
       parentId: state._currentThreadLastMsgId,
       notified: false, starred: false,
@@ -2198,8 +2302,13 @@ window.replyAllToThread = async (threadId) => {
 
   const participants = new Set();
   t.messages.forEach(m => {
+    const toIds = m.toUserIds || (m.toUserId ? [m.toUserId] : []);
+    const ccIds = m.ccUserIds || [];
+    // ملاحظة: مش بناخد bccIds لأن الرد على الكل مبيظهرهمش
+    [...toIds, ...ccIds].forEach(uid => {
+      if (uid && uid !== state.currentUser.uid) participants.add(uid);
+    });
     if (m.fromUserId && m.fromUserId !== state.currentUser.uid) participants.add(m.fromUserId);
-    if (m.toUserId && m.toUserId !== state.currentUser.uid) participants.add(m.toUserId);
   });
 
   await window.openCompose();
@@ -2211,14 +2320,22 @@ window.replyAllToThread = async (threadId) => {
     return u && canSendTo(u);
   });
 
+  // أول واحد في To، والباقي CC
   if (list.length > 0) {
     const u = state.allUsersCache.find(x => x.id === list[0]);
     if (u) window.addRecipient('to', u);
   }
-  if (list.length > 1) {
-    const u2 = state.allUsersCache.find(x => x.id === list[1]);
-    if (u2) window.addRecipient('cc', u2);
+  for (let i = 1; i < list.length; i++) {
+    const u = state.allUsersCache.find(x => x.id === list[i]);
+    if (u) window.addRecipient('cc', u);
   }
+
+  // إظهار CC لو فيه
+  if (recipientChips.cc.length > 0) {
+    show($('#ccRow'));
+    show($('#bccRow'));
+  }
+
   $('#composeTitle').textContent = 'رد على الكل';
 };
 
@@ -2253,7 +2370,13 @@ window.toggleStar = async (threadId) => {
   if (!t) return;
   const newVal = !t.messages.some(m => m.starred);
   for (const m of t.messages) {
-    if (m.toUserId === state.currentUser.uid || m.fromUserId === state.currentUser.uid) {
+    const myUID = state.currentUser.uid;
+    const toIds = m.toUserIds || (m.toUserId ? [m.toUserId] : []);
+    const ccIds = m.ccUserIds || [];
+    const bccIds = m.bccUserIds || [];
+    const isMine = m.toUserId === myUID || m.fromUserId === myUID ||
+                   toIds.includes(myUID) || ccIds.includes(myUID) || bccIds.includes(myUID);
+    if (isMine) {
       await updateDoc(doc(db, 'messages', m.id), { starred: newVal }).catch(() => {});
       m.starred = newVal;
     }
@@ -2883,13 +3006,15 @@ window.clearAttachments = () => {
   renderAttachments();
 };
 
-/* ═══════ SEND ═══════ */
+/* ═══════ SEND (CC/BCC Support) ═══════ */
 window.sendMessage = async () => {
   const broadcast = $('#cBroadcast').checked && (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast'));
   const deptSend = $('#cDept').checked;
-  const toUserId = recipientChips.to[0]?.id || '';
-  const ccUserId = recipientChips.cc[0]?.id || '';
-  const bccUserId = recipientChips.bcc[0]?.id || '';
+
+  const toUsers = recipientChips.to.slice();
+  const ccUsers = recipientChips.cc.slice();
+  const bccUsers = recipientChips.bcc.slice();
+
   const deptId = $('#deptSelect').value;
   const subject = $('#cSubject').value.trim();
   const body = $('#cBody').value.trim();
@@ -2900,9 +3025,9 @@ window.sendMessage = async () => {
   status.style.color = '';
   status.textContent = '';
 
-  if (!broadcast && !deptSend && recipientChips.to.length === 0) {
+  if (!broadcast && !deptSend && toUsers.length === 0 && ccUsers.length === 0 && bccUsers.length === 0) {
     status.style.color = 'var(--danger)';
-    status.textContent = 'أضف مستلم';
+    status.textContent = 'أضف مستلم على الأقل';
     return;
   }
   if (deptSend && !deptId) {
@@ -2916,8 +3041,10 @@ window.sendMessage = async () => {
     return;
   }
 
+  // تحقق من صلاحية كل المستلمين
   if (!broadcast && !deptSend) {
-    for (const recipient of recipientChips.to) {
+    const allRecipients = [...toUsers, ...ccUsers, ...bccUsers];
+    for (const recipient of allRecipients) {
       if (!canSendTo(recipient)) {
         status.style.color = 'var(--danger)';
         status.textContent = `غير مسموح: ${recipient.name}`;
@@ -2940,9 +3067,7 @@ window.sendMessage = async () => {
 
   const emailData = {
     subject, body, priority,
-    toUserId: toUserId || null,
-    ccUserId: ccUserId || null,
-    bccUserId: bccUserId || null,
+    toUsers, ccUsers, bccUsers,
     replyToThread, broadcast, deptSend, deptId,
     isBroadcast: broadcast,
     fromUserId: state.currentUser.uid,
@@ -2999,6 +3124,9 @@ async function performSend(data) {
           fromUserName: data.fromUserName,
           fromUserUsername: data.fromUserUsername,
           toUserId: u.id, toUserName: u.name,
+          toUserIds: [u.id], toUserNames: [u.name],
+          ccUserIds: [], ccUserNames: [],
+          bccUserIds: [], bccUserNames: [],
           read: false, isBroadcast: true,
           threadId: msgRef.id,
           notified: false, starred: false,
@@ -3019,6 +3147,9 @@ async function performSend(data) {
           fromUserName: data.fromUserName,
           fromUserUsername: data.fromUserUsername,
           toUserId: u.id, toUserName: u.name,
+          toUserIds: [u.id], toUserNames: [u.name],
+          ccUserIds: [], ccUserNames: [],
+          bccUserIds: [], bccUserNames: [],
           read: false, isBroadcast: false,
           threadId: msgRef.id,
           notified: false, starred: false,
@@ -3030,9 +3161,13 @@ async function performSend(data) {
       }
       showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
     } else {
-      const toUser = state.allUsersCache.find(u => u.id === data.toUserId);
-      const ccUser = data.ccUserId ? state.allUsersCache.find(u => u.id === data.ccUserId) : null;
-      const bccUser = data.bccUserId ? state.allUsersCache.find(u => u.id === data.bccUserId) : null;
+      // ✅ الفرع الجديد اللي بيدعم To / CC / BCC
+      const toIds = data.toUsers.map(u => u.id);
+      const toNames = data.toUsers.map(u => u.name);
+      const ccIds = data.ccUsers.map(u => u.id);
+      const ccNames = data.ccUsers.map(u => u.name);
+      const bccIds = data.bccUsers.map(u => u.id);
+      const bccNames = data.bccUsers.map(u => u.name);
 
       const msgRef = doc(collection(db, 'messages'));
       await setDoc(msgRef, {
@@ -3040,11 +3175,19 @@ async function performSend(data) {
         fromUserId: data.fromUserId,
         fromUserName: data.fromUserName,
         fromUserUsername: data.fromUserUsername,
-        toUserId: data.toUserId, toUserName: toUser?.name || '',
-        ccUserId: data.ccUserId || null,
-        ccUserName: ccUser?.name || null,
-        bccUserId: data.bccUserId || null,
-        bccUserName: bccUser?.name || null,
+
+        // للتوافق مع الكود القديم
+        toUserId: toIds[0] || ccIds[0] || bccIds[0] || null,
+        toUserName: toNames[0] || ccNames[0] || bccNames[0] || null,
+
+        // 🆕 المصفوفات الكاملة
+        toUserIds: toIds,
+        toUserNames: toNames,
+        ccUserIds: ccIds,
+        ccUserNames: ccNames,
+        bccUserIds: bccIds,
+        bccUserNames: bccNames,
+
         read: false,
         threadId: data.replyToThread || msgRef.id,
         parentId: data.replyToThread ? (state._currentThreadLastMsgId || null) : null,
@@ -3055,7 +3198,8 @@ async function performSend(data) {
         createdAt: serverTimestamp()
       });
 
-      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${toUser?.name || ''}`, { type: 'success', icon: 'check-circle', duration: 3000 });
+      const summary = [...toNames, ...ccNames].filter(Boolean).join('، ') || bccNames.join('، ');
+      showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${summary}`, { type: 'success', icon: 'check-circle', duration: 3000 });
     }
 
     if (document.getElementById('inboxList')) renderInbox();
@@ -3071,7 +3215,10 @@ async function performSend(data) {
 }
 
 window.saveDraft = async () => {
-  const toUserId = recipientChips.to[0]?.id || '';
+  const toUsers = recipientChips.to.map(u => ({ id: u.id, name: u.name }));
+  const ccUsers = recipientChips.cc.map(u => ({ id: u.id, name: u.name }));
+  const bccUsers = recipientChips.bcc.map(u => ({ id: u.id, name: u.name }));
+
   const subject = $('#cSubject').value.trim();
   const body = $('#cBody').value.trim();
   const status = $('#cStatus');
@@ -3084,7 +3231,12 @@ window.saveDraft = async () => {
 
   try {
     const draftId = $('#cDraftId').value;
-    const draftData = { toUserId: toUserId || null, subject, body, updatedAt: serverTimestamp() };
+    const draftData = {
+      toUsers, ccUsers, bccUsers,
+      toUserId: toUsers[0]?.id || null,   // للتوافق القديم
+      subject, body,
+      updatedAt: serverTimestamp()
+    };
     if (draftId) {
       await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
     } else {
@@ -3246,32 +3398,48 @@ function setupServiceWorkerMessages() {
     .catch(() => {});
 }
 
+/* ═══════ MESSAGES LISTENER (CC/BCC Support) ═══════ */
 function startMessagesListener() {
   if (state.unsubMessages) state.unsubMessages();
-  const q = query(collection(db, 'messages'), where('toUserId', '==', state.currentUser.uid));
-  state.unsubMessages = onSnapshot(q, (snap) => {
-    const all = [];
-    snap.forEach(d => all.push({ id: d.id, ...d.data() }));
-    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+  const myUID = state.currentUser.uid;
 
+  // نسمع على كل الطرق اللي ممكن يكون فيها المستخدم
+  const queries = [
+    query(collection(db, 'messages'), where('toUserId', '==', myUID)),
+    query(collection(db, 'messages'), where('toUserIds', 'array-contains', myUID)),
+    query(collection(db, 'messages'), where('ccUserIds', 'array-contains', myUID)),
+    query(collection(db, 'messages'), where('bccUserIds', 'array-contains', myUID))
+  ];
+
+  const merged = new Map();
+  const unsubs = [];
+
+  const rebuildUI = () => {
+    const all = Array.from(merged.values());
+    all.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
     const visibleUnread = all.filter(m => !m.read && !isHiddenFromMe(m));
     state.unreadMessages = visibleUnread;
     updateNotificationUI();
-
-    if (state.lastUnreadCount > 0 && visibleUnread.length > state.lastUnreadCount) {
-      const m = visibleUnread[0];
-      if (m && m.fromUserId !== state.currentUser.uid) {
-        showToastAdvanced(`رسالة من ${m.fromUserName}`, m.subject, {
-          type: 'info', icon: 'mail', actionLabel: 'فتح',
-          onAction: () => { navigate('inbox'); setTimeout(() => window.openThread(m.threadId || m.id), 300); },
-          duration: 6000
-        });
-      }
-    }
-    state.lastUnreadCount = visibleUnread.length;
-
     if (document.getElementById('inboxList')) renderInbox();
+  };
+
+  queries.forEach(q => {
+    const unsub = onSnapshot(q, (snap) => {
+      snap.docChanges().forEach(change => {
+        if (change.type === 'removed') {
+          merged.delete(change.doc.id);
+        } else {
+          merged.set(change.doc.id, { id: change.doc.id, ...change.doc.data() });
+        }
+      });
+      rebuildUI();
+    }, (err) => {
+      console.warn('Listener error (need index?):', err.message);
+    });
+    unsubs.push(unsub);
   });
+
+  state.unsubMessages = () => unsubs.forEach(u => { try { u(); } catch(e){} });
 }
 
 function updateNotificationUI() {
@@ -3908,7 +4076,6 @@ window.renderPasswordResetRequests = renderPasswordResetRequests;
 
 /* ✅ FIXED: البحث عن المستخدم بـ username لو البيانات ناقصة */
 window.changePasswordFromRequest = async (reqId, userId, username, email, displayName) => {
-  // لو البيانات ناقصة (الطلب جاي من مستخدم غير مسجل) → نبحث بـ username
   if (!userId || !email) {
     try {
       const usersSnap = await getDocs(collection(db, 'users'));
@@ -3979,4 +4146,4 @@ async function updatePasswordResetBadge(count) {
   });
 }
 
-console.log('🚀 Mail System v9.9.6 loaded — Password Change + Reset Requests');
+console.log('🚀 Mail System v9.9.7 loaded — Password Change + Reset Requests + CC/BCC');
