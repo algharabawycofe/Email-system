@@ -3542,8 +3542,9 @@ window.openScheduleModal = () => {
   };
 
   const modal = document.createElement('div');
-  modal.className = 'modal-backdrop';
-  modal.id = 'scheduleModal';
+ modal.className = 'modal-backdrop';
+modal.id = 'scheduleModal';
+modal.style.zIndex = '10000';
   modal.innerHTML = `
     <div class="modal-panel modal-md fade-in">
       <div class="modal-header">
