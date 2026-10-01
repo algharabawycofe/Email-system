@@ -1,7 +1,4 @@
-/* ═══════════════════════════════════════════════════════════
-   Mail System v9.0 - Enterprise Design
-   Microsoft Fluent + Full Feature Set
-   ═══════════════════════════════════════════════════════════ */
+/* Mail System — Internal Messaging Platform */
 
 :root {
   --brand-primary: #0078D4;
@@ -71,7 +68,7 @@
   --mobile-nav-h: 60px;
 }
 
-/* Gradients */
+/* Avatars — Gradient Presets */
 .gradient-1 { background: linear-gradient(135deg, #667EEA, #764BA2); }
 .gradient-2 { background: linear-gradient(135deg, #F093FB, #F5576C); }
 .gradient-3 { background: linear-gradient(135deg, #4FACFE, #00F2FE); }
@@ -85,6 +82,7 @@
 .gradient-11 { background: linear-gradient(135deg, #D299C2, #FEF9D7); }
 .gradient-12 { background: linear-gradient(135deg, #a8c0ff, #3f2b96); }
 
+/* Dark Theme */
 body.dark {
   --bg-app: #1F1F1F;
   --bg-surface: #252525;
@@ -108,6 +106,7 @@ body.dark {
   --neutral-200: #3B3A39;
 }
 
+/* Base Reset */
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
@@ -182,6 +181,27 @@ button, input, select, textarea { font-family: inherit; }
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
+
+/* Auth Loading */
+.auth-loading-screen {
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(135deg, #0078D4 0%, #106EBE 50%, #0a4a8a 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  transition: opacity 0.2s ease;
+}
+.auth-loading-screen .spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid rgba(255, 255, 255, 0.2);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+.auth-loading-screen.hidden { display: none !important; }
 
 /* Skeletons */
 .skeleton {
@@ -343,7 +363,7 @@ button, input, select, textarea { font-family: inherit; }
 .alert-success { background: var(--success-bg); color: var(--success); border-color: #A6E9A6; }
 .alert-info { background: var(--info-bg); color: var(--info); border-color: #A9D3F0; }
 
-/* Login */
+/* Login Screen */
 .login-screen {
   min-height: 100vh;
   display: flex; align-items: center; justify-content: center;
@@ -756,7 +776,7 @@ body.dark .nav-item:hover { background: rgba(255,255,255,0.05); }
 }
 .mnav-fab:active { transform: scale(0.94); }
 
-/* Main */
+/* Main Content */
 .app-main {
   flex: 1; min-height: 0; min-width: 0;
   display: flex; flex-direction: column;
@@ -1835,7 +1855,7 @@ body.dark .nav-item:hover { background: rgba(255,255,255,0.05); }
 }
 .image-viewer-close:hover { background: rgba(255,255,255,0.3); }
 
-/* Dark Mode */
+/* Dark Mode Specifics */
 body.dark {
   background: var(--bg-app);
   color: var(--text-primary);
@@ -1853,7 +1873,7 @@ body.dark ::-webkit-scrollbar-thumb {
   border: 3px solid transparent;
 }
 
-/* Mobile */
+/* Mobile Adjustments */
 @media (max-width: 767px) {
   :root { --sidebar-w: 0; }
   .app-sidebar { display: none !important; }
@@ -1904,9 +1924,8 @@ body.dark ::-webkit-scrollbar-thumb {
     transition-duration: 0.01ms !important;
   }
 }
-/* ═══════════════════════════════════════════════════════
-   ADMIN TEMPLATES (v9.2)
-   ═══════════════════════════════════════════════════════ */
+
+/* Admin Templates */
 #templateRow {
   background: linear-gradient(90deg, var(--brand-primary-subtle), transparent);
   border-right: 3px solid var(--brand-primary);
@@ -1940,11 +1959,7 @@ body.dark ::-webkit-scrollbar-thumb {
   height: 12px;
 }
 
-/* END v9.2 */
-/* END v9.0 */
-/* ═══════════════════════════════════════════════════════
-   PERMISSIONS UI (v9.3)
-   ═══════════════════════════════════════════════════════ */
+/* Permissions UI */
 .permissions-list {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2029,46 +2044,7 @@ body.dark ::-webkit-scrollbar-thumb {
   font-weight: 700;
 }
 
-/* Admin Templates */
-#templateRow {
-  background: linear-gradient(90deg, var(--brand-primary-subtle), transparent);
-  border-right: 3px solid var(--brand-primary);
-  min-height: 48px;
-}
-
-#templatePicker {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-
-#templatePicker .template-chip {
-  --tag-color: var(--brand-primary);
-  border: 1.5px solid var(--brand-primary);
-  color: var(--brand-primary);
-  background: var(--bg-surface);
-  transition: all 0.15s ease;
-}
-
-#templatePicker .template-chip:hover {
-  transform: translateY(-1px);
-  background: var(--brand-primary);
-  color: white;
-  box-shadow: var(--shadow-sm);
-}
-
-#templatePicker .template-chip svg {
-  width: 12px;
-  height: 12px;
-}
-
-/* END v9.3 */
-/* ═══════════════════════════════════════════════════════
-   COMPOSE PRO STYLE (v9.4)
-   ═══════════════════════════════════════════════════════ */
-
-/* ─── Dialog ─── */
+/* Compose Pro Style */
 .compose-dialog {
   background: var(--bg-surface);
   width: 100%;
@@ -2085,12 +2061,9 @@ body.dark ::-webkit-scrollbar-thumb {
   .compose-dialog {
     max-width: 720px;
     border-radius: 12px;
-    /* Docking bottom-right on desktop (Outlook style) — Comment out to keep centered */
-    /* position: fixed; bottom: 0; right: 24px; */
   }
 }
 
-/* ─── Fields (flat, minimal) ─── */
 .compose-field {
   padding: 0 20px;
   border-bottom: 1px solid var(--border-subtle);
@@ -2103,7 +2076,6 @@ body.dark ::-webkit-scrollbar-thumb {
   background: var(--bg-surface);
 }
 
-/* ─── Recipients row (chips) ─── */
 .compose-recipients-field {
   padding: 8px 12px 8px 20px;
   border-bottom: 1px solid var(--border-subtle);
@@ -2146,7 +2118,6 @@ body.dark ::-webkit-scrollbar-thumb {
   display: contents;
 }
 
-/* ─── Chip ─── */
 .recipient-chip {
   display: inline-flex;
   align-items: center;
@@ -2210,7 +2181,6 @@ body.dark ::-webkit-scrollbar-thumb {
 .recipient-chip.owner-chip .chip-avatar { background: #7A5D00; }
 .recipient-chip.owner-chip .chip-remove { color: #7A5D00; }
 
-/* ─── Chip input ─── */
 .chips-input {
   flex: 1;
   min-width: 140px;
@@ -2245,7 +2215,6 @@ body.dark ::-webkit-scrollbar-thumb {
   color: var(--brand-primary);
 }
 
-/* ─── Autocomplete suggestions ─── */
 .chips-suggestions {
   position: absolute;
   top: calc(100% + 4px);
@@ -2316,7 +2285,6 @@ body.dark ::-webkit-scrollbar-thumb {
   font-size: 12.5px;
 }
 
-/* ─── Subject ─── */
 .compose-subject-input {
   width: 100%;
   border: none;
@@ -2333,7 +2301,6 @@ body.dark ::-webkit-scrollbar-thumb {
   font-weight: 500;
 }
 
-/* ─── Options (compact toggles) ─── */
 .compose-options-field {
   padding: 10px 20px;
   background: var(--bg-subtle);
@@ -2389,7 +2356,6 @@ body.dark ::-webkit-scrollbar-thumb {
   max-width: 160px;
 }
 
-/* ─── Templates ─── */
 .compose-templates-field {
   padding: 12px 20px;
   background: linear-gradient(90deg, #EFF6FC 0%, transparent 100%);
@@ -2433,7 +2399,6 @@ body.dark ::-webkit-scrollbar-thumb {
 }
 .template-btn svg { width: 14px; height: 14px; }
 
-/* ─── Body ─── */
 .compose-body {
   flex: 1;
   min-height: 0;
@@ -2456,7 +2421,6 @@ body.dark ::-webkit-scrollbar-thumb {
 }
 .compose-body-input::placeholder { color: var(--text-disabled); }
 
-/* ─── Bottom Actions Bar ─── */
 .compose-actions-bar {
   display: flex;
   align-items: center;
@@ -2481,7 +2445,6 @@ body.dark ::-webkit-scrollbar-thumb {
   justify-content: flex-end;
 }
 
-/* ─── Send CTA ─── */
 .btn-send-cta {
   display: inline-flex;
   align-items: center;
@@ -2505,7 +2468,6 @@ body.dark ::-webkit-scrollbar-thumb {
 .btn-send-cta:active { transform: translateY(0); }
 .btn-send-cta:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
-/* ─── Icon Action Buttons ─── */
 .icon-action-btn {
   width: 38px;
   height: 38px;
@@ -2529,6 +2491,13 @@ body.dark ::-webkit-scrollbar-thumb {
   color: var(--danger);
 }
 
+.schedule-btn {
+  color: #C28A2E !important;
+}
+.schedule-btn:hover {
+  background: #FAF0E5 !important;
+}
+
 .send-status-compact {
   font-size: 11.5px;
   color: var(--text-tertiary);
@@ -2539,7 +2508,6 @@ body.dark ::-webkit-scrollbar-thumb {
   white-space: nowrap;
 }
 
-/* ─── Mobile adjustments ─── */
 @media (max-width: 640px) {
   .compose-field { padding: 0 14px; }
   .compose-recipients-field { padding: 6px 8px 6px 14px; }
@@ -2548,10 +2516,8 @@ body.dark ::-webkit-scrollbar-thumb {
   .actions-center { display: none; }
   .btn-send-cta { padding: 9px 18px; font-size: 13.5px; }
 }
-/* ═══════════════════════════════════════════════════════
-   MOBILE DRAWER + DRAFTS (v9.7)
-   ═══════════════════════════════════════════════════════ */
 
+/* Mobile Drawer + Drafts */
 .mobile-drawer-overlay {
   position: fixed;
   inset: 0;
@@ -2685,7 +2651,7 @@ body.dark ::-webkit-scrollbar-thumb {
   .mobile-drawer-overlay { display: none !important; }
 }
 
-/* ─── Drafts List ─── */
+/* Drafts List */
 .draft-item {
   display: flex;
   align-items: center;
@@ -2741,9 +2707,7 @@ body.dark ::-webkit-scrollbar-thumb {
   color: var(--danger);
 }
 
-/* ═══════════════════════════════════════════════════════
-   MOBILE FIXES (v9.7)
-   ═══════════════════════════════════════════════════════ */
+/* Mobile Fixes */
 @media (max-width: 767px) {
   .app-header {
     padding: 0 8px;
@@ -2884,12 +2848,8 @@ body.dark ::-webkit-scrollbar-thumb {
   .compose-dialog { height: -webkit-fill-available; }
 }
 
-/* END v9.7 */
-/* ═══════════════════════════════════════════════════════
-   ⭐ FIX: Attachment button on mobile (v9.8)
-   ═══════════════════════════════════════════════════════ */
+/* Attachment Button on Mobile */
 @media (max-width: 767px) {
-  /* رجّع زرار المرفقات على الموبايل */
   .compose-actions-bar .actions-center {
     display: flex !important;
     justify-content: center;
@@ -2897,12 +2857,10 @@ body.dark ::-webkit-scrollbar-thumb {
     flex: 1;
   }
 
-  /* أخفي بس زرار التصنيفات من الوسط (مش ضروري على الموبايل) */
   .compose-actions-bar .actions-center .icon-action-btn[title="تصنيفات"] {
     display: none !important;
   }
 
-  /* كبّر زرار المرفق شوية عشان يكون أسهل في اللمس */
   .compose-actions-bar .actions-center .icon-action-btn[title="إرفاق"] {
     display: flex !important;
     width: 44px;
@@ -2913,7 +2871,6 @@ body.dark ::-webkit-scrollbar-thumb {
 }
 
 @media (max-width: 640px) {
-  /* تطبيق نفس التعديل للشاشات الأصغر */
   .compose-actions-bar .actions-center {
     display: flex !important;
     flex: 1;
@@ -2927,9 +2884,8 @@ body.dark ::-webkit-scrollbar-thumb {
     display: flex !important;
   }
 }
-/* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9.1) — سجل المحذوفات (محسّن)
-   ═══════════════════════════════════════════════════════ */
+
+/* Deleted Log */
 .deleted-log-list {
   display: flex;
   flex-direction: column;
@@ -2963,7 +2919,6 @@ body.dark ::-webkit-scrollbar-thumb {
   transform: translateY(-1px);
 }
 
-/* ─── Row 1: From → To ─── */
 .deleted-log-row-1 {
   display: flex;
   align-items: center;
@@ -3039,7 +2994,6 @@ body.dark ::-webkit-scrollbar-thumb {
   border-radius: 10px;
 }
 
-/* ─── Row 2: Subject + Preview ─── */
 .deleted-log-row-2 {
   margin-bottom: 12px;
   padding-bottom: 12px;
@@ -3065,7 +3019,6 @@ body.dark ::-webkit-scrollbar-thumb {
   line-height: 1.5;
 }
 
-/* ─── Row 3: Info + Actions ─── */
 .deleted-log-row-3 {
   display: flex;
   align-items: center;
@@ -3105,7 +3058,6 @@ body.dark ::-webkit-scrollbar-thumb {
   color: var(--text-secondary);
 }
 
-/* ─── Action Buttons ─── */
 .deleted-log-actions {
   display: flex;
   gap: 6px;
@@ -3165,7 +3117,6 @@ body.dark ::-webkit-scrollbar-thumb {
   box-shadow: 0 3px 10px rgba(209, 52, 56, 0.3);
 }
 
-/* ═══ Responsive — Mobile ═══ */
 @media (max-width: 767px) {
   .deleted-log-item {
     padding: 12px 12px 12px 14px;
@@ -3242,101 +3193,10 @@ body.dark ::-webkit-scrollbar-thumb {
     min-height: 36px;
   }
 }
-.auth-loading-screen {
-  position: fixed;
-  inset: 0;
-  background: linear-gradient(135deg, #0078D4 0%, #106EBE 50%, #0a4a8a 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  transition: opacity 0.2s ease;
-}
 
-.auth-loading-screen .spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 255, 255, 0.2);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.auth-loading-screen.hidden {
-  display: none !important;
-}
-/* ═══════════════════════════════════════════════════════
-   AUTH LOADING SCREEN (v9.9.5)
-   ═══════════════════════════════════════════════════════ */
-.auth-loading-screen {
-  position: fixed;
-  inset: 0;
-  background: linear-gradient(135deg, #0078D4 0%, #106EBE 50%, #0a4a8a 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-}
-
-.auth-loading-screen .spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 255, 255, 0.2);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-
-.auth-loading-screen.hidden {
-  display: none !important;
-}
-
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
-/* ═══════════════════════════════════════════════════════
-   AUTH LOADING SCREEN (v9.9.6)
-   شاشة تحميل Firebase — تظهر أثناء فحص الـ session
-   ═══════════════════════════════════════════════════════ */
-.auth-loading-screen {
-  position: fixed;
-  inset: 0;
-  background: linear-gradient(135deg, #0078D4 0%, #106EBE 50%, #0a4a8a 100%);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9999;
-  transition: opacity 0.2s ease;
-}
-
-.auth-loading-screen .spinner {
-  width: 50px;
-  height: 50px;
-  border: 4px solid rgba(255, 255, 255, 0.2);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: authSpin 0.8s linear infinite;
-}
-
-.auth-loading-screen.hidden {
-  display: none !important;
-}
-
-@keyframes authSpin {
-  to { transform: rotate(360deg); }
-}
-.schedule-btn {
-  color: #C28A2E !important;
-}
-.schedule-btn:hover {
-  background: #FAF0E5 !important;
-}
-/* ⭐ Fix Z-Index for dynamically created modals */
+/* Z-Index for Dynamic Modals */
 #scheduleModal,
 #groupMembersModal,
 #deptEditModal {
   z-index: 10000 !important;
 }
-/* END v9.9.6 */
-/* END v9.9.1 */
-/* END v9.9 */
