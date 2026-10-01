@@ -1,8 +1,8 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.3 - Enterprise Application
+   Mail System v9.9.4 - Enterprise Application
    Features: Pro Compose + Permissions + GoFile Uploads
              Mobile Drawer + Drafts + Notifications + Deleted Log
-             Fixed: Stay logged in on refresh
+             Fixed: No logout flash on refresh
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -319,7 +319,6 @@ async function handleLogin() {
   btn.querySelector('span').textContent = 'جاري الدخول...';
 
   try {
-    // ⭐ دايماً Local Persistence — عشان يفضل مسجل حتى بعد Refresh
     try {
       await setPersistence(auth, browserLocalPersistence);
     } catch (e) {
@@ -367,46 +366,82 @@ window.sendPasswordReset = async () => {
   }
 };
 
-/* ═══════ AUTH STATE ═══════ */
+/* ═══════ AUTH STATE (v9.9.4 — مع شاشة تحميل) ═══════ */
 async function checkAuthState() {
-  // ⭐ تأكد من الـ persistence قبل بدء الاستماع
+  // ⭐ تأكد من الـ persistence
   try {
     await setPersistence(auth, browserLocalPersistence);
   } catch (e) {
     console.warn('setPersistence init error:', e);
   }
 
+  // ⭐ فلاج لمنع التنفيذ المزدوج
+  let authResolved = false;
+
+  // ⏱️ Timeout احتياطي — لو Firebase اتأخر أكتر من 3 ثواني
+  const authTimeout = setTimeout(() => {
+    if (!authResolved) {
+      authResolved = true;
+      hide(document.getElementById('authLoading'));
+      show($('#loginScreen'));
+      hide($('#app'));
+    }
+  }, 3000);
+
   onAuthStateChanged(auth, async (user) => {
+    // 🛑 منع التنفيذ المزدوج
+    if (authResolved) return;
+    authResolved = true;
+    clearTimeout(authTimeout);
+
+    // 🔻 إخفاء شاشة التحميل
+    hide(document.getElementById('authLoading'));
+
     if (!user) {
       state.currentUser = null;
       if (state.unsubMessages) { state.unsubMessages(); state.unsubMessages = null; }
-      show($('#loginScreen'));
       hide($('#app'));
+      show($('#loginScreen'));
       return;
     }
 
-    const snap = await getDoc(doc(db, 'users', user.uid));
-    if (!snap.exists()) { alert('لا يوجد ملف مستخدم في Firestore'); await signOut(auth); return; }
+    // 🔍 فحص المستخدم في Firestore
+    try {
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      if (!snap.exists()) {
+        alert('لا يوجد ملف مستخدم في Firestore');
+        await signOut(auth);
+        return;
+      }
 
-    state.currentUser = { uid: user.uid, ...snap.data() };
-    if (state.currentUser.isActive === false) { alert('الحساب معطّل'); await signOut(auth); return; }
+      state.currentUser = { uid: user.uid, ...snap.data() };
+      if (state.currentUser.isActive === false) {
+        alert('الحساب معطّل');
+        await signOut(auth);
+        return;
+      }
 
-    saveSession(state.currentUser);
-    await loadUsersCache();
-    await loadDepartmentsCache();
-    await loadUserTags();
+      saveSession(state.currentUser);
+      await loadUsersCache();
+      await loadDepartmentsCache();
+      await loadUserTags();
 
-    updateUIForRole();
-    hide($('#loginScreen'));
-    show($('#app'));
-    icons();
-    initSidebar();
-    navigate('inbox');
+      updateUIForRole();
+      hide($('#loginScreen'));
+      show($('#app'));
+      icons();
+      initSidebar();
+      navigate('inbox');
 
-    startMessagesListener();
-    setTimeout(registerFCMToken, 1500);
-    setTimeout(() => updateDraftsBadge(), 2000);
-    setTimeout(() => updateDeletedLogBadge(), 2500);
+      startMessagesListener();
+      setTimeout(registerFCMToken, 1500);
+      setTimeout(() => updateDraftsBadge(), 2000);
+      setTimeout(() => updateDeletedLogBadge(), 2500);
+    } catch (e) {
+      console.error('Auth state error:', e);
+      hide($('#app'));
+      show($('#loginScreen'));
+    }
   });
 }
 
@@ -3146,7 +3181,6 @@ if (messaging) {
   });
 }
 
-/* ⭐ Service Worker — معدّل لمنع تسجيل الخروج عند الـ Refresh */
 function setupServiceWorkerMessages() {
   if (!('serviceWorker' in navigator)) return;
 
@@ -3154,7 +3188,6 @@ function setupServiceWorkerMessages() {
     if (event.data?.type === 'PLAY_SOUND') playNotifSound();
   });
 
-  // منع الـ controllerchange من عمل reload مفاجئ
   let refreshing = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshing) return;
@@ -3258,7 +3291,7 @@ window.markAllRead = async () => {
 };
 
 /* ═══════════════════════════════════════════════════════
-   DELETED LOG (v9.9.3)
+   DELETED LOG (v9.9.4)
    ═══════════════════════════════════════════════════════ */
 async function renderDeletedLog() {
   if (!isAdmin()) {
@@ -3544,4 +3577,4 @@ async function updateDeletedLogBadge(count) {
   });
 }
 
-console.log('🚀 Mail System v9.9.3 loaded — Stay logged in on refresh');
+console.log('🚀 Mail System v9.9.4 loaded — No logout flash on refresh');
