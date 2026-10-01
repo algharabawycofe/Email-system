@@ -1,15 +1,17 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.5 - Enterprise Application
-   Fixed: Login/Logout hang issue
+   Mail System v9.9.6 - Enterprise Application
+   Features: Password Change + Reset Requests + Full System
    ═══════════════════════════════════════════════════════════ */
 
 import {
   auth, db, messaging,
   EMAIL_DOMAIN, VAPID_KEY, SW_PATH, APP_URL,
+  firebaseConfig,
   createAuthUser, resetUserPassword,
   signInWithEmailAndPassword, signOut, onAuthStateChanged,
   setPersistence, browserLocalPersistence, browserSessionPersistence,
   getToken, onMessage,
+  initializeApp, getAuth, updatePassword, deleteApp,
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   query, where, serverTimestamp, onSnapshot, writeBatch
 } from './firebase.js';
@@ -50,6 +52,65 @@ const ADMIN_MESSAGE_TEMPLATES = [
   { id: 'complaint', label: 'شكوى', icon: 'alert-triangle', body: 'أود التقدم بشكوى بخصوص:\n\n\n\n\nالتفاصيل:\n' },
   { id: 'inquiry', label: 'استفسار', icon: 'help-circle', body: 'أرجو الإفادة بخصوص:\n\n\n\n\nالتفاصيل:\n' }
 ];
+
+/* ═══════ PASSWORD ENCRYPTION (v9.9.6) ═══════ */
+const SECRET_KEY = 'MSG_SYS_v996_2026_xK9mPq#Z!nB';
+
+function encryptPassword(text) {
+  if (!text) return '';
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    result += String.fromCharCode(text.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length));
+  }
+  try {
+    return btoa(unescape(encodeURIComponent(result)));
+  } catch (e) {
+    return '';
+  }
+}
+
+function decryptPassword(encoded) {
+  if (!encoded) return '';
+  try {
+    const decoded = decodeURIComponent(escape(atob(encoded)));
+    let result = '';
+    for (let i = 0; i < decoded.length; i++) {
+      result += String.fromCharCode(decoded.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length));
+    }
+    return result;
+  } catch (e) {
+    console.error('Decrypt error:', e);
+    return '';
+  }
+}
+
+async function adminChangeUserPassword(userEmail, oldPassword, newPassword) {
+  const appName = 'Sec-Pwd-' + Date.now();
+  let secondaryApp = null;
+  let secondaryAuth = null;
+
+  try {
+    secondaryApp = initializeApp(firebaseConfig, appName);
+    secondaryAuth = getAuth(secondaryApp);
+    const cred = await signInWithEmailAndPassword(secondaryAuth, userEmail, oldPassword);
+    await updatePassword(cred.user, newPassword);
+    try { await signOut(secondaryAuth); } catch (x) {}
+    try { await deleteApp(secondaryApp); } catch (x) {}
+    return { success: true };
+  } catch (e) {
+    try { if (secondaryAuth) await signOut(secondaryAuth); } catch (x) {}
+    try { if (secondaryApp) await deleteApp(secondaryApp); } catch (x) {}
+    return {
+      success: false,
+      error: e.code,
+      message: (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential')
+        ? 'كلمة السر القديمة غير صحيحة'
+        : e.code === 'auth/too-many-requests'
+        ? 'محاولات كتير — استنى شوية'
+        : e.message
+    };
+  }
+}
 
 /* ═══════ HELPERS ═══════ */
 function getAvatarGradient(name) {
@@ -228,6 +289,7 @@ function setupKeyboardShortcuts() {
       hide($('#settingsModal'));
       hide($('#forgotModal'));
       hide($('#tagsModal'));
+      hide($('#changePasswordModal'));
       closeMobileDrawer();
       closeImageViewer();
     }
@@ -333,24 +395,60 @@ window.closeForgotModal = () => {
 };
 
 window.sendPasswordReset = async () => {
-  const email = ($('#forgotEmail')?.value || '').trim().toLowerCase();
+  const username = ($('#forgotEmail')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
   const status = $('#forgotStatus');
-  if (!email) { status.className = 'alert alert-error'; status.textContent = 'اكتب الإيميل'; show(status); return; }
-  status.className = 'alert alert-info'; status.textContent = 'جاري الإرسال...'; show(status);
 
-  const result = await resetUserPassword(email);
-  if (result.success) { status.className = 'alert alert-success'; status.textContent = '✅ تم إرسال رابط الاستعادة'; }
-  else {
+  if (!username) {
     status.className = 'alert alert-error';
-    if (result.error === 'auth/user-not-found') status.textContent = 'الإيميل غير مسجل';
-    else if (result.error === 'auth/invalid-email') status.textContent = 'الإيميل غير صحيح';
-    else status.textContent = result.message || 'خطأ';
+    status.textContent = 'اكتب اسم المستخدم';
+    show(status);
+    return;
+  }
+
+  status.className = 'alert alert-info';
+  status.textContent = 'جاري إرسال الطلب...';
+  show(status);
+
+  try {
+    const usersSnap = await getDocs(collection(db, 'users'));
+    const userDoc = usersSnap.docs.find(d => {
+      const u = d.data();
+      return (u.username || '').toLowerCase() === username;
+    });
+
+    if (!userDoc) {
+      status.className = 'alert alert-error';
+      status.textContent = 'اسم المستخدم غير مسجل في النظام';
+      show(status);
+      return;
+    }
+
+    const u = userDoc.data();
+
+    await addDoc(collection(db, 'passwordResetRequests'), {
+      username: u.username,
+      userName: u.name || '',
+      userEmail: u.email || '',
+      userId: userDoc.id,
+      status: 'pending',
+      createdAt: serverTimestamp()
+    });
+
+    status.className = 'alert alert-success';
+    status.textContent = '✅ تم إرسال طلبك لمسئول السيستم — هيتم التواصل معاك قريب';
+    show(status);
+
+    setTimeout(() => closeForgotModal(), 3000);
+
+  } catch (e) {
+    console.error('Password reset request error:', e);
+    status.className = 'alert alert-error';
+    status.textContent = 'خطأ: ' + e.message;
+    show(status);
   }
 };
 
-/* ═══════════════════════════════════════════════════════
-   AUTH STATE (v9.9.5) — إصلاح مشكلة التعليق
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ AUTH STATE (v9.9.6) ═══════ */
 async function checkAuthState() {
   try {
     await setPersistence(auth, browserLocalPersistence);
@@ -358,10 +456,8 @@ async function checkAuthState() {
     console.warn('setPersistence init error:', e);
   }
 
-  // ⭐ فلاج لإخفاء شاشة التحميل أول مرة بس
   let initialCheckDone = false;
 
-  // ⏱️ Timeout احتياطي
   const authTimeout = setTimeout(() => {
     if (!initialCheckDone) {
       initialCheckDone = true;
@@ -372,7 +468,6 @@ async function checkAuthState() {
   }, 3000);
 
   onAuthStateChanged(auth, async (user) => {
-    // 🔻 إخفاء شاشة التحميل أول مرة فقط
     if (!initialCheckDone) {
       initialCheckDone = true;
       clearTimeout(authTimeout);
@@ -380,7 +475,6 @@ async function checkAuthState() {
     }
 
     if (!user) {
-      // 🔴 تسجيل خروج
       state.currentUser = null;
       if (state.unsubMessages) {
         state.unsubMessages();
@@ -391,7 +485,6 @@ async function checkAuthState() {
       return;
     }
 
-    // 🟢 تسجيل دخول
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (!snap.exists()) {
@@ -423,6 +516,7 @@ async function checkAuthState() {
       setTimeout(registerFCMToken, 1500);
       setTimeout(() => updateDraftsBadge(), 2000);
       setTimeout(() => updateDeletedLogBadge(), 2500);
+      setTimeout(() => updatePasswordResetBadge(), 2800);
     } catch (e) {
       console.error('Auth state error:', e);
       hide($('#app'));
@@ -460,7 +554,10 @@ function updateUIForRole() {
   const manager = isManagerOrAbove();
   $$('[data-manager-only]').forEach(el => manager ? el.classList.remove('hidden') : el.classList.add('hidden'));
 
-  if (admin) setTimeout(() => updateDeletedLogBadge(), 500);
+  if (admin) {
+    setTimeout(() => updateDeletedLogBadge(), 500);
+    setTimeout(() => updatePasswordResetBadge(), 700);
+  }
 }
 
 /* ═══════ TAGS ═══════ */
@@ -559,7 +656,7 @@ window.filterByTag = (tagId) => {
   navigate('inbox');
 };
 
-/* ═══════ SIDEBAR + MOBILE DRAWER ═══════ */
+/* ═══════ SIDEBAR ═══════ */
 function initSidebar() {
   const sidebar = $('#sidebar');
   const mobileNav = $('#mobileNav');
@@ -823,7 +920,8 @@ const ROUTES = {
   myteam: renderMyTeam,
   users: renderUsers,
   departments: renderDepartments,
-  deletedlog: renderDeletedLog
+  deletedlog: renderDeletedLog,
+  passwordreset: renderPasswordResetRequests
 };
 
 export function navigate(page) {
@@ -887,9 +985,7 @@ async function renderDrafts() {
       const toName = toUser ? toUser.name : '— لم يُحدد —';
       return `
         <div class="draft-item" onclick="openDraft('${d.id}')">
-          <div class="draft-avatar">
-            <i data-lucide="file-text" class="w-5 h-5"></i>
-          </div>
+          <div class="draft-avatar"><i data-lucide="file-text" class="w-5 h-5"></i></div>
           <div class="draft-info">
             <div class="draft-to">إلى: ${esc(toName)}</div>
             <div class="draft-subject">${esc(d.subject || '(بدون موضوع)')}</div>
@@ -915,9 +1011,7 @@ async function renderDrafts() {
             <span>جديدة</span>
           </button>
         </div>
-        <div class="data-table-wrapper" style="padding:0;overflow:hidden;">
-          ${rows}
-        </div>
+        <div class="data-table-wrapper" style="padding:0;overflow:hidden;">${rows}</div>
       </div>
     `;
     icons();
@@ -925,12 +1019,10 @@ async function renderDrafts() {
   } catch (e) {
     console.error('Drafts load error:', e);
     $('#pageContent').innerHTML = `
-      <div class="dashboard">
-        <div class="empty-state">
-          <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
-          <p>خطأ في تحميل المسودات</p>
-        </div>
-      </div>
+      <div class="dashboard"><div class="empty-state">
+        <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
+        <p>خطأ في تحميل المسودات</p>
+      </div></div>
     `;
     icons();
   }
@@ -946,9 +1038,7 @@ window.openDraft = async (draftId) => {
       return;
     }
     const d = snap.data();
-
     await window.openCompose();
-
     if (d.toUserId) {
       const toUser = state.allUsersCache.find(u => u.id === d.toUserId);
       if (toUser) window.addRecipient('to', toUser);
@@ -957,7 +1047,6 @@ window.openDraft = async (draftId) => {
     $('#cBody').value = d.body || '';
     $('#cDraftId').value = draftId;
     $('#composeTitle').textContent = 'تعديل مسودة';
-
     showToastAdvanced('تم فتح المسودة ✅', 'تعديل وحفظ', { type: 'info', icon: 'file-text', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
@@ -1137,6 +1226,7 @@ async function renderUsers() {
         <td>
           <div class="row-actions">
             <button onclick="editUser('${u.id}')" class="row-action primary" title="تعديل"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+            <button onclick="openChangePasswordModal('${u.id}', '${esc(u.username)}', '${esc(u.email || '')}', '${esc(u.name)}')" class="row-action primary" title="تغيير كلمة السر"><i data-lucide="key-round" class="w-3.5 h-3.5"></i></button>
             <button onclick="toggleUser('${u.id}', ${u.isActive === false})" class="row-action" title="${u.isActive === false ? 'تفعيل' : 'تعطيل'}"><i data-lucide="${u.isActive === false ? 'user-check' : 'user-x'}" class="w-3.5 h-3.5"></i></button>
             <button onclick="deleteUserDoc('${u.id}')" class="row-action danger" title="حذف"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
           </div>
@@ -1166,9 +1256,7 @@ async function renderUsers() {
           <div class="form-group"><label class="form-label">الاسم</label><input id="nuName" class="form-input" placeholder="محمد أحمد" /></div>
           <div class="form-group"><label class="form-label">اسم المستخدم</label><input id="nuUser" class="form-input" placeholder="mohamed" /></div>
           <div class="form-group"><label class="form-label">كلمة السر</label><input id="nuPass" type="text" class="form-input" placeholder="6+ حروف" /></div>
-          <div class="form-group"><label class="form-label">الدور</label><select id="nuRole" class="form-input" onchange="onRoleChange('nu')">
-            ${roleOptions}
-          </select></div>
+          <div class="form-group"><label class="form-label">الدور</label><select id="nuRole" class="form-input" onchange="onRoleChange('nu')">${roleOptions}</select></div>
         </div>
 
         <div class="form-group" id="nuDeptGroup" style="margin-top:14px;">
@@ -1209,9 +1297,7 @@ async function renderUsers() {
         <div class="form-grid" style="grid-template-columns:1fr 1fr;">
           <div class="form-group"><label class="form-label">الاسم</label><input id="euName" class="form-input" /></div>
           <div class="form-group"><label class="form-label">اسم المستخدم</label><input id="euUser" class="form-input form-input-disabled" disabled /></div>
-          <div class="form-group"><label class="form-label">الدور</label><select id="euRole" class="form-input" onchange="onRoleChange('eu')">
-            ${roleOptions}
-          </select></div>
+          <div class="form-group"><label class="form-label">الدور</label><select id="euRole" class="form-input" onchange="onRoleChange('eu')">${roleOptions}</select></div>
         </div>
 
         <div class="form-group" id="euDeptGroup" style="margin-top:14px;">
@@ -1225,15 +1311,11 @@ async function renderUsers() {
             <span class="check-box"></span>
             <span class="check-label" style="font-weight:700;color:var(--text-primary);">👔 مدير قسم</span>
           </label>
-          <p style="font-size:11.5px;color:var(--text-tertiary);margin:6px 24px 0 0;">
-            لو متحدد، المستخدم هيبقى مدير القسم المختار تلقائياً
-          </p>
         </div>
 
         <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
             <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
-            <span style="font-size:11px;color:var(--text-tertiary);">تقدر تعدلها يدوياً</span>
           </div>
           <div id="euPermissionsList" class="permissions-list"></div>
         </div>
@@ -1378,6 +1460,16 @@ window.createNewUser = async () => {
       createdAt: serverTimestamp()
     });
 
+    // ⭐ احفظ كلمة السر المشفرة
+    try {
+      await setDoc(doc(db, 'userSecrets', uid), {
+        encPass: encryptPassword(pass),
+        updatedAt: serverTimestamp()
+      });
+    } catch (err2) {
+      console.warn('Failed to save encrypted password:', err2);
+    }
+
     if (role === 'manager' && deptId) {
       await updateDoc(doc(db, 'departments', deptId), { managerId: uid });
     }
@@ -1483,6 +1575,7 @@ window.deleteUserDoc = async (uid) => {
   const ok = await confirmDialog('حذف المستخدم', 'هيتحذف من Firestore فقط. متأكد؟');
   if (!ok) return;
   await deleteDoc(doc(db, 'users', uid));
+  try { await deleteDoc(doc(db, 'userSecrets', uid)); } catch (x) {}
   renderUsers();
 };
 
@@ -2215,15 +2308,10 @@ window.trashThread = async (threadId, isTrash, permanent = false) => {
 };
 
 window.permanentDeleteFromTrash = async (threadId) => {
-  const ok = await confirmDialog(
-    'حذف نهائي',
-    'الرسالة هتتشال من عندك نهائياً ومش هترجع. متأكد؟'
-  );
+  const ok = await confirmDialog('حذف نهائي', 'الرسالة هتتشال من عندك نهائياً ومش هترجع. متأكد؟');
   if (!ok) return;
   await window.trashThread(threadId, true, true);
-  showToastAdvanced('تم الحذف النهائي 🗑️', 'اختفت من عندك', {
-    type: 'success', icon: 'trash-2', duration: 2500
-  });
+  showToastAdvanced('تم الحذف النهائي 🗑️', 'اختفت من عندك', { type: 'success', icon: 'trash-2', duration: 2500 });
 };
 
 window.permanentDelete = async (threadId) => {
@@ -2405,7 +2493,6 @@ window.closeCompose = () => {
   selectedTags = [];
 };
 
-/* ═══════ RECIPIENT CHIPS ═══════ */
 function renderRecipientChips() {
   ['to', 'cc', 'bcc'].forEach(field => {
     const container = document.getElementById(field + 'Chips');
@@ -2681,7 +2768,7 @@ window.toggleDeptSend = () => {
   }
 };
 
-/* ═══════ FILE UPLOAD — GoFile ═══════ */
+/* ═══════ FILE UPLOAD ═══════ */
 window.handleFiles = async (event) => {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
@@ -2735,15 +2822,10 @@ async function uploadFile(fileObj) {
     fileObj.progress = 90;
     renderAttachments();
 
-    if (!response.ok) {
-      throw new Error(`فشل الرفع: ${response.status}`);
-    }
+    if (!response.ok) throw new Error(`فشل الرفع: ${response.status}`);
 
     const result = await response.json();
-
-    if (result.status !== 'ok') {
-      throw new Error(result.status || 'فشل الرفع');
-    }
+    if (result.status !== 'ok') throw new Error(result.status || 'فشل الرفع');
 
     fileObj.url = result.data.downloadPage;
     fileObj.path = result.data.id;
@@ -2752,9 +2834,7 @@ async function uploadFile(fileObj) {
     fileObj.progress = 100;
     renderAttachments();
 
-    showToastAdvanced('تم الرفع ✅', fileObj.name, {
-      type: 'success', icon: 'check-circle', duration: 2000
-    });
+    showToastAdvanced('تم الرفع ✅', fileObj.name, { type: 'success', icon: 'check-circle', duration: 2000 });
   } catch (e) {
     console.error('GoFile upload error:', e);
     fileObj.status = 'error';
@@ -2849,9 +2929,7 @@ window.sendMessage = async () => {
       if (!canSendTo(recipient)) {
         status.style.color = 'var(--danger)';
         status.textContent = `غير مسموح: ${recipient.name}`;
-        showToastAdvanced('غير مسموح', `مش مسموحلك تبعت لـ ${recipient.name}`, {
-          type: 'error', icon: 'shield-x', duration: 4000
-        });
+        showToastAdvanced('غير مسموح', `مش مسموحلك تبعت لـ ${recipient.name}`, { type: 'error', icon: 'shield-x', duration: 4000 });
         return;
       }
     }
@@ -3014,13 +3092,7 @@ window.saveDraft = async () => {
 
   try {
     const draftId = $('#cDraftId').value;
-    const draftData = {
-      toUserId: toUserId || null,
-      subject,
-      body,
-      updatedAt: serverTimestamp()
-    };
-
+    const draftData = { toUserId: toUserId || null, subject, body, updatedAt: serverTimestamp() };
     if (draftId) {
       await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
     } else {
@@ -3028,11 +3100,7 @@ window.saveDraft = async () => {
       const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
       $('#cDraftId').value = r.id;
     }
-
-    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة في "المسودات"', {
-      type: 'success', icon: 'file-text', duration: 2500
-    });
-
+    showToastAdvanced('تم الحفظ ✅', 'المسودة محفوظة في "المسودات"', { type: 'success', icon: 'file-text', duration: 2500 });
     updateDraftsBadge();
     setTimeout(() => closeCompose(), 1000);
   } catch (e) {
@@ -3044,9 +3112,7 @@ window.saveDraft = async () => {
 window.replyToThread = async (userId, userName, threadId, subject) => {
   await window.openCompose();
   const recipient = state.allUsersCache.find(u => u.id === userId);
-  if (recipient) {
-    window.addRecipient('to', recipient);
-  }
+  if (recipient) window.addRecipient('to', recipient);
   $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
   $('#cThreadId').value = threadId;
   $('#composeTitle').textContent = `رد على ${userName}`;
@@ -3276,9 +3342,7 @@ window.markAllRead = async () => {
   hideStyle($('#notifDropdown'));
 };
 
-/* ═══════════════════════════════════════════════════════
-   DELETED LOG
-   ═══════════════════════════════════════════════════════ */
+/* ═══════ DELETED LOG ═══════ */
 async function renderDeletedLog() {
   if (!isAdmin()) {
     $('#pageContent').innerHTML = `
@@ -3337,27 +3401,16 @@ async function renderDeletedLog() {
     }
 
     const threadsMap = {};
-
     deleted.forEach(m => {
       const tid = m.threadId || m.id;
-
       if (!threadsMap[tid]) {
-        threadsMap[tid] = {
-          threadId: tid,
-          messages: [],
-          allDeleters: new Set(),
-          latestDeleteTime: 0
-        };
+        threadsMap[tid] = { threadId: tid, messages: [], allDeleters: new Set(), latestDeleteTime: 0 };
       }
-
       threadsMap[tid].messages.push(m);
-
       Object.entries(m.permanentlyDeletedBy).forEach(([uid, timeStr]) => {
         threadsMap[tid].allDeleters.add(uid);
         const t = timeStr ? new Date(timeStr).getTime() : 0;
-        if (t > threadsMap[tid].latestDeleteTime) {
-          threadsMap[tid].latestDeleteTime = t;
-        }
+        if (t > threadsMap[tid].latestDeleteTime) threadsMap[tid].latestDeleteTime = t;
       });
     });
 
@@ -3386,16 +3439,12 @@ async function renderDeletedLog() {
           })
         : '—';
 
-      const msgCount = t.messages.length;
-
       return `
         <div class="deleted-log-item">
           <div class="deleted-log-row-1">
             <div class="deleted-log-from-to">
               <div class="user-cell-avatar ${getAvatarGradient(fromName)}" title="${esc(fromName)}">${initials(fromName)}</div>
-              <div class="deleted-log-arrow">
-                <i data-lucide="arrow-left" class="w-3.5 h-3.5"></i>
-              </div>
+              <div class="deleted-log-arrow"><i data-lucide="arrow-left" class="w-3.5 h-3.5"></i></div>
               <div class="user-cell-avatar ${getAvatarGradient(toName)}" title="${esc(toName)}">${initials(toName)}</div>
             </div>
             <div class="deleted-log-names">
@@ -3403,7 +3452,7 @@ async function renderDeletedLog() {
               <span class="deleted-log-to">← ${esc(toName)}</span>
             </div>
             <div class="deleted-log-badges">
-              ${msgCount > 1 ? `<span class="deleted-log-thread-badge">💬 ${msgCount}</span>` : ''}
+              ${t.messages.length > 1 ? `<span class="deleted-log-thread-badge">💬 ${t.messages.length}</span>` : ''}
             </div>
           </div>
 
@@ -3427,16 +3476,13 @@ async function renderDeletedLog() {
 
             <div class="deleted-log-actions">
               <button onclick="viewDeletedThread('${t.threadId}')" class="deleted-log-btn view">
-                <i data-lucide="eye" class="w-3.5 h-3.5"></i>
-                <span>عرض</span>
+                <i data-lucide="eye" class="w-3.5 h-3.5"></i><span>عرض</span>
               </button>
               <button onclick="restoreDeletedThread('${t.threadId}')" class="deleted-log-btn restore">
-                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
-                <span>استعادة</span>
+                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i><span>استعادة</span>
               </button>
               <button onclick="permanentDeleteThread('${t.threadId}')" class="deleted-log-btn delete">
-                <i data-lucide="x-circle" class="w-3.5 h-3.5"></i>
-                <span>حذف نهائي</span>
+                <i data-lucide="x-circle" class="w-3.5 h-3.5"></i><span>حذف نهائي</span>
               </button>
             </div>
           </div>
@@ -3452,14 +3498,11 @@ async function renderDeletedLog() {
             <p class="dashboard-date">${threads.length} محادثة · ${deleted.length} رسالة</p>
           </div>
           <button onclick="renderDeletedLog()" class="btn btn-ghost btn-sm">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-            <span>تحديث</span>
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i><span>تحديث</span>
           </button>
         </div>
 
-        <div class="deleted-log-list">
-          ${rows}
-        </div>
+        <div class="deleted-log-list">${rows}</div>
       </div>
     `;
     icons();
@@ -3468,12 +3511,10 @@ async function renderDeletedLog() {
   } catch (e) {
     console.error('Deleted log error:', e);
     $('#pageContent').innerHTML = `
-      <div class="dashboard">
-        <div class="empty-state">
-          <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
-          <p>خطأ في تحميل السجل</p>
-        </div>
-      </div>
+      <div class="dashboard"><div class="empty-state">
+        <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
+        <p>خطأ في تحميل السجل</p>
+      </div></div>
     `;
     icons();
   }
@@ -3483,28 +3524,19 @@ window.renderDeletedLog = renderDeletedLog;
 window.viewDeletedThread = (threadId) => {
   state.currentFilter = 'inbox';
   navigate('inbox');
-  setTimeout(() => {
-    if (window.openThread) window.openThread(threadId);
-  }, 400);
+  setTimeout(() => { if (window.openThread) window.openThread(threadId); }, 400);
 };
 
 window.restoreDeletedThread = async (threadId) => {
   const ok = await confirmDialog('استعادة للكل', 'هيتم إرجاع الرسائل لكل المستخدمين. متأكد؟');
   if (!ok) return;
-
   try {
     const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
     const snap = await getDocs(q);
-
     for (const d of snap.docs) {
-      await updateDoc(doc(db, 'messages', d.id), {
-        permanentlyDeletedBy: {},
-        deletedBy: {}
-      });
+      await updateDoc(doc(db, 'messages', d.id), { permanentlyDeletedBy: {}, deletedBy: {} });
     }
-    showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', {
-      type: 'success', icon: 'check-circle', duration: 2500
-    });
+    showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', { type: 'success', icon: 'check-circle', duration: 2500 });
     renderDeletedLog();
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
@@ -3514,18 +3546,13 @@ window.restoreDeletedThread = async (threadId) => {
 window.permanentDeleteThread = async (threadId) => {
   const ok = await confirmDialog('حذف نهائي', 'هيتم حذف الرسائل نهائياً من النظام. متأكد؟');
   if (!ok) return;
-
   try {
     const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
     const snap = await getDocs(q);
-
     for (const d of snap.docs) {
       await deleteDoc(doc(db, 'messages', d.id));
     }
-
-    showToastAdvanced('تم الحذف النهائي 🗑️', '', {
-      type: 'success', icon: 'trash-2', duration: 2500
-    });
+    showToastAdvanced('تم الحذف النهائي 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2500 });
     renderDeletedLog();
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
@@ -3542,9 +3569,7 @@ async function updateDeletedLogBadge(count) {
         const data = d.data();
         return data.permanentlyDeletedBy && Object.keys(data.permanentlyDeletedBy).length > 0;
       }).length;
-    } catch (e) {
-      count = 0;
-    }
+    } catch (e) { count = 0; }
   }
 
   const els = [
@@ -3563,4 +3588,369 @@ async function updateDeletedLogBadge(count) {
   });
 }
 
-console.log('🚀 Mail System v9.9.5 loaded');
+/* ═══════ CHANGE PASSWORD UI ═══════ */
+window.openChangePasswordModal = (userId, username, email, displayName) => {
+  if (!isAdmin()) {
+    showToastAdvanced('غير مسموح', 'مسئول السيستم بس', { type: 'error', icon: 'shield-x' });
+    return;
+  }
+
+  $('#cpUserId').value = userId;
+  $('#cpUsername').value = username || '';
+  $('#cpEmail').value = email || '';
+  $('#cpNewPass').value = '';
+  $('#cpConfirmPass').value = '';
+  $('#changePasswordSubtitle').textContent = displayName || username || '';
+
+  const status = $('#cpStatus');
+  status.className = 'alert hidden';
+  status.textContent = '';
+
+  show($('#changePasswordModal'));
+  icons();
+  setTimeout(() => $('#cpNewPass')?.focus(), 200);
+};
+
+window.closeChangePasswordModal = () => {
+  hide($('#changePasswordModal'));
+  window._currentResetReqId = null;
+};
+
+window.saveUserPassword = async () => {
+  const userId = $('#cpUserId').value;
+  const username = $('#cpUsername').value;
+  const email = $('#cpEmail').value;
+  const newPass = $('#cpNewPass').value;
+  const confirmPass = $('#cpConfirmPass').value;
+  const status = $('#cpStatus');
+
+  status.className = 'alert hidden';
+  status.textContent = '';
+
+  if (!newPass || !confirmPass) {
+    status.className = 'alert alert-error';
+    status.textContent = 'املأ كل الحقول';
+    show(status);
+    return;
+  }
+
+  if (newPass.length < 6) {
+    status.className = 'alert alert-error';
+    status.textContent = 'كلمة السر 6 حروف على الأقل';
+    show(status);
+    return;
+  }
+
+  if (newPass !== confirmPass) {
+    status.className = 'alert alert-error';
+    status.textContent = 'كلمتا السر مش متطابقتين';
+    show(status);
+    return;
+  }
+
+  if (!email) {
+    status.className = 'alert alert-error';
+    status.textContent = 'الإيميل مش موجود — جرب من Firebase Console';
+    show(status);
+    return;
+  }
+
+  status.className = 'alert alert-info';
+  status.textContent = 'جاري تغيير كلمة السر...';
+  show(status);
+
+  try {
+    let oldPass = null;
+    try {
+      const secretSnap = await getDoc(doc(db, 'userSecrets', userId));
+      if (secretSnap.exists()) {
+        oldPass = decryptPassword(secretSnap.data().encPass);
+      }
+    } catch (e) {
+      console.warn('Cannot read secrets:', e);
+    }
+
+    if (!oldPass) {
+      status.className = 'alert alert-error';
+      status.textContent = 'مش قادر أوصل لكلمة السر القديمة — جرب من Firebase Console';
+      show(status);
+      return;
+    }
+
+    const result = await adminChangeUserPassword(email, oldPass, newPass);
+
+    if (!result.success) {
+      status.className = 'alert alert-error';
+      status.textContent = 'فشل التغيير: ' + (result.message || result.error);
+      show(status);
+      return;
+    }
+
+    await setDoc(doc(db, 'userSecrets', userId), {
+      encPass: encryptPassword(newPass),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    status.className = 'alert alert-success';
+    status.textContent = '✅ تم تغيير كلمة السر بنجاح';
+
+    showToastAdvanced('تم التغيير ✅', `كلمة سر ${username}: ${newPass}`, {
+      type: 'success', icon: 'key-round', duration: 5000
+    });
+
+    // ⭐ لو جاي من طلب → علّم الطلب "تم الحل"
+    if (window._currentResetReqId) {
+      try {
+        await updateDoc(doc(db, 'passwordResetRequests', window._currentResetReqId), {
+          status: 'resolved',
+          resolvedAt: serverTimestamp(),
+          resolvedBy: state.currentUser.uid
+        });
+      } catch (err) { console.warn('Failed to resolve request:', err); }
+      window._currentResetReqId = null;
+    }
+
+    setTimeout(() => {
+      closeChangePasswordModal();
+      // refresh الصفحة الحالية
+      if (state.currentFilter === 'passwordreset') renderPasswordResetRequests();
+      else if (state.currentFilter === 'users') renderUsers();
+    }, 2500);
+
+  } catch (e) {
+    console.error('Change password error:', e);
+    status.className = 'alert alert-error';
+    status.textContent = e.message;
+    show(status);
+  }
+};
+
+/* ═══════ PASSWORD RESET REQUESTS PAGE ═══════ */
+async function renderPasswordResetRequests() {
+  if (!isAdmin()) {
+    $('#pageContent').innerHTML = `
+      <div class="dashboard">
+        <div class="empty-state" style="padding:60px 20px;">
+          <i data-lucide="shield-x" style="width:64px;height:64px;color:var(--danger);"></i>
+          <p style="margin-top:12px;">غير مسموح — مسئول السيستم بس</p>
+        </div>
+      </div>
+    `;
+    icons();
+    return;
+  }
+
+  $('#pageContent').innerHTML = `
+    <div class="dashboard" style="max-width:1000px;">
+      <div class="page-header" style="padding:0 0 20px;border:none;">
+        <div>
+          <h1 class="dashboard-title">طلبات كلمة السر</h1>
+          <p class="dashboard-date">جاري التحميل...</p>
+        </div>
+      </div>
+      <div class="data-table-wrapper" style="padding:20px;">
+        ${renderSkeletonInbox()}
+      </div>
+    </div>
+  `;
+  icons();
+
+  try {
+    const snap = await getDocs(collection(db, 'passwordResetRequests'));
+    const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+
+    const pending = all.filter(r => r.status === 'pending');
+    const resolved = all.filter(r => r.status === 'resolved');
+
+    if (all.length === 0) {
+      $('#pageContent').innerHTML = `
+        <div class="dashboard" style="max-width:1000px;">
+          <div class="page-header" style="padding:0 0 20px;border:none;">
+            <div>
+              <h1 class="dashboard-title">طلبات كلمة السر</h1>
+              <p class="dashboard-date">0 طلب</p>
+            </div>
+          </div>
+          <div class="empty-state" style="padding:60px 20px;">
+            <i data-lucide="key-round" style="width:64px;height:64px;"></i>
+            <p style="margin-top:12px;">لا توجد طلبات</p>
+          </div>
+        </div>
+      `;
+      icons();
+      updatePasswordResetBadge(0);
+      return;
+    }
+
+    const renderRequest = (r) => {
+      const isPending = r.status === 'pending';
+      const timeStr = r.createdAt?.seconds
+        ? new Date(r.createdAt.seconds * 1000).toLocaleString('ar-EG', {
+            year: 'numeric', month: 'short', day: 'numeric',
+            hour: '2-digit', minute: '2-digit'
+          })
+        : '—';
+
+      const resolvedTimeStr = r.resolvedAt?.seconds
+        ? new Date(r.resolvedAt.seconds * 1000).toLocaleString('ar-EG', {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+          })
+        : '';
+
+      const name = r.userName || r.username || 'مستخدم';
+      const avatarClass = getAvatarGradient(name);
+
+      return `
+        <div class="deleted-log-item" style="${isPending ? '' : 'opacity:0.6;'}">
+          <div class="deleted-log-row-1">
+            <div class="deleted-log-from-to">
+              <div class="user-cell-avatar ${avatarClass}" title="${esc(name)}">${initials(name)}</div>
+            </div>
+            <div class="deleted-log-names">
+              <span class="deleted-log-from">${esc(name)}</span>
+              <span class="deleted-log-to">@${esc(r.username || '')} ${r.userEmail ? '· ' + esc(r.userEmail) : ''}</span>
+            </div>
+            <div class="deleted-log-badges">
+              ${isPending
+                ? '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--warning-bg);color:#7A5D00;border-radius:10px;">⏳ معلق</span>'
+                : '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--success-bg);color:var(--success);border-radius:10px;">✅ تم الحل</span>'
+              }
+            </div>
+          </div>
+
+          <div class="deleted-log-row-2">
+            <div class="deleted-log-info-item">
+              <i data-lucide="clock" class="w-3.5 h-3.5"></i>
+              <span>وقت الطلب: ${timeStr}</span>
+            </div>
+            ${!isPending && resolvedTimeStr ? `
+              <div class="deleted-log-info-item" style="margin-top:6px;">
+                <i data-lucide="check-circle" class="w-3.5 h-3.5" style="color:var(--success);"></i>
+                <span>تم الحل: ${resolvedTimeStr}</span>
+              </div>
+            ` : ''}
+          </div>
+
+          ${isPending ? `
+            <div class="deleted-log-row-3">
+              <div class="deleted-log-info"></div>
+              <div class="deleted-log-actions">
+                <button onclick="changePasswordFromRequest('${r.id}', '${r.userId}', '${esc(r.username || '')}', '${esc(r.userEmail || '')}', '${esc(r.userName || '')}')" class="deleted-log-btn restore">
+                  <i data-lucide="key-round" class="w-3.5 h-3.5"></i>
+                  <span>تغيير كلمة السر</span>
+                </button>
+                <button onclick="deletePasswordResetRequest('${r.id}')" class="deleted-log-btn delete">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  <span>حذف</span>
+                </button>
+              </div>
+            </div>
+          ` : `
+            <div class="deleted-log-row-3">
+              <div class="deleted-log-info"></div>
+              <div class="deleted-log-actions">
+                <button onclick="deletePasswordResetRequest('${r.id}')" class="deleted-log-btn delete">
+                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                  <span>حذف</span>
+                </button>
+              </div>
+            </div>
+          `}
+        </div>
+      `;
+    };
+
+    $('#pageContent').innerHTML = `
+      <div class="dashboard" style="max-width:1000px;">
+        <div class="page-header" style="padding:0 0 20px;border:none;">
+          <div>
+            <h1 class="dashboard-title">طلبات كلمة السر</h1>
+            <p class="dashboard-date">${pending.length} معلق · ${resolved.length} تم الحل</p>
+          </div>
+          <button onclick="renderPasswordResetRequests()" class="btn btn-ghost btn-sm">
+            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            <span>تحديث</span>
+          </button>
+        </div>
+
+        <div style="background:var(--brand-primary-subtle);border:1px solid var(--brand-primary-light);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:var(--text-secondary);display:flex;gap:8px;align-items:flex-start;">
+          <i data-lucide="info" class="w-4 h-4" style="color:var(--brand-primary);flex-shrink:0;margin-top:2px;"></i>
+          <div>
+            <strong style="color:var(--brand-primary);">إزاي تعالج الطلب:</strong><br>
+            اضغط <strong>"تغيير كلمة السر"</strong> → اكتب كلمة سر جديدة → النظام هيغيرها فوراً → تتواصل مع المستخدم بأي وسيلة
+          </div>
+        </div>
+
+        <div class="deleted-log-list">
+          ${pending.length > 0 ? `
+            <h3 style="font-size:14px;font-weight:700;margin:8px 0;">⏳ الطلبات المعلقة (${pending.length})</h3>
+            ${pending.map(renderRequest).join('')}
+          ` : ''}
+          ${resolved.length > 0 ? `
+            <h3 style="font-size:14px;font-weight:700;margin:20px 0 8px;">✅ تم حلها (${resolved.length})</h3>
+            ${resolved.slice(0, 20).map(renderRequest).join('')}
+          ` : ''}
+        </div>
+      </div>
+    `;
+    icons();
+    updatePasswordResetBadge(pending.length);
+
+  } catch (e) {
+    console.error('Password reset requests error:', e);
+    $('#pageContent').innerHTML = `
+      <div class="dashboard"><div class="empty-state">
+        <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
+        <p>خطأ في تحميل الطلبات</p>
+      </div></div>
+    `;
+    icons();
+  }
+}
+window.renderPasswordResetRequests = renderPasswordResetRequests;
+
+window.changePasswordFromRequest = (reqId, userId, username, email, displayName) => {
+  window._currentResetReqId = reqId;
+  window.openChangePasswordModal(userId, username, email, displayName);
+};
+
+window.deletePasswordResetRequest = async (reqId) => {
+  const ok = await confirmDialog('حذف الطلب', 'هيتم حذف الطلب نهائياً. متأكد؟');
+  if (!ok) return;
+  try {
+    await deleteDoc(doc(db, 'passwordResetRequests', reqId));
+    showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2000 });
+    renderPasswordResetRequests();
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+async function updatePasswordResetBadge(count) {
+  if (!isAdmin()) return;
+
+  if (typeof count !== 'number') {
+    try {
+      const snap = await getDocs(collection(db, 'passwordResetRequests'));
+      count = snap.docs.filter(d => d.data().status === 'pending').length;
+    } catch (e) { count = 0; }
+  }
+
+  const els = [
+    document.getElementById('sidebarPasswordResetCount'),
+    document.getElementById('drawerPasswordResetCount')
+  ];
+
+  els.forEach(el => {
+    if (!el) return;
+    if (count > 0) {
+      el.textContent = count > 99 ? '99+' : count;
+      el.classList.remove('hidden');
+    } else {
+      el.classList.add('hidden');
+    }
+  });
+}
+
+console.log('🚀 Mail System v9.9.6 loaded — Password Change + Reset Requests');
