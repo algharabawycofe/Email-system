@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.7 - Enterprise Application
-   Features: Password Change + Reset Requests + CC/BCC Support
+   Mail System v9.9.8 - Enterprise Application
+   Features: Password Reset (Secure) + CC/BCC + Rate Limit 
+            + Auto-Save + Forward + Auto-Reply + Groups + Schedule
    ═══════════════════════════════════════════════════════════ */
 
 import {
@@ -12,6 +13,7 @@ import {
   setPersistence, browserLocalPersistence, browserSessionPersistence,
   getToken, onMessage,
   initializeApp, getAuth, updatePassword, deleteApp,
+  sendPasswordResetEmail,
   collection, doc, getDoc, getDocs, setDoc, addDoc, updateDoc, deleteDoc,
   query, where, serverTimestamp, onSnapshot, writeBatch
 } from './firebase.js';
@@ -47,70 +49,18 @@ let activeChipField = 'to';
 let activeSuggestionIdx = -1;
 let currentSuggestions = [];
 
+// ⭐ v9.9.8
+let autoSaveInterval = null;
+let lastAutoSavedHash = '';
+let scheduledCheckInterval = null;
+let userGroupsCache = [];
+let autoReplyChecked = new Set();  // لتجنب إرسال auto-reply أكثر من مرة لنفس المرسل
+
 /* ═══════ ADMIN TEMPLATES ═══════ */
 const ADMIN_MESSAGE_TEMPLATES = [
   { id: 'complaint', label: 'شكوى', icon: 'alert-triangle', body: 'أود التقدم بشكوى بخصوص:\n\n\n\n\nالتفاصيل:\n' },
   { id: 'inquiry', label: 'استفسار', icon: 'help-circle', body: 'أرجو الإفادة بخصوص:\n\n\n\n\nالتفاصيل:\n' }
 ];
-
-/* ═══════ PASSWORD ENCRYPTION (v9.9.7) ═══════ */
-const SECRET_KEY = 'MSG_SYS_v997_2026_xK9mPq#Z!nB';
-
-function encryptPassword(text) {
-  if (!text) return '';
-  let result = '';
-  for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(text.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length));
-  }
-  try {
-    return btoa(unescape(encodeURIComponent(result)));
-  } catch (e) {
-    return '';
-  }
-}
-
-function decryptPassword(encoded) {
-  if (!encoded) return '';
-  try {
-    const decoded = decodeURIComponent(escape(atob(encoded)));
-    let result = '';
-    for (let i = 0; i < decoded.length; i++) {
-      result += String.fromCharCode(decoded.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length));
-    }
-    return result;
-  } catch (e) {
-    console.error('Decrypt error:', e);
-    return '';
-  }
-}
-
-async function adminChangeUserPassword(userEmail, oldPassword, newPassword) {
-  const appName = 'Sec-Pwd-' + Date.now();
-  let secondaryApp = null;
-  let secondaryAuth = null;
-
-  try {
-    secondaryApp = initializeApp(firebaseConfig, appName);
-    secondaryAuth = getAuth(secondaryApp);
-    const cred = await signInWithEmailAndPassword(secondaryAuth, userEmail, oldPassword);
-    await updatePassword(cred.user, newPassword);
-    try { await signOut(secondaryAuth); } catch (x) {}
-    try { await deleteApp(secondaryApp); } catch (x) {}
-    return { success: true };
-  } catch (e) {
-    try { if (secondaryAuth) await signOut(secondaryAuth); } catch (x) {}
-    try { if (secondaryApp) await deleteApp(secondaryApp); } catch (x) {}
-    return {
-      success: false,
-      error: e.code,
-      message: (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential')
-        ? 'كلمة السر القديمة غير صحيحة'
-        : e.code === 'auth/too-many-requests'
-        ? 'محاولات كتير — استنى شوية'
-        : e.message
-    };
-  }
-}
 
 /* ═══════ HELPERS ═══════ */
 function getAvatarGradient(name) {
@@ -246,6 +196,47 @@ function showToastAdvanced(title, body, options = {}) {
   if (duration > 0) setTimeout(() => { if (toast.parentElement) toast.remove(); }, duration);
 }
 
+/* ═══════ RATE LIMITING ═══════ */
+async function checkRateLimit() {
+  const user = state.currentUser;
+  const limit = user.rateLimitPerHour || 50;
+
+  if (user.role === 'admin' || user.role === 'owner') {
+    return { allowed: true };
+  }
+
+  try {
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const q = query(
+      collection(db, 'messages'),
+      where('fromUserId', '==', state.currentUser.uid),
+      where('createdAt', '>=', oneHourAgo)
+    );
+    const snap = await getDocs(q);
+
+    if (snap.size >= limit) {
+      const oldestDoc = snap.docs.reduce((oldest, d) => {
+        const t = d.data().createdAt?.toDate?.() || new Date();
+        return !oldest || t < oldest ? t : oldest;
+      }, null);
+
+      const minutesLeft = oldestDoc
+        ? Math.ceil((oldestDoc.getTime() + 3600000 - Date.now()) / 60000)
+        : 60;
+
+      return {
+        allowed: false,
+        message: `تجاوزت الحد الأقصى (${limit} رسالة/ساعة). جرب تاني بعد ${minutesLeft} دقيقة`
+      };
+    }
+
+    return { allowed: true, remaining: limit - snap.size };
+  } catch (e) {
+    console.warn('Rate limit check failed:', e);
+    return { allowed: true };
+  }
+}
+
 /* ═══════ INIT ═══════ */
 document.addEventListener('DOMContentLoaded', () => {
   loadTheme();
@@ -290,6 +281,7 @@ function setupKeyboardShortcuts() {
       hide($('#forgotModal'));
       hide($('#tagsModal'));
       hide($('#changePasswordModal'));
+      hide($('#groupsModal'));
       closeMobileDrawer();
       closeImageViewer();
     }
@@ -394,7 +386,7 @@ window.closeForgotModal = () => {
   const st = $('#forgotStatus'); if (st) { st.classList.add('hidden'); st.textContent = ''; }
 };
 
-/* ✅ FIXED: لا نقرأ users (الزائر مش مصرح له) — نبعت الطلب مباشرة */
+/* ✅ PASSWORD RESET via Firebase Auth (آمن) */
 window.sendPasswordReset = async () => {
   const username = ($('#forgotEmail')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
   const status = $('#forgotStatus');
@@ -406,42 +398,33 @@ window.sendPasswordReset = async () => {
     return;
   }
 
-  if (username.length < 3) {
-    status.className = 'alert alert-error';
-    status.textContent = 'اسم المستخدم قصير جداً';
-    show(status);
-    return;
-  }
-
   status.className = 'alert alert-info';
-  status.textContent = 'جاري إرسال الطلب...';
+  status.textContent = 'جاري الإرسال...';
   show(status);
 
   try {
-    await addDoc(collection(db, 'passwordResetRequests'), {
-      username: username,
-      userName: '',
-      userEmail: '',
-      userId: '',
-      status: 'pending',
-      createdAt: serverTimestamp()
-    });
+    const email = `${username}@${EMAIL_DOMAIN}`;
+    await sendPasswordResetEmail(auth, email);
 
     status.className = 'alert alert-success';
-    status.textContent = '✅ تم إرسال طلبك لمسئول السيستم — هيتم التواصل معاك قريب';
+    status.textContent = '✅ تم إرسال رابط استعادة كلمة السر لإيميلك الرسمي — افتح الإيميل واتبع الرابط';
     show(status);
-
-    setTimeout(() => closeForgotModal(), 3000);
+    setTimeout(() => closeForgotModal(), 5000);
 
   } catch (e) {
-    console.error('Password reset request error:', e);
+    console.error('Password reset error:', e);
+    const msgs = {
+      'auth/user-not-found': 'اسم المستخدم غير مسجل في النظام',
+      'auth/invalid-email': 'صيغة الإيميل غير صحيحة',
+      'auth/too-many-requests': 'محاولات كثيرة، استنى شوية'
+    };
     status.className = 'alert alert-error';
-    status.textContent = 'خطأ: ' + e.message;
+    status.textContent = msgs[e.code] || `خطأ: ${e.message}`;
     show(status);
   }
 };
 
-/* ═══════ AUTH STATE (v9.9.7) ═══════ */
+/* ═══════ AUTH STATE ═══════ */
 async function checkAuthState() {
   try {
     await setPersistence(auth, browserLocalPersistence);
@@ -473,6 +456,8 @@ async function checkAuthState() {
         state.unsubMessages();
         state.unsubMessages = null;
       }
+      if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null; }
+      if (scheduledCheckInterval) { clearInterval(scheduledCheckInterval); scheduledCheckInterval = null; }
       hide($('#app'));
       show($('#loginScreen'));
       return;
@@ -497,6 +482,7 @@ async function checkAuthState() {
       await loadUsersCache();
       await loadDepartmentsCache();
       await loadUserTags();
+      await loadUserGroups();
 
       updateUIForRole();
       hide($('#loginScreen'));
@@ -506,10 +492,12 @@ async function checkAuthState() {
       navigate('inbox');
 
       startMessagesListener();
+      startScheduledMessagesChecker();
       setTimeout(registerFCMToken, 1500);
       setTimeout(() => updateDraftsBadge(), 2000);
       setTimeout(() => updateDeletedLogBadge(), 2500);
       setTimeout(() => updatePasswordResetBadge(), 2800);
+      setTimeout(() => updateScheduledBadge(), 3000);
     } catch (e) {
       console.error('Auth state error:', e);
       hide($('#app'));
@@ -647,6 +635,157 @@ window.filterByTag = (tagId) => {
   currentTagFilter = currentTagFilter === tagId ? null : tagId;
   renderSidebarTags();
   navigate('inbox');
+};
+
+/* ═══════ CONTACT GROUPS ═══════ */
+async function loadUserGroups() {
+  try {
+    const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'groups'));
+    userGroupsCache = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.error('Groups load error:', e);
+    userGroupsCache = [];
+  }
+}
+
+window.openGroupsManager = async () => {
+  await loadUserGroups();
+  show($('#groupsModal'));
+  renderGroupsManager();
+  icons();
+};
+
+window.closeGroupsManager = () => hide($('#groupsModal'));
+
+function renderGroupsManager() {
+  const list = document.getElementById('groupsList');
+  if (!list) return;
+
+  if (userGroupsCache.length === 0) {
+    list.innerHTML = '<div class="empty-state" style="padding:20px;"><p style="font-size:13px;">لا توجد مجموعات بعد</p></div>';
+    return;
+  }
+
+  list.innerHTML = userGroupsCache.map(g => `
+    <div class="tag-manage-item">
+      <div class="tag-manage-color" style="background: #0078D4;display:flex;align-items:center;justify-content:center;">
+        <i data-lucide="users" style="width:14px;height:14px;color:white;"></i>
+      </div>
+      <div class="tag-manage-name">
+        ${esc(g.name)}
+        <div style="font-size:11px;color:var(--text-tertiary);">${(g.members || []).length} عضو</div>
+      </div>
+      <button onclick="useGroupInCompose('${g.id}')" class="row-action primary" title="استخدام">
+        <i data-lucide="send" class="w-3.5 h-3.5"></i>
+      </button>
+      <button onclick="deleteGroup('${g.id}')" class="row-action danger" title="حذف">
+        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+      </button>
+    </div>
+  `).join('');
+  icons();
+}
+
+window.createGroup = async () => {
+  const name = $('#newGroupName').value.trim();
+  if (!name) { alert('اكتب اسم المجموعة'); return; }
+  if (userGroupsCache.length >= 20) { alert('أقصى 20 مجموعة'); return; }
+
+  try {
+    const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'groups'), {
+      name, members: [], createdAt: serverTimestamp()
+    });
+    userGroupsCache.push({ id: r.id, name, members: [] });
+    $('#newGroupName').value = '';
+    renderGroupsManager();
+    showToastAdvanced('تم الإضافة ✅', `مجموعة "${name}" اتعملت`, { type: 'success', icon: 'users', duration: 2500 });
+    // افتح نافذة إضافة الأعضاء
+    window.editGroupMembers(r.id);
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+window.editGroupMembers = async (groupId) => {
+  const g = userGroupsCache.find(x => x.id === groupId);
+  if (!g) return;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.id = 'groupMembersModal';
+  const allowed = getAllowedRecipients();
+  const currentMembers = g.members || [];
+
+  modal.innerHTML = `
+    <div class="modal-panel modal-md fade-in">
+      <div class="modal-header">
+        <div><h2 class="modal-title">أعضاء المجموعة</h2><p class="modal-subtitle">${esc(g.name)}</p></div>
+        <button onclick="document.getElementById('groupMembersModal').remove()" class="icon-btn icon-btn-ghost"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="modal-body" style="max-height:400px;overflow-y:auto;">
+        ${allowed.map(u => `
+          <label class="check-inline" style="display:flex;align-items:center;padding:8px;cursor:pointer;">
+            <input type="checkbox" class="groupMemberCheck" value="${u.id}" data-name="${esc(u.name)}" ${currentMembers.some(m => m.id === u.id) ? 'checked' : ''} />
+            <span style="margin-right:10px;">${esc(u.name)} <span style="color:var(--text-tertiary);font-size:11px;">@${esc(u.username)}</span></span>
+          </label>
+        `).join('')}
+      </div>
+      <div class="modal-footer">
+        <button onclick="document.getElementById('groupMembersModal').remove()" class="btn btn-ghost">إلغاء</button>
+        <button onclick="saveGroupMembers('${groupId}')" class="btn btn-primary">حفظ</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  icons();
+};
+
+window.saveGroupMembers = async (groupId) => {
+  const checks = document.querySelectorAll('.groupMemberCheck:checked');
+  const members = Array.from(checks).map(c => ({ id: c.value, name: c.dataset.name }));
+
+  try {
+    await updateDoc(doc(db, 'users', state.currentUser.uid, 'groups', groupId), { members });
+    const g = userGroupsCache.find(x => x.id === groupId);
+    if (g) g.members = members;
+    document.getElementById('groupMembersModal')?.remove();
+    renderGroupsManager();
+    showToastAdvanced('تم الحفظ ✅', `${members.length} عضو`, { type: 'success', icon: 'users', duration: 2000 });
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+window.deleteGroup = async (groupId) => {
+  const g = userGroupsCache.find(x => x.id === groupId);
+  if (!g) return;
+  const ok = await confirmDialog('حذف المجموعة', `حذف "${g.name}"؟`);
+  if (!ok) return;
+  try {
+    await deleteDoc(doc(db, 'users', state.currentUser.uid, 'groups', groupId));
+    userGroupsCache = userGroupsCache.filter(x => x.id !== groupId);
+    renderGroupsManager();
+    showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2000 });
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+window.useGroupInCompose = async (groupId) => {
+  const g = userGroupsCache.find(x => x.id === groupId);
+  if (!g || !g.members || g.members.length === 0) {
+    showToastAdvanced('المجموعة فاضية', 'ضيف أعضاء أول', { type: 'warning', icon: 'alert-triangle' });
+    return;
+  }
+  closeGroupsManager();
+  if ($('#composeModal').style.display !== 'flex') {
+    await window.openCompose();
+  }
+  g.members.forEach(m => {
+    const fullUser = state.allUsersCache.find(x => x.id === m.id);
+    if (fullUser) window.addRecipient('to', fullUser);
+  });
+  showToastAdvanced('تم الإضافة ✅', `${g.members.length} عضو من "${g.name}"`, { type: 'success', icon: 'users', duration: 2000 });
 };
 
 /* ═══════ SIDEBAR ═══════ */
@@ -896,6 +1035,9 @@ async function handleLogout() {
   const ok = await confirmDialog('تسجيل الخروج', 'هل أنت متأكد؟');
   if (!ok) return;
 
+  if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null; }
+  if (scheduledCheckInterval) { clearInterval(scheduledCheckInterval); scheduledCheckInterval = null; }
+
   try {
     if (messaging && state.currentUser) {
       const reg = await navigator.serviceWorker.getRegistration('/Email-system/');
@@ -918,6 +1060,7 @@ const ROUTES = {
   starred: renderStarred,
   trash: renderTrash,
   drafts: renderDrafts,
+  scheduled: renderScheduled,
   myteam: renderMyTeam,
   users: renderUsers,
   departments: renderDepartments,
@@ -935,6 +1078,182 @@ export function navigate(page) {
 }
 
 window.navigate = navigate;
+
+/* ═══════ AUTO-SAVE DRAFTS ═══════ */
+async function autoSaveDraft() {
+  const subject = $('#cSubject')?.value?.trim() || '';
+  const body = $('#cBody')?.value?.trim() || '';
+  const toUsers = recipientChips.to || [];
+  const ccUsers = recipientChips.cc || [];
+  const bccUsers = recipientChips.bcc || [];
+
+  if (!subject && !body && toUsers.length === 0 && ccUsers.length === 0 && bccUsers.length === 0) return;
+
+  const hash = JSON.stringify({
+    s: subject, b: body,
+    to: toUsers.map(u => u.id),
+    cc: ccUsers.map(u => u.id),
+    bcc: bccUsers.map(u => u.id)
+  });
+  if (hash === lastAutoSavedHash) return;
+
+  try {
+    const draftId = $('#cDraftId')?.value;
+    const draftData = {
+      toUsers: toUsers.map(u => ({ id: u.id, name: u.name })),
+      ccUsers: ccUsers.map(u => ({ id: u.id, name: u.name })),
+      bccUsers: bccUsers.map(u => ({ id: u.id, name: u.name })),
+      toUserId: toUsers[0]?.id || null,
+      subject, body,
+      updatedAt: serverTimestamp(),
+      autoSaved: true
+    };
+
+    if (draftId) {
+      await updateDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId), draftData);
+    } else {
+      draftData.createdAt = serverTimestamp();
+      const r = await addDoc(collection(db, 'users', state.currentUser.uid, 'drafts'), draftData);
+      $('#cDraftId').value = r.id;
+    }
+    lastAutoSavedHash = hash;
+    console.log('💾 Auto-saved at', new Date().toLocaleTimeString());
+    updateDraftsBadge();
+  } catch (e) {
+    console.warn('Auto-save failed:', e);
+  }
+}
+
+/* ═══════ SCHEDULED MESSAGES ═══════ */
+function startScheduledMessagesChecker() {
+  if (scheduledCheckInterval) clearInterval(scheduledCheckInterval);
+  checkScheduledMessages();  // فحص فوري
+  scheduledCheckInterval = setInterval(checkScheduledMessages, 60000);  // كل دقيقة
+}
+
+async function checkScheduledMessages() {
+  if (!state.currentUser) return;
+  try {
+    const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'scheduledMessages'));
+    const now = Date.now();
+    for (const d of snap.docs) {
+      const data = d.data();
+      const scheduledTime = data.scheduledFor?.toDate?.().getTime() || 0;
+      if (scheduledTime > 0 && scheduledTime <= now) {
+        try {
+          await performSend(data.payload);
+          await deleteDoc(doc(db, 'users', state.currentUser.uid, 'scheduledMessages', d.id));
+          showToastAdvanced('📤 تم إرسال رسالة مجدولة', data.payload.subject, {
+            type: 'success', icon: 'send', duration: 4000
+          });
+          updateScheduledBadge();
+        } catch (e) {
+          console.error('Scheduled send error:', e);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('Scheduled check error:', e);
+  }
+}
+
+async function updateScheduledBadge(count) {
+  if (typeof count !== 'number') {
+    try {
+      const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'scheduledMessages'));
+      count = snap.size;
+    } catch (e) { count = 0; }
+  }
+  ['sidebarScheduledCount', 'drawerScheduledCount'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (count > 0) { el.textContent = count; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
+  });
+}
+
+async function renderScheduled() {
+  $('#pageContent').innerHTML = `
+    <div class="dashboard" style="max-width:900px;">
+      <div class="page-header" style="padding:0 0 20px;border:none;">
+        <div><h1 class="dashboard-title">الرسائل المجدولة</h1><p class="dashboard-date">جاري التحميل...</p></div>
+      </div>
+      <div class="data-table-wrapper" style="padding:20px;">${renderSkeletonInbox()}</div>
+    </div>
+  `;
+  icons();
+
+  try {
+    const snap = await getDocs(collection(db, 'users', state.currentUser.uid, 'scheduledMessages'));
+    const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.scheduledFor?.seconds || 0) - (b.scheduledFor?.seconds || 0));
+
+    if (list.length === 0) {
+      $('#pageContent').innerHTML = `
+        <div class="dashboard" style="max-width:900px;">
+          <div class="page-header" style="padding:0 0 20px;border:none;">
+            <div><h1 class="dashboard-title">الرسائل المجدولة</h1><p class="dashboard-date">0 رسالة</p></div>
+          </div>
+          <div class="empty-state" style="padding:60px 20px;">
+            <i data-lucide="clock" style="width:64px;height:64px;"></i>
+            <p style="margin-top:12px;">لا توجد رسائل مجدولة</p>
+          </div>
+        </div>
+      `;
+      icons();
+      updateScheduledBadge(0);
+      return;
+    }
+
+    const rows = list.map(s => {
+      const p = s.payload || {};
+      const when = s.scheduledFor?.seconds
+        ? new Date(s.scheduledFor.seconds * 1000).toLocaleString('ar-EG', {
+            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
+          }) : '—';
+
+      return `
+        <div class="draft-item">
+          <div class="draft-avatar" style="background:#FFF4E5;color:#C28A2E;"><i data-lucide="clock" class="w-5 h-5"></i></div>
+          <div class="draft-info">
+            <div class="draft-to">🕐 ${when}</div>
+            <div class="draft-subject">${esc(p.subject || '(بدون موضوع)')}</div>
+            <div class="draft-preview">${esc((p.body || '').slice(0, 80))}</div>
+          </div>
+          <button class="draft-delete" onclick="cancelScheduled('${s.id}')" title="إلغاء">
+            <i data-lucide="x-circle" class="w-4 h-4"></i>
+          </button>
+        </div>
+      `;
+    }).join('');
+
+    $('#pageContent').innerHTML = `
+      <div class="dashboard" style="max-width:900px;">
+        <div class="page-header" style="padding:0 0 20px;border:none;">
+          <div><h1 class="dashboard-title">الرسائل المجدولة</h1><p class="dashboard-date">${list.length} رسالة</p></div>
+        </div>
+        <div class="data-table-wrapper" style="padding:0;overflow:hidden;">${rows}</div>
+      </div>
+    `;
+    icons();
+    updateScheduledBadge(list.length);
+  } catch (e) {
+    console.error(e);
+  }
+}
+window.renderScheduled = renderScheduled;
+
+window.cancelScheduled = async (id) => {
+  const ok = await confirmDialog('إلغاء الرسالة', 'هل أنت متأكد؟');
+  if (!ok) return;
+  try {
+    await deleteDoc(doc(db, 'users', state.currentUser.uid, 'scheduledMessages', id));
+    renderScheduled();
+    showToastAdvanced('تم الإلغاء ⏹️', '', { type: 'info', icon: 'x-circle', duration: 2000 });
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
 
 /* ═══════ DRAFTS ═══════ */
 async function renderDrafts() {
@@ -988,7 +1307,7 @@ async function renderDrafts() {
         <div class="draft-item" onclick="openDraft('${d.id}')">
           <div class="draft-avatar"><i data-lucide="file-text" class="w-5 h-5"></i></div>
           <div class="draft-info">
-            <div class="draft-to">إلى: ${esc(toName)}</div>
+            <div class="draft-to">إلى: ${esc(toName)} ${d.autoSaved ? '<span style="color:var(--text-tertiary);font-size:10px;">(محفوظة تلقائياً)</span>' : ''}</div>
             <div class="draft-subject">${esc(d.subject || '(بدون موضوع)')}</div>
             <div class="draft-preview">${esc((d.body || '').slice(0, 80))}</div>
           </div>
@@ -1019,13 +1338,6 @@ async function renderDrafts() {
     updateDraftsBadge(drafts.length);
   } catch (e) {
     console.error('Drafts load error:', e);
-    $('#pageContent').innerHTML = `
-      <div class="dashboard"><div class="empty-state">
-        <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
-        <p>خطأ في تحميل المسودات</p>
-      </div></div>
-    `;
-    icons();
   }
 }
 
@@ -1041,7 +1353,6 @@ window.openDraft = async (draftId) => {
     const d = snap.data();
     await window.openCompose();
 
-    // استرجاع To
     if (Array.isArray(d.toUsers) && d.toUsers.length) {
       d.toUsers.forEach(u => {
         const fullUser = state.allUsersCache.find(x => x.id === u.id);
@@ -1052,15 +1363,12 @@ window.openDraft = async (draftId) => {
       if (toUser) window.addRecipient('to', toUser);
     }
 
-    // استرجاع CC
     if (Array.isArray(d.ccUsers) && d.ccUsers.length) {
       d.ccUsers.forEach(u => {
         const fullUser = state.allUsersCache.find(x => x.id === u.id);
         if (fullUser) window.addRecipient('cc', fullUser);
       });
     }
-
-    // استرجاع BCC
     if (Array.isArray(d.bccUsers) && d.bccUsers.length) {
       d.bccUsers.forEach(u => {
         const fullUser = state.allUsersCache.find(x => x.id === u.id);
@@ -1068,11 +1376,8 @@ window.openDraft = async (draftId) => {
       });
     }
 
-    // إظهار ccRow و bccRow لو فيه محتوى
     if (recipientChips.cc.length > 0 || recipientChips.bcc.length > 0) {
-      show($('#ccRow'));
-      show($('#bccRow'));
-      show($('#optionsField'));
+      show($('#ccRow')); show($('#bccRow')); show($('#optionsField'));
     }
 
     $('#cSubject').value = d.subject || '';
@@ -1302,9 +1607,6 @@ async function renderUsers() {
             <span class="check-box"></span>
             <span class="check-label" style="font-weight:700;color:var(--text-primary);">👔 مدير قسم</span>
           </label>
-          <p style="font-size:11.5px;color:var(--text-tertiary);margin:6px 24px 0 0;">
-            لو متحدد، المستخدم هيبقى مدير القسم المختار تلقائياً
-          </p>
         </div>
 
         <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
@@ -1489,17 +1791,10 @@ window.createNewUser = async () => {
       departmentId: deptId || null,
       permissions: permissions,
       isActive: true,
+      autoReplyEnabled: false,
+      autoReplyMessage: '',
       createdAt: serverTimestamp()
     });
-
-    try {
-      await setDoc(doc(db, 'userSecrets', uid), {
-        encPass: encryptPassword(pass),
-        updatedAt: serverTimestamp()
-      });
-    } catch (err2) {
-      console.warn('Failed to save encrypted password:', err2);
-    }
 
     if (role === 'manager' && deptId) {
       await updateDoc(doc(db, 'departments', deptId), { managerId: uid });
@@ -1606,7 +1901,6 @@ window.deleteUserDoc = async (uid) => {
   const ok = await confirmDialog('حذف المستخدم', 'هيتحذف من Firestore فقط. متأكد؟');
   if (!ok) return;
   await deleteDoc(doc(db, 'users', uid));
-  try { await deleteDoc(doc(db, 'userSecrets', uid)); } catch (x) {}
   renderUsers();
 };
 
@@ -1724,7 +2018,7 @@ window.deleteDept = async (id) => {
   renderDepartments();
 };
 
-/* ═══════ INBOX (CC/BCC Support) ═══════ */
+/* ═══════ INBOX ═══════ */
 async function renderInbox() {
   const filter = state.currentFilter;
   const title = currentTagFilter
@@ -1758,7 +2052,6 @@ async function renderInbox() {
 
   const myUID = state.currentUser.uid;
 
-  // 5 استعلامات لتغطية: toUserId (قديم)، toUserIds, ccUserIds, bccUserIds, fromUserId
   const queries = [
     query(collection(db, 'messages'), where('toUserId', '==', myUID)),
     query(collection(db, 'messages'), where('toUserIds', 'array-contains', myUID)),
@@ -1788,6 +2081,11 @@ async function renderInbox() {
     if (state.currentFilter === 'trash') {
       if (isAdminUser) return Object.keys(deletedBy).length > 0;
       return !!deletedBy[myUID];
+    }
+
+    // ⭐ فصل رسائل الأدمن: في صندوق الوارد نشيل الرسائل اللي هو بعتها
+    if (state.currentFilter === 'inbox') {
+      if (m.fromUserId === myUID) return false;
     }
 
     if (isAdminUser) return true;
@@ -2037,7 +2335,6 @@ function renderThreadReading() {
     const dateStr = formatDate(m.createdAt);
     const avatarClass = getAvatarGradient(m.fromUserName);
 
-    // 🆕 بناء قوائم To/CC/BCC
     const toIds = m.toUserIds && m.toUserIds.length ? m.toUserIds : (m.toUserId ? [m.toUserId] : []);
     const toNames = m.toUserNames && m.toUserNames.length ? m.toUserNames : (m.toUserName ? [m.toUserName] : []);
     const ccIds = m.ccUserIds || [];
@@ -2045,11 +2342,9 @@ function renderThreadReading() {
     const bccIds = m.bccUserIds || [];
     const bccNames = m.bccUserNames || [];
 
-    // هل أنا مستقبل BCC؟ لو أيوه، أقدر أشوف قائمة BCC
     const iAmBcc = bccIds.includes(myUID);
     const showBccList = isMe || iAmBcc || isAdmin();
 
-    // 🆕 بناء شرائط المستلمين
     const recipientsChipsHtml = `
       <div class="msg-recipients" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;font-size:11px;">
         ${toNames.length ? `
@@ -2125,6 +2420,7 @@ function renderThreadReading() {
               <span class="email-message-from">${isMe ? 'أنت' : esc(m.fromUserName)}</span>
               ${!isMe && senderEmail ? `<span style="font-size:11.5px;color:var(--text-tertiary);font-family:monospace;direction:ltr;">&lt;${esc(senderEmail)}&gt;</span>` : ''}
               ${m.priority === 'urgent' ? '<span class="priority-urgent">🔴 عاجل</span>' : ''}
+              ${m.autoReply ? '<span style="font-size:10.5px;background:#F0E5FA;color:#8764B8;padding:2px 8px;border-radius:4px;font-weight:600;">🤖 رد تلقائي</span>' : ''}
               ${isLatest && t.messages.length > 1 ? '<span style="font-size:10.5px;background:var(--brand-primary-light);color:var(--brand-primary);padding:2px 8px;border-radius:4px;font-weight:600;">الأحدث</span>' : ''}
             </div>
             ${recipientsChipsHtml}
@@ -2176,6 +2472,7 @@ function renderThreadReading() {
       ${!isTrash && !showDeletedInfo && canReply ? `
         <button onclick="replyToThread('${replyUserId}', '${esc(replyUserName).replace(/'/g, "\\'")}', '${t.threadId}', '${esc(t.subject).replace(/'/g, "\\'")}')" class="toolbar-btn primary"><i data-lucide="reply" class="w-4 h-4"></i><span>رد</span></button>
         <button onclick="replyAllToThread('${t.threadId}')" class="toolbar-btn primary"><i data-lucide="reply-all" class="w-4 h-4"></i><span>رد على الكل</span></button>
+        <button onclick="forwardThread('${t.threadId}')" class="toolbar-btn"><i data-lucide="forward" class="w-4 h-4"></i><span>إعادة توجيه</span></button>
         <button onclick="toggleStar('${t.threadId}')" class="toolbar-btn ${threadStarred ? 'primary' : ''}"><i data-lucide="star" class="w-4 h-4" ${threadStarred ? 'fill="currentColor"' : ''}></i><span>${threadStarred ? 'مميزة' : 'تمييز'}</span></button>
       ` : ''}
 
@@ -2192,14 +2489,7 @@ function renderThreadReading() {
         </button>
       `}
 
-      ${isAdmin() && !isTrash && (deletedUsers.length > 0 || t.messages.some(m => Object.keys(m.deletedBy || {}).length > 0)) ? `
-        <button onclick="restoreThreadForAll('${t.threadId}')" class="toolbar-btn primary" title="استعادة الرسائل للجميع">
-          <i data-lucide="rotate-ccw" class="w-4 h-4"></i><span>استعادة للكل</span>
-        </button>
-      ` : ''}
-
       <div class="toolbar-spacer"></div>
-
       <button onclick="toggleAllMsgs()" class="toolbar-btn" title="فتح/طي الكل"><i data-lucide="chevrons-down-up" class="w-4 h-4"></i></button>
     </div>
 
@@ -2209,25 +2499,6 @@ function renderThreadReading() {
         <span><i data-lucide="message-square" class="w-3 h-3 inline"></i> ${t.messages.length} رسالة</span>
         <span><i data-lucide="clock" class="w-3 h-3 inline"></i> ${timeAgo(t.lastMsg.createdAt)}</span>
       </div>
-
-      ${showDeletedInfo ? `
-        <div style="background:var(--danger-bg);border:1px solid #F0B8BB;border-radius:8px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:flex-start;gap:10px;">
-          <i data-lucide="trash-2" class="w-5 h-5" style="color:var(--danger);flex-shrink:0;margin-top:2px;"></i>
-          <div style="flex:1;">
-            <div style="font-weight:700;font-size:13px;color:var(--danger);">رسالة محذوفة (للأرشيف)</div>
-            <div style="font-size:12px;color:var(--text-secondary);margin-top:4px;">
-              حذفها من عندهم: <strong>${deletedUsers.map(u => esc(u.name)).join('، ')}</strong>
-            </div>
-          </div>
-        </div>
-      ` : ''}
-
-      ${!canReply && !isTrash && !showDeletedInfo ? `
-        <div style="background:var(--warning-bg);border:1px solid #F0DDA0;border-radius:8px;padding:10px 14px;margin-bottom:16px;display:flex;align-items:center;gap:8px;font-size:12.5px;color:#7A5D00;">
-          <i data-lucide="shield-alert" class="w-4 h-4" style="flex-shrink:0;"></i>
-          <span>مش مسموحلك ترد على هذه المحادثة حسب صلاحياتك.</span>
-        </div>
-      ` : ''}
 
       ${messagesHtml}
       ${inlineReplyHtml}
@@ -2296,6 +2567,41 @@ window.sendInlineReply = async (toUserId, threadId, subject) => {
   }
 };
 
+/* ═══════ FORWARD ═══════ */
+window.forwardThread = async (threadId) => {
+  const t = state.threadsCache.find(x => x.threadId === threadId);
+  if (!t) return;
+
+  await window.openCompose();
+  $('#cThreadId').value = '';
+  $('#cDraftId').value = '';
+
+  const lastMsg = t.lastMsg;
+  const originalSubject = t.subject || '';
+  const newSubject = originalSubject.startsWith('تحويل:') ? originalSubject : 'تحويل: ' + originalSubject;
+
+  const forwardHeader = `---------- رسالة محوّلة ----------
+من: ${lastMsg.fromUserName || ''} <${lastMsg.fromUserUsername || ''}@${EMAIL_DOMAIN}>
+التاريخ: ${formatDate(lastMsg.createdAt)}
+الموضوع: ${originalSubject}
+إلى: ${lastMsg.toUserName || ''}
+${lastMsg.ccUserNames?.length ? 'Cc: ' + lastMsg.ccUserNames.join('، ') : ''}
+--------------------------------
+
+`;
+
+  $('#cSubject').value = newSubject;
+  $('#cBody').value = forwardHeader + (lastMsg.body || '');
+
+  if (lastMsg.attachments?.length) {
+    const attachList = lastMsg.attachments.map(a => `📎 ${a.name} — ${a.url}`).join('\n');
+    $('#cBody').value += '\n\nالمرفقات:\n' + attachList;
+  }
+
+  $('#composeTitle').textContent = 'إعادة توجيه';
+  setTimeout(() => $('#toInput')?.focus(), 200);
+};
+
 window.replyAllToThread = async (threadId) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
@@ -2304,7 +2610,6 @@ window.replyAllToThread = async (threadId) => {
   t.messages.forEach(m => {
     const toIds = m.toUserIds || (m.toUserId ? [m.toUserId] : []);
     const ccIds = m.ccUserIds || [];
-    // ملاحظة: مش بناخد bccIds لأن الرد على الكل مبيظهرهمش
     [...toIds, ...ccIds].forEach(uid => {
       if (uid && uid !== state.currentUser.uid) participants.add(uid);
     });
@@ -2320,7 +2625,6 @@ window.replyAllToThread = async (threadId) => {
     return u && canSendTo(u);
   });
 
-  // أول واحد في To، والباقي CC
   if (list.length > 0) {
     const u = state.allUsersCache.find(x => x.id === list[0]);
     if (u) window.addRecipient('to', u);
@@ -2330,10 +2634,8 @@ window.replyAllToThread = async (threadId) => {
     if (u) window.addRecipient('cc', u);
   }
 
-  // إظهار CC لو فيه
   if (recipientChips.cc.length > 0) {
-    show($('#ccRow'));
-    show($('#bccRow'));
+    show($('#ccRow')); show($('#bccRow'));
   }
 
   $('#composeTitle').textContent = 'رد على الكل';
@@ -2417,9 +2719,7 @@ window.trashThread = async (threadId, isTrash, permanent = false) => {
     }
   }
 
-  if (state.currentFilter === 'trash') renderInbox();
-  else if (state.currentFilter !== 'trash') renderInbox();
-  else renderThreadReading();
+  renderInbox();
 };
 
 window.permanentDeleteFromTrash = async (threadId) => {
@@ -2427,48 +2727,6 @@ window.permanentDeleteFromTrash = async (threadId) => {
   if (!ok) return;
   await window.trashThread(threadId, true, true);
   showToastAdvanced('تم الحذف النهائي 🗑️', 'اختفت من عندك', { type: 'success', icon: 'trash-2', duration: 2500 });
-};
-
-window.permanentDelete = async (threadId) => {
-  if (!isAdmin()) {
-    showToastAdvanced('غير مسموح', 'الأدمن بس اللي يقدر يحذف نهائياً', { type: 'error', icon: 'shield-x' });
-    return;
-  }
-
-  const ok = await confirmDialog('حذف نهائي', 'هيتم حذف الرسائل نهائيًا من النظام (لكل المستخدمين). متأكد؟');
-  if (!ok) return;
-
-  const t = state.threadsCache.find(x => x.threadId === threadId);
-  if (!t) return;
-
-  for (const m of t.messages) {
-    await deleteDoc(doc(db, 'messages', m.id));
-  }
-
-  state.selectedThreadId = null;
-  showToastAdvanced('تم الحذف النهائي 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2500 });
-  renderInbox();
-};
-
-window.restoreThreadForAll = async (threadId) => {
-  if (!isAdmin()) {
-    showToastAdvanced('غير مسموح', '', { type: 'error', icon: 'shield-x' });
-    return;
-  }
-
-  const ok = await confirmDialog('استعادة للكل', 'هيتم إرجاع الرسائل لكل المستخدمين اللي حذفوها. متأكد؟');
-  if (!ok) return;
-
-  const t = state.threadsCache.find(x => x.threadId === threadId);
-  if (!t) return;
-
-  for (const m of t.messages) {
-    await updateDoc(doc(db, 'messages', m.id), { deletedBy: {} }).catch(() => {});
-    m.deletedBy = {};
-  }
-
-  showToastAdvanced('تم الاستعادة ✅', 'الرسائل رجعت للكل', { type: 'success', icon: 'check-circle', duration: 2500 });
-  renderThreadReading();
 };
 
 async function renderStarred() { state.currentFilter = 'starred'; state.searchQuery = ''; await renderInbox(); }
@@ -2528,6 +2786,7 @@ async function renderSent() {
 window.openCompose = async () => {
   await loadUsersCache();
   await loadDepartmentsCache();
+  await loadUserGroups();
 
   recipientChips = { to: [], cc: [], bcc: [] };
   activeChipField = 'to';
@@ -2557,6 +2816,9 @@ window.openCompose = async () => {
   hide($('#optionsField'));
   hide($('#templateRow'));
   $('#extraFieldsIcon')?.setAttribute('data-lucide', 'plus');
+
+  // إظهار زر المجموعات
+  renderGroupsButtonInCompose();
 
   const deptSel = $('#deptSelect');
   const deptToggleWrap = $('#deptToggleWrap');
@@ -2599,13 +2861,34 @@ window.openCompose = async () => {
   setupChipInput('to');
   setupChipInput('cc');
   setupChipInput('bcc');
+
+  // ✅ بدء Auto-Save
+  if (autoSaveInterval) clearInterval(autoSaveInterval);
+  lastAutoSavedHash = '';
+  autoSaveInterval = setInterval(autoSaveDraft, 30000);
 };
+
+function renderGroupsButtonInCompose() {
+  const container = document.getElementById('groupsButtonContainer');
+  if (!container) return;
+  if (userGroupsCache.length === 0) { container.innerHTML = ''; return; }
+  container.innerHTML = `
+    <button type="button" onclick="openGroupsManager()" class="btn btn-ghost btn-sm" title="مجموعات جهات الاتصال" style="margin-left:8px;">
+      <i data-lucide="users" class="w-3.5 h-3.5"></i>
+      <span>مجموعات (${userGroupsCache.length})</span>
+    </button>
+  `;
+  icons();
+}
 
 window.closeCompose = () => {
   $('#composeModal').style.display = 'none';
   $('#composeTitle').textContent = 'رسالة جديدة';
   attachedFiles = [];
   selectedTags = [];
+  // ✅ إيقاف Auto-Save
+  if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null; }
+  lastAutoSavedHash = '';
 };
 
 function renderRecipientChips() {
@@ -2721,12 +3004,8 @@ function showSuggestions(field, query) {
   }
 
   const roleTagMap = {
-    owner: '👑',
-    chairman: '🎩',
-    vice_chairman: '🎗️',
-    admin: '🛡️',
-    manager: '👔',
-    user: '👤'
+    owner: '👑', chairman: '🎩', vice_chairman: '🎗️',
+    admin: '🛡️', manager: '👔', user: '👤'
   };
 
   suggestions.innerHTML = matches.map((u, idx) => {
@@ -2806,14 +3085,10 @@ window.toggleExtraFields = () => {
 
   const isHidden = ccRow.classList.contains('hidden');
   if (isHidden) {
-    show(ccRow);
-    show(bccRow);
-    show(optionsField);
+    show(ccRow); show(bccRow); show(optionsField);
     $('#extraFieldsIcon')?.setAttribute('data-lucide', 'x');
   } else {
-    hide(ccRow);
-    hide(bccRow);
-    hide(optionsField);
+    hide(ccRow); hide(bccRow); hide(optionsField);
     recipientChips.cc = [];
     recipientChips.bcc = [];
     renderRecipientChips();
@@ -2903,14 +3178,8 @@ window.handleFiles = async (event) => {
 
     const fileObj = {
       id: 'f_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-      file,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      progress: 0,
-      status: 'pending',
-      url: null,
-      path: null
+      file, name: file.name, size: file.size, type: file.type,
+      progress: 0, status: 'pending', url: null, path: null
     };
     attachedFiles.push(fileObj);
     renderAttachments();
@@ -3006,8 +3275,8 @@ window.clearAttachments = () => {
   renderAttachments();
 };
 
-/* ═══════ SEND (CC/BCC Support) ═══════ */
-window.sendMessage = async () => {
+/* ═══════ SEND with RATE LIMIT + SCHEDULE OPTION ═══════ */
+window.sendMessage = async (options = {}) => {
   const broadcast = $('#cBroadcast').checked && (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast'));
   const deptSend = $('#cDept').checked;
 
@@ -3041,7 +3310,19 @@ window.sendMessage = async () => {
     return;
   }
 
-  // تحقق من صلاحية كل المستلمين
+  // ✅ Rate Limit
+  if (!options.skipRateLimit) {
+    const rl = await checkRateLimit();
+    if (!rl.allowed) {
+      status.style.color = 'var(--danger)';
+      status.textContent = rl.message;
+      showToastAdvanced('⏱️ تجاوزت الحد', rl.message, {
+        type: 'warning', icon: 'clock', duration: 5000
+      });
+      return;
+    }
+  }
+
   if (!broadcast && !deptSend) {
     const allRecipients = [...toUsers, ...ccUsers, ...bccUsers];
     for (const recipient of allRecipients) {
@@ -3077,6 +3358,27 @@ window.sendMessage = async () => {
     tags: selectedTags.slice()
   };
 
+  // ✅ Scheduled Send
+  if (options.scheduledFor) {
+    try {
+      await addDoc(collection(db, 'users', state.currentUser.uid, 'scheduledMessages'), {
+        payload: emailData,
+        scheduledFor: options.scheduledFor,
+        createdAt: serverTimestamp()
+      });
+      closeCompose();
+      showToastAdvanced('⏰ تم الجدولة', `هيتم الإرسال في ${options.scheduledFor.toLocaleString('ar-EG', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`, {
+        type: 'success', icon: 'clock', duration: 5000
+      });
+      updateScheduledBadge();
+    } catch (e) {
+      status.style.color = 'var(--danger)';
+      status.textContent = 'خطأ في الجدولة: ' + e.message;
+    }
+    return;
+  }
+
+  // الإرسال الفوري
   closeCompose();
 
   const undoToast = document.createElement('div');
@@ -3120,19 +3422,15 @@ async function performSend(data) {
         const msgRef = doc(collection(db, 'messages'));
         await setDoc(msgRef, {
           subject: data.subject, body: data.body, priority: data.priority,
-          fromUserId: data.fromUserId,
-          fromUserName: data.fromUserName,
-          fromUserUsername: data.fromUserUsername,
+          fromUserId: data.fromUserId, fromUserName: data.fromUserName, fromUserUsername: data.fromUserUsername,
           toUserId: u.id, toUserName: u.name,
           toUserIds: [u.id], toUserNames: [u.name],
           ccUserIds: [], ccUserNames: [],
           bccUserIds: [], bccUserNames: [],
           read: false, isBroadcast: true,
           threadId: msgRef.id,
-          notified: false, starred: false,
-          deletedBy: {},
-          attachments: data.attachments || [],
-          tags: data.tags || [],
+          notified: false, starred: false, deletedBy: {},
+          attachments: data.attachments || [], tags: data.tags || [],
           createdAt: serverTimestamp()
         });
       }
@@ -3143,25 +3441,20 @@ async function performSend(data) {
         const msgRef = doc(collection(db, 'messages'));
         await setDoc(msgRef, {
           subject: data.subject, body: data.body, priority: data.priority,
-          fromUserId: data.fromUserId,
-          fromUserName: data.fromUserName,
-          fromUserUsername: data.fromUserUsername,
+          fromUserId: data.fromUserId, fromUserName: data.fromUserName, fromUserUsername: data.fromUserUsername,
           toUserId: u.id, toUserName: u.name,
           toUserIds: [u.id], toUserNames: [u.name],
           ccUserIds: [], ccUserNames: [],
           bccUserIds: [], bccUserNames: [],
           read: false, isBroadcast: false,
           threadId: msgRef.id,
-          notified: false, starred: false,
-          deletedBy: {},
-          attachments: data.attachments || [],
-          tags: data.tags || [],
+          notified: false, starred: false, deletedBy: {},
+          attachments: data.attachments || [], tags: data.tags || [],
           createdAt: serverTimestamp()
         });
       }
       showToastAdvanced('تم الإرسال ✅', `وصلت لـ ${recipients.length} موظف`, { type: 'success', icon: 'check-circle', duration: 3500 });
     } else {
-      // ✅ الفرع الجديد اللي بيدعم To / CC / BCC
       const toIds = data.toUsers.map(u => u.id);
       const toNames = data.toUsers.map(u => u.name);
       const ccIds = data.ccUsers.map(u => u.id);
@@ -3172,29 +3465,17 @@ async function performSend(data) {
       const msgRef = doc(collection(db, 'messages'));
       await setDoc(msgRef, {
         subject: data.subject, body: data.body, priority: data.priority,
-        fromUserId: data.fromUserId,
-        fromUserName: data.fromUserName,
-        fromUserUsername: data.fromUserUsername,
-
-        // للتوافق مع الكود القديم
+        fromUserId: data.fromUserId, fromUserName: data.fromUserName, fromUserUsername: data.fromUserUsername,
         toUserId: toIds[0] || ccIds[0] || bccIds[0] || null,
         toUserName: toNames[0] || ccNames[0] || bccNames[0] || null,
-
-        // 🆕 المصفوفات الكاملة
-        toUserIds: toIds,
-        toUserNames: toNames,
-        ccUserIds: ccIds,
-        ccUserNames: ccNames,
-        bccUserIds: bccIds,
-        bccUserNames: bccNames,
-
+        toUserIds: toIds, toUserNames: toNames,
+        ccUserIds: ccIds, ccUserNames: ccNames,
+        bccUserIds: bccIds, bccUserNames: bccNames,
         read: false,
         threadId: data.replyToThread || msgRef.id,
         parentId: data.replyToThread ? (state._currentThreadLastMsgId || null) : null,
-        notified: false, starred: false,
-        deletedBy: {},
-        attachments: data.attachments || [],
-        tags: data.tags || [],
+        notified: false, starred: false, deletedBy: {},
+        attachments: data.attachments || [], tags: data.tags || [],
         createdAt: serverTimestamp()
       });
 
@@ -3207,9 +3488,7 @@ async function performSend(data) {
     console.error('SEND ERROR:', e);
     showToastAdvanced('خطأ في الإرسال', e.message, {
       type: 'error', icon: 'alert-circle',
-      actionLabel: 'إعادة',
-      onAction: () => performSend(data),
-      duration: 8000
+      actionLabel: 'إعادة', onAction: () => performSend(data), duration: 8000
     });
   }
 }
@@ -3233,7 +3512,7 @@ window.saveDraft = async () => {
     const draftId = $('#cDraftId').value;
     const draftData = {
       toUsers, ccUsers, bccUsers,
-      toUserId: toUsers[0]?.id || null,   // للتوافق القديم
+      toUserId: toUsers[0]?.id || null,
       subject, body,
       updatedAt: serverTimestamp()
     };
@@ -3253,157 +3532,172 @@ window.saveDraft = async () => {
   }
 };
 
-window.replyToThread = async (userId, userName, threadId, subject) => {
-  await window.openCompose();
-  const recipient = state.allUsersCache.find(u => u.id === userId);
-  if (recipient) window.addRecipient('to', recipient);
-  $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
-  $('#cThreadId').value = threadId;
-  $('#composeTitle').textContent = `رد على ${userName}`;
-  setTimeout(() => $('#cBody').focus(), 200);
-};
+/* ═══════ SCHEDULED SEND UI ═══════ */
+window.openScheduleModal = () => {
+  const now = new Date();
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+  const localISO = (d) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
 
-/* ═══════ IMAGE VIEWER ═══════ */
-window.openImageViewer = (url) => {
-  const viewer = document.getElementById('imageViewer');
-  const img = document.getElementById('imageViewerImg');
-  if (!viewer || !img) return;
-  img.src = url;
-  viewer.style.display = 'flex';
-  document.body.style.overflow = 'hidden';
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.id = 'scheduleModal';
+  modal.innerHTML = `
+    <div class="modal-panel modal-md fade-in">
+      <div class="modal-header">
+        <div><h2 class="modal-title">جدولة الإرسال</h2><p class="modal-subtitle">اختار التاريخ والوقت</p></div>
+        <button onclick="document.getElementById('scheduleModal').remove()" class="icon-btn icon-btn-ghost"><i data-lucide="x" class="w-4 h-4"></i></button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">وقت الإرسال</label>
+          <input type="datetime-local" id="scheduleDateTime" class="form-input" value="${localISO(tomorrow)}" />
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+          <button onclick="quickSchedule('+1h')" class="btn btn-ghost btn-sm">بعد ساعة</button>
+          <button onclick="quickSchedule('+3h')" class="btn btn-ghost btn-sm">بعد 3 ساعات</button>
+          <button onclick="quickSchedule('tomorrow9')" class="btn btn-ghost btn-sm">بكرة 9ص</button>
+          <button onclick="quickSchedule('monday9')" class="btn btn-ghost btn-sm">الاتنين 9ص</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button onclick="document.getElementById('scheduleModal').remove()" class="btn btn-ghost">إلغاء</button>
+        <button onclick="confirmSchedule()" class="btn btn-primary">
+          <i data-lucide="clock" class="w-4 h-4"></i>
+          <span>جدولة</span>
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
   icons();
 };
 
-window.closeImageViewer = () => {
-  const viewer = document.getElementById('imageViewer');
-  if (viewer) viewer.style.display = 'none';
-  document.body.style.overflow = '';
+window.quickSchedule = (when) => {
+  const input = document.getElementById('scheduleDateTime');
+  const now = new Date();
+  let target;
+
+  if (when === '+1h') target = new Date(now.getTime() + 60 * 60 * 1000);
+  else if (when === '+3h') target = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  else if (when === 'tomorrow9') {
+    target = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    target.setHours(9, 0, 0, 0);
+  } else if (when === 'monday9') {
+    target = new Date(now);
+    const days = (1 + 7 - now.getDay()) % 7 || 7;
+    target.setDate(now.getDate() + days);
+    target.setHours(9, 0, 0, 0);
+  }
+
+  const pad = (n) => String(n).padStart(2, '0');
+  input.value = `${target.getFullYear()}-${pad(target.getMonth()+1)}-${pad(target.getDate())}T${pad(target.getHours())}:${pad(target.getMinutes())}`;
 };
 
-/* ═══════ PROFILE / SETTINGS ═══════ */
-window.openProfile = () => {
+window.confirmSchedule = async () => {
+  const input = document.getElementById('scheduleDateTime');
+  if (!input || !input.value) {
+    alert('اختار وقت');
+    return;
+  }
+  const dt = new Date(input.value);
+  if (dt.getTime() <= Date.now()) {
+    alert('اختار وقت في المستقبل');
+    return;
+  }
+  document.getElementById('scheduleModal')?.remove();
+  await window.sendMessage({ scheduledFor: dt, skipRateLimit: true });
+};
+
+/* ═══════ AUTO-REPLY ═══════ */
+window.openAutoReplySettings = () => {
+  hideStyle($('#userMenu'));
   const u = state.currentUser;
-  if (!u) return;
-  $('#profileName').value = u.name || '';
-  $('#profileUsername').value = u.username || '';
-  $('#profileEmail').value = u.email || '';
-  $('#profileRole').value = roleLabels[u.role] || u.role;
-  const avatarEl = $('#profileAvatar');
-  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
-  hideStyle($('#userMenu'));
-  show($('#profileModal'));
+  $('#autoReplyEnabled').checked = !!u.autoReplyEnabled;
+  $('#autoReplyMessage').value = u.autoReplyMessage || 'أنا خارج المكتب حالياً. هرد عليك في أقرب وقت ممكن.';
+  show($('#autoReplyModal'));
   icons();
 };
 
-window.closeProfile = () => hide($('#profileModal'));
+window.closeAutoReplySettings = () => hide($('#autoReplyModal'));
 
-window.saveProfile = async () => {
-  const name = $('#profileName').value.trim();
-  const status = $('#profileStatus');
-  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
-  try {
-    await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
-    state.currentUser.name = name;
-    status.className = 'alert alert-success';
-    status.textContent = '✅ تم الحفظ';
-    show(status);
-    showToastAdvanced('تم الحفظ ✅', 'الاسم اتحدّث', { type: 'success', icon: 'check', duration: 2000 });
-    setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
-  } catch (e) {
-    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
+window.saveAutoReply = async () => {
+  const enabled = $('#autoReplyEnabled').checked;
+  const message = $('#autoReplyMessage').value.trim();
+
+  if (enabled && !message) {
+    alert('اكتب رسالة الرد التلقائي');
+    return;
   }
-};
 
-window.openSettings = () => {
-  hideStyle($('#userMenu'));
-  $('#darkModeToggle').checked = state.settings.darkMode;
-  const installBtn = $('#installPwaBtn');
-  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
-  show($('#settingsModal'));
-  icons();
-};
-
-window.closeSettings = () => hide($('#settingsModal'));
-
-window.toggleDarkMode = () => {
-  const isDark = toggleDarkMode();
-  const icon = $('#themeToggle i');
-  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
-  icons();
-};
-
-window.enablePushNotifications = async () => {
-  const btn = $('#enablePushBtn');
-  btn.disabled = true;
-  btn.textContent = '...';
   try {
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (token) {
-      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-      btn.textContent = '✅ مفعّل';
-      btn.className = 'btn btn-sm btn-success';
-    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
-  } catch (e) {
-    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
-  }
-};
-
-/* ═══════ NOTIFICATIONS ═══════ */
-async function registerFCMToken() {
-  try {
-    if (!messaging) return;
-    if (!('Notification' in window)) return;
-    const perm = await Notification.requestPermission();
-    if (perm !== 'granted') return;
-    const reg = await navigator.serviceWorker.register(SW_PATH);
-    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
-    if (!token) return;
-    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-    console.log('✅ FCM Token saved');
-  } catch (e) { console.error('FCM error:', e); }
-}
-
-if (messaging) {
-  onMessage(messaging, (payload) => {
-    const { title, body } = payload.notification || {};
-    const data = payload.data || {};
-    showToastAdvanced(title || 'رسالة جديدة', body || '', {
-      type: 'info', icon: 'mail', duration: 6000,
-      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
+    await updateDoc(doc(db, 'users', state.currentUser.uid), {
+      autoReplyEnabled: enabled,
+      autoReplyMessage: message
     });
-  });
+    state.currentUser.autoReplyEnabled = enabled;
+    state.currentUser.autoReplyMessage = message;
+    closeAutoReplySettings();
+    showToastAdvanced(enabled ? '✅ تم التفعيل' : '⏹️ تم الإيقاف',
+      enabled ? 'الرد التلقائي شغال' : 'الرد التلقائي متوقف',
+      { type: 'success', icon: 'zap', duration: 2500 });
+  } catch (e) {
+    showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
+  }
+};
+
+async function trySendAutoReply(originalMsg) {
+  const u = state.currentUser;
+  if (!u.autoReplyEnabled || !u.autoReplyMessage) return;
+
+  // تجنب الرد على نفس المرسل مرتين خلال 24 ساعة
+  const key = `autoreply_${originalMsg.fromUserId}_${new Date().toDateString()}`;
+  if (autoReplyChecked.has(key)) return;
+  autoReplyChecked.add(key);
+
+  // متبعتش رد تلقائي لنفسك أو لرسائل الرد التلقائي
+  if (originalMsg.fromUserId === u.uid) return;
+  if (originalMsg.autoReply) return;
+
+  const fromUser = state.allUsersCache.find(x => x.id === originalMsg.fromUserId);
+  if (!fromUser) return;
+  if (!canSendTo(fromUser)) return;
+
+  try {
+    const msgRef = doc(collection(db, 'messages'));
+    await setDoc(msgRef, {
+      subject: 'رد: ' + (originalMsg.subject || ''),
+      body: `🤖 رسالة تلقائية:\n\n${u.autoReplyMessage}`,
+      priority: 'normal',
+      fromUserId: u.uid,
+      fromUserName: u.name,
+      fromUserUsername: u.username,
+      toUserId: fromUser.id,
+      toUserName: fromUser.name,
+      toUserIds: [fromUser.id], toUserNames: [fromUser.name],
+      ccUserIds: [], ccUserNames: [],
+      bccUserIds: [], bccUserNames: [],
+      read: false,
+      threadId: originalMsg.threadId || originalMsg.id,
+      parentId: originalMsg.id,
+      notified: false, starred: false, deletedBy: {},
+      attachments: [], tags: [],
+      autoReply: true,
+      createdAt: serverTimestamp()
+    });
+    console.log('✅ Auto-reply sent to', fromUser.name);
+  } catch (e) {
+    console.warn('Auto-reply failed:', e);
+  }
 }
 
-function setupServiceWorkerMessages() {
-  if (!('serviceWorker' in navigator)) return;
-
-  navigator.serviceWorker.addEventListener('message', (event) => {
-    if (event.data?.type === 'PLAY_SOUND') playNotifSound();
-  });
-
-  let refreshing = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (refreshing) return;
-    if (!sessionStorage.getItem('app_updating')) return;
-    refreshing = true;
-    sessionStorage.removeItem('app_updating');
-    window.location.reload();
-  });
-
-  navigator.serviceWorker.register(SW_PATH)
-    .then(() => console.log('✅ SW registered'))
-    .catch(() => {});
-}
-
-/* ═══════ MESSAGES LISTENER (CC/BCC Support) ═══════ */
+/* ═══════ MESSAGES LISTENER ═══════ */
 function startMessagesListener() {
   if (state.unsubMessages) state.unsubMessages();
   const myUID = state.currentUser.uid;
 
-  // نسمع على كل الطرق اللي ممكن يكون فيها المستخدم
   const queries = [
     query(collection(db, 'messages'), where('toUserId', '==', myUID)),
     query(collection(db, 'messages'), where('toUserIds', 'array-contains', myUID)),
@@ -3413,6 +3707,7 @@ function startMessagesListener() {
 
   const merged = new Map();
   const unsubs = [];
+  const seenMsgIds = new Set();
 
   const rebuildUI = () => {
     const all = Array.from(merged.values());
@@ -3429,7 +3724,16 @@ function startMessagesListener() {
         if (change.type === 'removed') {
           merged.delete(change.doc.id);
         } else {
-          merged.set(change.doc.id, { id: change.doc.id, ...change.doc.data() });
+          const data = { id: change.doc.id, ...change.doc.data() };
+          merged.set(change.doc.id, data);
+
+          // ✅ Trigger Auto-Reply للرسائل الجديدة فقط
+          if (change.type === 'added' && !seenMsgIds.has(change.doc.id)) {
+            seenMsgIds.add(change.doc.id);
+            if (data.fromUserId !== myUID && !data.autoReply) {
+              setTimeout(() => trySendAutoReply(data), 2000);
+            }
+          }
         }
       });
       rebuildUI();
@@ -3520,14 +3824,9 @@ async function renderDeletedLog() {
   $('#pageContent').innerHTML = `
     <div class="dashboard" style="max-width:1100px;">
       <div class="page-header" style="padding:0 0 20px;border:none;">
-        <div>
-          <h1 class="dashboard-title">سجل المحذوفات</h1>
-          <p class="dashboard-date">جاري التحميل...</p>
-        </div>
+        <div><h1 class="dashboard-title">سجل المحذوفات</h1><p class="dashboard-date">جاري التحميل...</p></div>
       </div>
-      <div class="data-table-wrapper" style="padding:20px;">
-        ${renderSkeletonInbox()}
-      </div>
+      <div class="data-table-wrapper" style="padding:20px;">${renderSkeletonInbox()}</div>
     </div>
   `;
   icons();
@@ -3544,10 +3843,7 @@ async function renderDeletedLog() {
       $('#pageContent').innerHTML = `
         <div class="dashboard" style="max-width:1100px;">
           <div class="page-header" style="padding:0 0 20px;border:none;">
-            <div>
-              <h1 class="dashboard-title">سجل المحذوفات</h1>
-              <p class="dashboard-date">0 رسالة محذوفة</p>
-            </div>
+            <div><h1 class="dashboard-title">سجل المحذوفات</h1><p class="dashboard-date">0 رسالة محذوفة</p></div>
           </div>
           <div class="empty-state" style="padding:60px 20px;">
             <i data-lucide="archive" style="width:64px;height:64px;"></i>
@@ -3563,9 +3859,7 @@ async function renderDeletedLog() {
     const threadsMap = {};
     deleted.forEach(m => {
       const tid = m.threadId || m.id;
-      if (!threadsMap[tid]) {
-        threadsMap[tid] = { threadId: tid, messages: [], allDeleters: new Set(), latestDeleteTime: 0 };
-      }
+      if (!threadsMap[tid]) threadsMap[tid] = { threadId: tid, messages: [], allDeleters: new Set(), latestDeleteTime: 0 };
       threadsMap[tid].messages.push(m);
       Object.entries(m.permanentlyDeletedBy).forEach(([uid, timeStr]) => {
         threadsMap[tid].allDeleters.add(uid);
@@ -3578,72 +3872,45 @@ async function renderDeletedLog() {
 
     const rows = threads.map(t => {
       const firstMsg = t.messages[0];
-      const lastMsg = t.messages[t.messages.length - 1];
       const subject = firstMsg.subject || '(بدون موضوع)';
-      const preview = (lastMsg.body || '').slice(0, 120);
-
       const deleters = Array.from(t.allDeleters).map(uid => {
         const u = state.allUsersCache.find(x => x.id === uid);
         return u ? u.name : 'مستخدم';
       });
-
       const sender = state.allUsersCache.find(u => u.id === firstMsg.fromUserId);
       const recipient = state.allUsersCache.find(u => u.id === firstMsg.toUserId);
       const fromName = sender ? sender.name : (firstMsg.fromUserName || 'مستخدم');
       const toName = recipient ? recipient.name : (firstMsg.toUserName || 'مستخدم');
 
       const timeStr = t.latestDeleteTime
-        ? new Date(t.latestDeleteTime).toLocaleString('ar-EG', {
-            year: 'numeric', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-          })
+        ? new Date(t.latestDeleteTime).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
         : '—';
 
       return `
         <div class="deleted-log-item">
           <div class="deleted-log-row-1">
             <div class="deleted-log-from-to">
-              <div class="user-cell-avatar ${getAvatarGradient(fromName)}" title="${esc(fromName)}">${initials(fromName)}</div>
+              <div class="user-cell-avatar ${getAvatarGradient(fromName)}">${initials(fromName)}</div>
               <div class="deleted-log-arrow"><i data-lucide="arrow-left" class="w-3.5 h-3.5"></i></div>
-              <div class="user-cell-avatar ${getAvatarGradient(toName)}" title="${esc(toName)}">${initials(toName)}</div>
+              <div class="user-cell-avatar ${getAvatarGradient(toName)}">${initials(toName)}</div>
             </div>
             <div class="deleted-log-names">
               <span class="deleted-log-from">${esc(fromName)}</span>
               <span class="deleted-log-to">← ${esc(toName)}</span>
             </div>
-            <div class="deleted-log-badges">
-              ${t.messages.length > 1 ? `<span class="deleted-log-thread-badge">💬 ${t.messages.length}</span>` : ''}
-            </div>
           </div>
-
           <div class="deleted-log-row-2">
             <div class="deleted-log-subject">${esc(subject)}</div>
-            <div class="deleted-log-preview">${esc(preview)}</div>
           </div>
-
           <div class="deleted-log-row-3">
             <div class="deleted-log-info">
-              <span class="deleted-log-info-item">
-                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                <span class="deleted-log-info-label">حذفها:</span>
-                <strong>${deleters.map(esc).join('، ')}</strong>
-              </span>
-              <span class="deleted-log-info-item">
-                <i data-lucide="clock" class="w-3.5 h-3.5"></i>
-                <span>${timeStr}</span>
-              </span>
+              <span class="deleted-log-info-item"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>حذفها: <strong>${deleters.map(esc).join('، ')}</strong></span>
+              <span class="deleted-log-info-item"><i data-lucide="clock" class="w-3.5 h-3.5"></i>${timeStr}</span>
             </div>
-
             <div class="deleted-log-actions">
-              <button onclick="viewDeletedThread('${t.threadId}')" class="deleted-log-btn view">
-                <i data-lucide="eye" class="w-3.5 h-3.5"></i><span>عرض</span>
-              </button>
-              <button onclick="restoreDeletedThread('${t.threadId}')" class="deleted-log-btn restore">
-                <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i><span>استعادة</span>
-              </button>
-              <button onclick="permanentDeleteThread('${t.threadId}')" class="deleted-log-btn delete">
-                <i data-lucide="x-circle" class="w-3.5 h-3.5"></i><span>حذف نهائي</span>
-              </button>
+              <button onclick="viewDeletedThread('${t.threadId}')" class="deleted-log-btn view"><i data-lucide="eye" class="w-3.5 h-3.5"></i>عرض</button>
+              <button onclick="restoreDeletedThread('${t.threadId}')" class="deleted-log-btn restore"><i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>استعادة</button>
+              <button onclick="permanentDeleteThread('${t.threadId}')" class="deleted-log-btn delete"><i data-lucide="x-circle" class="w-3.5 h-3.5"></i>حذف نهائي</button>
             </div>
           </div>
         </div>
@@ -3653,30 +3920,16 @@ async function renderDeletedLog() {
     $('#pageContent').innerHTML = `
       <div class="dashboard" style="max-width:1100px;">
         <div class="page-header" style="padding:0 0 20px;border:none;">
-          <div>
-            <h1 class="dashboard-title">سجل المحذوفات</h1>
-            <p class="dashboard-date">${threads.length} محادثة · ${deleted.length} رسالة</p>
-          </div>
-          <button onclick="renderDeletedLog()" class="btn btn-ghost btn-sm">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i><span>تحديث</span>
-          </button>
+          <div><h1 class="dashboard-title">سجل المحذوفات</h1><p class="dashboard-date">${threads.length} محادثة · ${deleted.length} رسالة</p></div>
+          <button onclick="renderDeletedLog()" class="btn btn-ghost btn-sm"><i data-lucide="refresh-cw" class="w-4 h-4"></i>تحديث</button>
         </div>
-
         <div class="deleted-log-list">${rows}</div>
       </div>
     `;
     icons();
     updateDeletedLogBadge(deleted.length);
-
   } catch (e) {
     console.error('Deleted log error:', e);
-    $('#pageContent').innerHTML = `
-      <div class="dashboard"><div class="empty-state">
-        <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
-        <p>خطأ في تحميل السجل</p>
-      </div></div>
-    `;
-    icons();
   }
 }
 window.renderDeletedLog = renderDeletedLog;
@@ -3709,9 +3962,7 @@ window.permanentDeleteThread = async (threadId) => {
   try {
     const q = query(collection(db, 'messages'), where('threadId', '==', threadId));
     const snap = await getDocs(q);
-    for (const d of snap.docs) {
-      await deleteDoc(doc(db, 'messages', d.id));
-    }
+    for (const d of snap.docs) await deleteDoc(doc(db, 'messages', d.id));
     showToastAdvanced('تم الحذف النهائي 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2500 });
     renderDeletedLog();
   } catch (e) {
@@ -3721,7 +3972,6 @@ window.permanentDeleteThread = async (threadId) => {
 
 async function updateDeletedLogBadge(count) {
   if (!isAdmin()) return;
-
   if (typeof count !== 'number') {
     try {
       const snap = await getDocs(collection(db, 'messages'));
@@ -3731,44 +3981,29 @@ async function updateDeletedLogBadge(count) {
       }).length;
     } catch (e) { count = 0; }
   }
-
-  const els = [
-    document.getElementById('sidebarDeletedLogCount'),
-    document.getElementById('drawerDeletedLogCount')
-  ];
-
-  els.forEach(el => {
+  ['sidebarDeletedLogCount', 'drawerDeletedLogCount'].forEach(id => {
+    const el = document.getElementById(id);
     if (!el) return;
-    if (count > 0) {
-      el.textContent = count > 99 ? '99+' : count;
-      el.classList.remove('hidden');
-    } else {
-      el.classList.add('hidden');
-    }
+    if (count > 0) { el.textContent = count > 99 ? '99+' : count; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
   });
 }
 
-/* ═══════ CHANGE PASSWORD UI ═══════ */
+/* ═══════ CHANGE PASSWORD UI (NEW - Firebase Auth) ═══════ */
 window.openChangePasswordModal = (userId, username, email, displayName) => {
   if (!isAdmin()) {
     showToastAdvanced('غير مسموح', 'مسئول السيستم بس', { type: 'error', icon: 'shield-x' });
     return;
   }
-
   $('#cpUserId').value = userId;
   $('#cpUsername').value = username || '';
   $('#cpEmail').value = email || '';
-  $('#cpNewPass').value = '';
-  $('#cpConfirmPass').value = '';
   $('#changePasswordSubtitle').textContent = displayName || username || '';
-
   const status = $('#cpStatus');
   status.className = 'alert hidden';
   status.textContent = '';
-
   show($('#changePasswordModal'));
   icons();
-  setTimeout(() => $('#cpNewPass')?.focus(), 200);
 };
 
 window.closeChangePasswordModal = () => {
@@ -3777,108 +4012,51 @@ window.closeChangePasswordModal = () => {
 };
 
 window.saveUserPassword = async () => {
-  const userId = $('#cpUserId').value;
   const username = $('#cpUsername').value;
   const email = $('#cpEmail').value;
-  const newPass = $('#cpNewPass').value;
-  const confirmPass = $('#cpConfirmPass').value;
   const status = $('#cpStatus');
-
   status.className = 'alert hidden';
   status.textContent = '';
 
-  if (!newPass || !confirmPass) {
-    status.className = 'alert alert-error';
-    status.textContent = 'املأ كل الحقول';
-    show(status);
-    return;
-  }
-
-  if (newPass.length < 6) {
-    status.className = 'alert alert-error';
-    status.textContent = 'كلمة السر 6 حروف على الأقل';
-    show(status);
-    return;
-  }
-
-  if (newPass !== confirmPass) {
-    status.className = 'alert alert-error';
-    status.textContent = 'كلمتا السر مش متطابقتين';
-    show(status);
-    return;
-  }
-
   if (!email) {
     status.className = 'alert alert-error';
-    status.textContent = 'الإيميل مش موجود — جرب من Firebase Console';
+    status.textContent = 'الإيميل مش موجود';
     show(status);
     return;
   }
 
   status.className = 'alert alert-info';
-  status.textContent = 'جاري تغيير كلمة السر...';
+  status.textContent = 'جاري إرسال رابط استعادة كلمة السر...';
   show(status);
 
   try {
-    let oldPass = null;
-    try {
-      const secretSnap = await getDoc(doc(db, 'userSecrets', userId));
-      if (secretSnap.exists()) {
-        oldPass = decryptPassword(secretSnap.data().encPass);
-      }
-    } catch (e) {
-      console.warn('Cannot read secrets:', e);
-    }
-
-    if (!oldPass) {
-      status.className = 'alert alert-error';
-      status.textContent = 'مش قادر أوصل لكلمة السر القديمة — جرب من Firebase Console';
-      show(status);
-      return;
-    }
-
-    const result = await adminChangeUserPassword(email, oldPass, newPass);
-
-    if (!result.success) {
-      status.className = 'alert alert-error';
-      status.textContent = 'فشل التغيير: ' + (result.message || result.error);
-      show(status);
-      return;
-    }
-
-    await setDoc(doc(db, 'userSecrets', userId), {
-      encPass: encryptPassword(newPass),
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+    const appName = 'PwdReset-' + Date.now();
+    const secondaryApp = initializeApp(firebaseConfig, appName);
+    const secondaryAuth = getAuth(secondaryApp);
+    await sendPasswordResetEmail(secondaryAuth, email);
+    try { await deleteApp(secondaryApp); } catch (x) {}
 
     status.className = 'alert alert-success';
-    status.textContent = '✅ تم تغيير كلمة السر بنجاح';
-
-    showToastAdvanced('تم التغيير ✅', `كلمة سر ${username}: ${newPass}`, {
-      type: 'success', icon: 'key-round', duration: 5000
-    });
+    status.textContent = '✅ تم إرسال رابط استعادة كلمة السر لإيميل المستخدم';
+    showToastAdvanced('تم الإرسال ✅', `رابط الإرسال لـ ${email}`, { type: 'success', icon: 'mail', duration: 5000 });
 
     if (window._currentResetReqId) {
       try {
         await updateDoc(doc(db, 'passwordResetRequests', window._currentResetReqId), {
-          status: 'resolved',
-          resolvedAt: serverTimestamp(),
-          resolvedBy: state.currentUser.uid
+          status: 'resolved', resolvedAt: serverTimestamp(), resolvedBy: state.currentUser.uid
         });
-      } catch (err) { console.warn('Failed to resolve request:', err); }
+      } catch (err) {}
       window._currentResetReqId = null;
     }
 
     setTimeout(() => {
       closeChangePasswordModal();
       if (state.currentFilter === 'passwordreset') renderPasswordResetRequests();
-      else if (state.currentFilter === 'users') renderUsers();
     }, 2500);
-
   } catch (e) {
-    console.error('Change password error:', e);
+    console.error(e);
     status.className = 'alert alert-error';
-    status.textContent = e.message;
+    status.textContent = 'خطأ: ' + e.message;
     show(status);
   }
 };
@@ -3886,31 +4064,11 @@ window.saveUserPassword = async () => {
 /* ═══════ PASSWORD RESET REQUESTS PAGE ═══════ */
 async function renderPasswordResetRequests() {
   if (!isAdmin()) {
-    $('#pageContent').innerHTML = `
-      <div class="dashboard">
-        <div class="empty-state" style="padding:60px 20px;">
-          <i data-lucide="shield-x" style="width:64px;height:64px;color:var(--danger);"></i>
-          <p style="margin-top:12px;">غير مسموح — مسئول السيستم بس</p>
-        </div>
-      </div>
-    `;
-    icons();
-    return;
+    $('#pageContent').innerHTML = `<div class="dashboard"><div class="empty-state" style="padding:60px 20px;"><i data-lucide="shield-x" style="width:64px;height:64px;color:var(--danger);"></i><p style="margin-top:12px;">غير مسموح</p></div></div>`;
+    icons(); return;
   }
 
-  $('#pageContent').innerHTML = `
-    <div class="dashboard" style="max-width:1000px;">
-      <div class="page-header" style="padding:0 0 20px;border:none;">
-        <div>
-          <h1 class="dashboard-title">طلبات كلمة السر</h1>
-          <p class="dashboard-date">جاري التحميل...</p>
-        </div>
-      </div>
-      <div class="data-table-wrapper" style="padding:20px;">
-        ${renderSkeletonInbox()}
-      </div>
-    </div>
-  `;
+  $('#pageContent').innerHTML = `<div class="dashboard" style="max-width:1000px;"><div class="page-header" style="padding:0 0 20px;border:none;"><div><h1 class="dashboard-title">طلبات كلمة السر</h1><p class="dashboard-date">جاري التحميل...</p></div></div><div class="data-table-wrapper" style="padding:20px;">${renderSkeletonInbox()}</div></div>`;
   icons();
 
   try {
@@ -3922,43 +4080,15 @@ async function renderPasswordResetRequests() {
     const resolved = all.filter(r => r.status === 'resolved');
 
     if (all.length === 0) {
-      $('#pageContent').innerHTML = `
-        <div class="dashboard" style="max-width:1000px;">
-          <div class="page-header" style="padding:0 0 20px;border:none;">
-            <div>
-              <h1 class="dashboard-title">طلبات كلمة السر</h1>
-              <p class="dashboard-date">0 طلب</p>
-            </div>
-          </div>
-          <div class="empty-state" style="padding:60px 20px;">
-            <i data-lucide="key-round" style="width:64px;height:64px;"></i>
-            <p style="margin-top:12px;">لا توجد طلبات</p>
-          </div>
-        </div>
-      `;
-      icons();
-      updatePasswordResetBadge(0);
-      return;
+      $('#pageContent').innerHTML = `<div class="dashboard" style="max-width:1000px;"><div class="page-header" style="padding:0 0 20px;border:none;"><div><h1 class="dashboard-title">طلبات كلمة السر</h1><p class="dashboard-date">0 طلب</p></div></div><div class="empty-state" style="padding:60px 20px;"><i data-lucide="key-round" style="width:64px;height:64px;"></i><p style="margin-top:12px;">لا توجد طلبات</p></div></div>`;
+      icons(); updatePasswordResetBadge(0); return;
     }
 
     const renderRequest = (r) => {
       const isPending = r.status === 'pending';
-      const timeStr = r.createdAt?.seconds
-        ? new Date(r.createdAt.seconds * 1000).toLocaleString('ar-EG', {
-            year: 'numeric', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-          })
-        : '—';
-
-      const resolvedTimeStr = r.resolvedAt?.seconds
-        ? new Date(r.resolvedAt.seconds * 1000).toLocaleString('ar-EG', {
-            month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-          })
-        : '';
-
+      const timeStr = r.createdAt?.seconds ? new Date(r.createdAt.seconds * 1000).toLocaleString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
       const name = r.userName || r.username || 'مستخدم';
       const avatarClass = getAvatarGradient(name);
-
       const safeId = String(r.id || '').replace(/'/g, '');
       const safeUserId = String(r.userId || '').replace(/'/g, '');
       const safeUsername = String(r.username || '').replace(/'/g, '');
@@ -3969,55 +4099,32 @@ async function renderPasswordResetRequests() {
         <div class="deleted-log-item" style="${isPending ? '' : 'opacity:0.6;'}">
           <div class="deleted-log-row-1">
             <div class="deleted-log-from-to">
-              <div class="user-cell-avatar ${avatarClass}" title="${esc(name)}">${initials(name)}</div>
+              <div class="user-cell-avatar ${avatarClass}">${initials(name)}</div>
             </div>
             <div class="deleted-log-names">
               <span class="deleted-log-from">${esc(name)}</span>
               <span class="deleted-log-to">@${esc(r.username || '')} ${r.userEmail ? '· ' + esc(r.userEmail) : ''}</span>
             </div>
             <div class="deleted-log-badges">
-              ${isPending
-                ? '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--warning-bg);color:#7A5D00;border-radius:10px;">⏳ معلق</span>'
-                : '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--success-bg);color:var(--success);border-radius:10px;">✅ تم الحل</span>'
-              }
+              ${isPending ? '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--warning-bg);color:#7A5D00;border-radius:10px;">⏳ معلق</span>' : '<span style="font-size:11px;font-weight:700;padding:3px 10px;background:var(--success-bg);color:var(--success);border-radius:10px;">✅ تم الحل</span>'}
             </div>
           </div>
-
           <div class="deleted-log-row-2">
-            <div class="deleted-log-info-item">
-              <i data-lucide="clock" class="w-3.5 h-3.5"></i>
-              <span>وقت الطلب: ${timeStr}</span>
-            </div>
-            ${!isPending && resolvedTimeStr ? `
-              <div class="deleted-log-info-item" style="margin-top:6px;">
-                <i data-lucide="check-circle" class="w-3.5 h-3.5" style="color:var(--success);"></i>
-                <span>تم الحل: ${resolvedTimeStr}</span>
-              </div>
-            ` : ''}
+            <div class="deleted-log-info-item"><i data-lucide="clock" class="w-3.5 h-3.5"></i><span>وقت الطلب: ${timeStr}</span></div>
           </div>
-
           ${isPending ? `
             <div class="deleted-log-row-3">
               <div class="deleted-log-info"></div>
               <div class="deleted-log-actions">
-                <button onclick="changePasswordFromRequest('${safeId}', '${safeUserId}', '${safeUsername}', '${safeUserEmail}', '${safeUserName}')" class="deleted-log-btn restore">
-                  <i data-lucide="key-round" class="w-3.5 h-3.5"></i>
-                  <span>تغيير كلمة السر</span>
-                </button>
-                <button onclick="deletePasswordResetRequest('${safeId}')" class="deleted-log-btn delete">
-                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                  <span>حذف</span>
-                </button>
+                <button onclick="changePasswordFromRequest('${safeId}', '${safeUserId}', '${safeUsername}', '${safeUserEmail}', '${safeUserName}')" class="deleted-log-btn restore"><i data-lucide="key-round" class="w-3.5 h-3.5"></i>إرسال رابط الاستعادة</button>
+                <button onclick="deletePasswordResetRequest('${safeId}')" class="deleted-log-btn delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>حذف</button>
               </div>
             </div>
           ` : `
             <div class="deleted-log-row-3">
               <div class="deleted-log-info"></div>
               <div class="deleted-log-actions">
-                <button onclick="deletePasswordResetRequest('${safeId}')" class="deleted-log-btn delete">
-                  <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-                  <span>حذف</span>
-                </button>
+                <button onclick="deletePasswordResetRequest('${safeId}')" class="deleted-log-btn delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>حذف</button>
               </div>
             </div>
           `}
@@ -4028,82 +4135,42 @@ async function renderPasswordResetRequests() {
     $('#pageContent').innerHTML = `
       <div class="dashboard" style="max-width:1000px;">
         <div class="page-header" style="padding:0 0 20px;border:none;">
-          <div>
-            <h1 class="dashboard-title">طلبات كلمة السر</h1>
-            <p class="dashboard-date">${pending.length} معلق · ${resolved.length} تم الحل</p>
-          </div>
-          <button onclick="renderPasswordResetRequests()" class="btn btn-ghost btn-sm">
-            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-            <span>تحديث</span>
-          </button>
+          <div><h1 class="dashboard-title">طلبات كلمة السر</h1><p class="dashboard-date">${pending.length} معلق · ${resolved.length} تم الحل</p></div>
+          <button onclick="renderPasswordResetRequests()" class="btn btn-ghost btn-sm"><i data-lucide="refresh-cw" class="w-4 h-4"></i>تحديث</button>
         </div>
-
-        <div style="background:var(--brand-primary-subtle);border:1px solid var(--brand-primary-light);border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:12.5px;color:var(--text-secondary);display:flex;gap:8px;align-items:flex-start;">
-          <i data-lucide="info" class="w-4 h-4" style="color:var(--brand-primary);flex-shrink:0;margin-top:2px;"></i>
-          <div>
-            <strong style="color:var(--brand-primary);">إزاي تعالج الطلب:</strong><br>
-            اضغط <strong>"تغيير كلمة السر"</strong> → اكتب كلمة سر جديدة → النظام هيغيرها فوراً → تتواصل مع المستخدم بأي وسيلة
-          </div>
-        </div>
-
         <div class="deleted-log-list">
-          ${pending.length > 0 ? `
-            <h3 style="font-size:14px;font-weight:700;margin:8px 0;">⏳ الطلبات المعلقة (${pending.length})</h3>
-            ${pending.map(renderRequest).join('')}
-          ` : ''}
-          ${resolved.length > 0 ? `
-            <h3 style="font-size:14px;font-weight:700;margin:20px 0 8px;">✅ تم حلها (${resolved.length})</h3>
-            ${resolved.slice(0, 20).map(renderRequest).join('')}
-          ` : ''}
+          ${pending.length > 0 ? `<h3 style="font-size:14px;font-weight:700;margin:8px 0;">⏳ الطلبات المعلقة (${pending.length})</h3>${pending.map(renderRequest).join('')}` : ''}
+          ${resolved.length > 0 ? `<h3 style="font-size:14px;font-weight:700;margin:20px 0 8px;">✅ تم حلها (${resolved.length})</h3>${resolved.slice(0, 20).map(renderRequest).join('')}` : ''}
         </div>
       </div>
     `;
     icons();
     updatePasswordResetBadge(pending.length);
-
   } catch (e) {
     console.error('Password reset requests error:', e);
-    $('#pageContent').innerHTML = `
-      <div class="dashboard"><div class="empty-state">
-        <i data-lucide="alert-circle" style="width:64px;height:64px;color:var(--danger);"></i>
-        <p>خطأ في تحميل الطلبات</p>
-      </div></div>
-    `;
-    icons();
   }
 }
 window.renderPasswordResetRequests = renderPasswordResetRequests;
 
-/* ✅ FIXED: البحث عن المستخدم بـ username لو البيانات ناقصة */
 window.changePasswordFromRequest = async (reqId, userId, username, email, displayName) => {
   if (!userId || !email) {
     try {
       const usersSnap = await getDocs(collection(db, 'users'));
       const cleanUsername = (username || '').toLowerCase();
-      const userDoc = usersSnap.docs.find(d => {
-        const u = d.data();
-        return (u.username || '').toLowerCase() === cleanUsername;
-      });
-
+      const userDoc = usersSnap.docs.find(d => (d.data().username || '').toLowerCase() === cleanUsername);
       if (!userDoc) {
-        showToastAdvanced('المستخدم مش موجود', `مفيش مستخدم باسم "${username}"`, {
-          type: 'error', icon: 'alert-circle', duration: 5000
-        });
+        showToastAdvanced('المستخدم مش موجود', `مفيش مستخدم باسم "${username}"`, { type: 'error', icon: 'alert-circle', duration: 5000 });
         return;
       }
-
       const u = userDoc.data();
       userId = userDoc.id;
       email = u.email || '';
       displayName = displayName || u.name || '';
-
     } catch (e) {
-      console.error('Lookup user error:', e);
       showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
       return;
     }
   }
-
   window._currentResetReqId = reqId;
   window.openChangePasswordModal(userId, username, email, displayName);
 };
@@ -4122,28 +4189,158 @@ window.deletePasswordResetRequest = async (reqId) => {
 
 async function updatePasswordResetBadge(count) {
   if (!isAdmin()) return;
-
   if (typeof count !== 'number') {
     try {
       const snap = await getDocs(collection(db, 'passwordResetRequests'));
       count = snap.docs.filter(d => d.data().status === 'pending').length;
     } catch (e) { count = 0; }
   }
-
-  const els = [
-    document.getElementById('sidebarPasswordResetCount'),
-    document.getElementById('drawerPasswordResetCount')
-  ];
-
-  els.forEach(el => {
+  ['sidebarPasswordResetCount', 'drawerPasswordResetCount'].forEach(id => {
+    const el = document.getElementById(id);
     if (!el) return;
-    if (count > 0) {
-      el.textContent = count > 99 ? '99+' : count;
-      el.classList.remove('hidden');
-    } else {
-      el.classList.add('hidden');
-    }
+    if (count > 0) { el.textContent = count > 99 ? '99+' : count; el.classList.remove('hidden'); }
+    else el.classList.add('hidden');
   });
 }
 
-console.log('🚀 Mail System v9.9.7 loaded — Password Change + Reset Requests + CC/BCC');
+/* ═══════ PROFILE / SETTINGS ═══════ */
+window.openProfile = () => {
+  const u = state.currentUser;
+  if (!u) return;
+  $('#profileName').value = u.name || '';
+  $('#profileUsername').value = u.username || '';
+  $('#profileEmail').value = u.email || '';
+  $('#profileRole').value = roleLabels[u.role] || u.role;
+  const avatarEl = $('#profileAvatar');
+  if (avatarEl) { avatarEl.textContent = initials(u.name); applyAvatar(avatarEl, u.name); }
+  hideStyle($('#userMenu'));
+  show($('#profileModal'));
+  icons();
+};
+
+window.closeProfile = () => hide($('#profileModal'));
+
+window.saveProfile = async () => {
+  const name = $('#profileName').value.trim();
+  const status = $('#profileStatus');
+  if (!name) { status.className = 'alert alert-error'; status.textContent = 'اكتب الاسم'; show(status); return; }
+  try {
+    await updateDoc(doc(db, 'users', state.currentUser.uid), { name });
+    state.currentUser.name = name;
+    status.className = 'alert alert-success';
+    status.textContent = '✅ تم الحفظ';
+    show(status);
+    setTimeout(() => { hide($('#profileModal')); location.reload(); }, 1000);
+  } catch (e) {
+    status.className = 'alert alert-error'; status.textContent = e.message; show(status);
+  }
+};
+
+window.openSettings = () => {
+  hideStyle($('#userMenu'));
+  const dt = $('#darkModeToggle');
+  if (dt) dt.checked = state.settings.darkMode;
+  const installBtn = $('#installPwaBtn');
+  if (installBtn) installBtn.classList.toggle('hidden', !deferredPrompt);
+  show($('#settingsModal'));
+  icons();
+};
+
+window.closeSettings = () => hide($('#settingsModal'));
+
+window.toggleDarkMode = () => {
+  const isDark = toggleDarkMode();
+  const icon = $('#themeToggle i');
+  if (icon) icon.setAttribute('data-lucide', isDark ? 'sun' : 'moon');
+  icons();
+};
+
+window.enablePushNotifications = async () => {
+  const btn = $('#enablePushBtn');
+  btn.disabled = true;
+  btn.textContent = '...';
+  try {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') { btn.textContent = 'مرفوض'; btn.className = 'btn btn-sm btn-danger'; return; }
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (token) {
+      await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
+      btn.textContent = '✅ مفعّل';
+      btn.className = 'btn btn-sm btn-success';
+    } else { btn.textContent = 'فشل'; btn.className = 'btn btn-sm btn-danger'; }
+  } catch (e) {
+    btn.textContent = 'خطأ'; btn.className = 'btn btn-sm btn-danger';
+  }
+};
+
+/* ═══════ NOTIFICATIONS ═══════ */
+async function registerFCMToken() {
+  try {
+    if (!messaging) return;
+    if (!('Notification' in window)) return;
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') return;
+    const reg = await navigator.serviceWorker.register(SW_PATH);
+    const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+    if (!token) return;
+    await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
+    console.log('✅ FCM Token saved');
+  } catch (e) { console.error('FCM error:', e); }
+}
+
+if (messaging) {
+  onMessage(messaging, (payload) => {
+    const { title, body } = payload.notification || {};
+    const data = payload.data || {};
+    showToastAdvanced(title || 'رسالة جديدة', body || '', {
+      type: 'info', icon: 'mail', duration: 6000,
+      onClick: () => { navigate('inbox'); if (data.threadId) setTimeout(() => window.openThread(data.threadId), 300); }
+    });
+  });
+}
+
+function setupServiceWorkerMessages() {
+  if (!('serviceWorker' in navigator)) return;
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'PLAY_SOUND') playNotifSound();
+  });
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshing) return;
+    if (!sessionStorage.getItem('app_updating')) return;
+    refreshing = true;
+    sessionStorage.removeItem('app_updating');
+    window.location.reload();
+  });
+  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
+}
+
+/* ═══════ IMAGE VIEWER ═══════ */
+window.openImageViewer = (url) => {
+  const viewer = document.getElementById('imageViewer');
+  const img = document.getElementById('imageViewerImg');
+  if (!viewer || !img) return;
+  img.src = url;
+  viewer.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+  icons();
+};
+
+window.closeImageViewer = () => {
+  const viewer = document.getElementById('imageViewer');
+  if (viewer) viewer.style.display = 'none';
+  document.body.style.overflow = '';
+};
+
+window.replyToThread = async (userId, userName, threadId, subject) => {
+  await window.openCompose();
+  const recipient = state.allUsersCache.find(u => u.id === userId);
+  if (recipient) window.addRecipient('to', recipient);
+  $('#cSubject').value = subject.startsWith('رد:') ? subject : 'رد: ' + subject;
+  $('#cThreadId').value = threadId;
+  $('#composeTitle').textContent = `رد على ${userName}`;
+  setTimeout(() => $('#cBody').focus(), 200);
+};
+
+console.log('🚀 Mail System v9.9.8 loaded — Password + CC/BCC + Rate Limit + Auto-Save + Forward + Auto-Reply + Groups + Schedule');
