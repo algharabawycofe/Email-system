@@ -1,6 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   Mail System v9.0 - Firebase Configuration & Core Services
-   Firebase: Auth + Firestore + Storage + Messaging
+   Mail System v9.9.6 - Firebase Configuration
    ═══════════════════════════════════════════════════════════ */
 
 import { initializeApp, deleteApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -12,6 +11,7 @@ import {
   createUserWithEmailAndPassword,
   updateProfile,
   sendPasswordResetEmail,
+  updatePassword,
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence
@@ -84,20 +84,18 @@ try {
 }
 
 /* ═══════════════════════════════════════════════════════
-   PERSISTENCE (iOS Optimized)
+   PERSISTENCE
    ═══════════════════════════════════════════════════════ */
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
 
 if (!isIOS) {
   enableIndexedDbPersistence(db).catch((err) => {
     if (err.code === 'failed-precondition') {
-      console.warn('⚠️ Firestore persistence: multiple tabs open');
+      console.warn('⚠️ Firestore persistence: multiple tabs');
     } else if (err.code === 'unimplemented') {
       console.warn('⚠️ Firestore persistence not supported');
     }
   });
-} else {
-  console.log('📱 iOS detected — offline persistence disabled for speed');
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -110,10 +108,13 @@ export {
   createUserWithEmailAndPassword,
   updateProfile,
   sendPasswordResetEmail,
+  updatePassword,
   setPersistence,
   browserLocalPersistence,
   browserSessionPersistence,
   deleteApp,
+  initializeApp,
+  getAuth,
   getToken,
   onMessage,
   deleteToken
@@ -141,7 +142,7 @@ export {
 };
 
 /* ═══════════════════════════════════════════════════════
-   EXPORTS - Storage ⭐ NEW
+   EXPORTS - Storage
    ═══════════════════════════════════════════════════════ */
 export {
   ref,
@@ -153,7 +154,7 @@ export {
 };
 
 /* ═══════════════════════════════════════════════════════
-   HELPER: Create Auth User (بدون طرد الأدمن)
+   HELPER: Create Auth User
    ═══════════════════════════════════════════════════════ */
 export async function createAuthUser(email, password) {
   const secondaryApp = initializeApp(firebaseConfig, 'Sec-' + Date.now());
@@ -211,9 +212,6 @@ export function uploadFileWithProgress(file, path, onProgress) {
   });
 }
 
-/* ═══════════════════════════════════════════════════════
-   HELPER: Delete File by Path
-   ═══════════════════════════════════════════════════════ */
 export async function deleteFileByPath(path) {
   try {
     const storageRef = ref(storage, path);
@@ -224,5 +222,4 @@ export async function deleteFileByPath(path) {
   }
 }
 
-console.log('🔥 Firebase v9.0 initialized:', firebaseConfig.projectId, isIOS ? '(iOS)' : '(Desktop)');
-console.log('📦 Services: Auth + Firestore + Storage + Messaging');
+console.log('🔥 Firebase v9.9.6 initialized:', firebaseConfig.projectId);
