@@ -3325,6 +3325,12 @@ body.dark ::-webkit-scrollbar-thumb {
 @keyframes authSpin {
   to { transform: rotate(360deg); }
 }
+.schedule-btn {
+  color: #C28A2E !important;
+}
+.schedule-btn:hover {
+  background: #FAF0E5 !important;
+}
 
 /* END v9.9.6 */
 /* END v9.9.1 */
