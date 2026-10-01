@@ -24,8 +24,13 @@
   <div class="spinner"></div>
 </div>
 
-<!-- LOGIN -->
-<div id="loginScreen" class="login-screen">
+<!-- ⭐ شاشة تحميل Firebase — تظهر أثناء فحص الـ session -->
+<div id="authLoading" class="auth-loading-screen">
+  <div class="spinner"></div>
+</div>
+
+<!-- LOGIN (مخفية افتراضياً — تظهر بس لو مفيش session) -->
+<div id="loginScreen" class="login-screen hidden">
   <div class="login-bg-shapes">
     <div class="shape shape-1"></div>
     <div class="shape shape-2"></div>
@@ -72,7 +77,7 @@
         </button>
       </div>
 
-      <div class="login-footer"><span>Mail System v9.8</span></div>
+      <div class="login-footer"><span>Mail System v9.9.4</span></div>
     </div>
   </div>
 </div>
@@ -233,14 +238,14 @@
           <i data-lucide="building-2" class="w-4 h-4"></i>
           <span class="nav-label">الأقسام</span>
         </button>
-             <button data-page="deletedlog" data-admin-only class="nav-item">
+        <button data-page="deletedlog" data-admin-only class="nav-item">
           <i data-lucide="archive" class="w-4 h-4"></i>
           <span class="nav-label">سجل المحذوفات</span>
           <span id="sidebarDeletedLogCount" class="nav-badge hidden">0</span>
         </button>
       </nav>
 
-      <div class="sidebar-footer"><span class="text-xs">v9.8</span></div>
+      <div class="sidebar-footer"><span class="text-xs">v9.9.4</span></div>
     </aside>
 
     <nav id="mobileNav" class="mobile-nav" style="display:none">
@@ -316,11 +321,12 @@
         <i data-lucide="building-2" class="w-5 h-5"></i>
         <span>الأقسام</span>
       </button>
-  <button class="drawer-item" data-admin-only onclick="drawerNavigate('deletedlog')">
+      <button class="drawer-item" data-admin-only onclick="drawerNavigate('deletedlog')">
         <i data-lucide="archive" class="w-5 h-5"></i>
         <span>سجل المحذوفات</span>
         <span id="drawerDeletedLogCount" class="nav-badge hidden">0</span>
       </button>
+
       <div class="drawer-divider"></div>
 
       <button class="drawer-item" onclick="closeMobileDrawer(); setTimeout(openProfile, 200);">
@@ -435,7 +441,6 @@
     <input type="hidden" id="cDraftId" />
     <input type="file" id="attachInput" style="display:none;" multiple onchange="handleFiles(event)" />
 
-    <!-- ⭐ ACTIONS BAR v9.8 — زرار المرفق في اليمين -->
     <div class="compose-actions-bar">
       <div class="actions-left">
         <button onclick="sendMessage()" id="sendBtn" class="btn-send-cta">
@@ -449,7 +454,6 @@
       <div class="actions-right">
         <p id="cStatus" class="send-status-compact"></p>
 
-        <!-- ⭐ زرار المرفق (منقول للـ right) -->
         <button onclick="document.getElementById('attachInput').click()" class="icon-action-btn attach-btn" title="إرفاق">
           <i data-lucide="paperclip" class="w-4 h-4"></i>
         </button>
