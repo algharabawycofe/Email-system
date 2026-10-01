@@ -24,12 +24,11 @@
   <div class="spinner"></div>
 </div>
 
-<!-- ⭐ شاشة تحميل Firebase -->
 <div id="authLoading" class="auth-loading-screen">
   <div class="spinner"></div>
 </div>
 
-<!-- LOGIN (مخفية افتراضياً) -->
+<!-- LOGIN -->
 <div id="loginScreen" class="login-screen hidden">
   <div class="login-bg-shapes">
     <div class="shape shape-1"></div>
@@ -77,7 +76,7 @@
         </button>
       </div>
 
-      <div class="login-footer"><span>Mail System v9.9.5</span></div>
+      <div class="login-footer"><span>Mail System v9.9.6</span></div>
     </div>
   </div>
 </div>
@@ -88,30 +87,32 @@
     <div class="modal-header">
       <div>
         <h2 class="modal-title">استعادة كلمة السر</h2>
-        <p class="modal-subtitle">هيوصلك رابط إعادة التعيين على إيميلك</p>
+        <p class="modal-subtitle">اكتب اسم المستخدم — هنبلغ مسئول السيستم</p>
       </div>
       <button onclick="closeForgotModal()" class="icon-btn icon-btn-ghost"><i data-lucide="x" class="w-4 h-4"></i></button>
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label class="form-label">الإيميل</label>
+        <label class="form-label">اسم المستخدم</label>
         <div class="input-wrapper">
-          <i data-lucide="mail" class="input-icon"></i>
-          <input id="forgotEmail" type="email" placeholder="your@email.com" class="form-input" />
+          <i data-lucide="user" class="input-icon"></i>
+          <input id="forgotEmail" type="text" placeholder="username" class="form-input" autocomplete="off" />
         </div>
+        <p style="font-size:11.5px;color:var(--text-tertiary);margin-top:6px;">
+          💡 اكتب اسم المستخدم بس (بدون @)
+        </p>
       </div>
       <p id="forgotStatus" class="alert hidden"></p>
     </div>
     <div class="modal-footer">
       <button onclick="closeForgotModal()" class="btn btn-ghost">إلغاء</button>
-      <button onclick="sendPasswordReset()" class="btn btn-primary">إرسال الرابط</button>
+      <button onclick="sendPasswordReset()" class="btn btn-primary">إبلاغ مسئول السيستم</button>
     </div>
   </div>
 </div>
 
 <!-- APP -->
 <div id="app" class="app-shell hidden">
-
   <header class="app-header">
     <div class="header-start">
       <button id="toggleSidebar" class="header-btn" title="القائمة">
@@ -243,9 +244,14 @@
           <span class="nav-label">سجل المحذوفات</span>
           <span id="sidebarDeletedLogCount" class="nav-badge hidden">0</span>
         </button>
+        <button data-page="passwordreset" data-admin-only class="nav-item">
+          <i data-lucide="key-round" class="w-4 h-4"></i>
+          <span class="nav-label">طلبات كلمة السر</span>
+          <span id="sidebarPasswordResetCount" class="nav-badge hidden">0</span>
+        </button>
       </nav>
 
-      <div class="sidebar-footer"><span class="text-xs">v9.9.5</span></div>
+      <div class="sidebar-footer"><span class="text-xs">v9.9.6</span></div>
     </aside>
 
     <nav id="mobileNav" class="mobile-nav" style="display:none">
@@ -325,6 +331,11 @@
         <i data-lucide="archive" class="w-5 h-5"></i>
         <span>سجل المحذوفات</span>
         <span id="drawerDeletedLogCount" class="nav-badge hidden">0</span>
+      </button>
+      <button class="drawer-item" data-admin-only onclick="drawerNavigate('passwordreset')">
+        <i data-lucide="key-round" class="w-5 h-5"></i>
+        <span>طلبات كلمة السر</span>
+        <span id="drawerPasswordResetCount" class="nav-badge hidden">0</span>
       </button>
 
       <div class="drawer-divider"></div>
@@ -564,6 +575,49 @@
       </div>
     </div>
     <div class="modal-footer"><button onclick="closeSettings()" class="btn btn-ghost btn-full">إغلاق</button></div>
+  </div>
+</div>
+
+<!-- CHANGE PASSWORD MODAL -->
+<div id="changePasswordModal" class="modal-backdrop hidden">
+  <div class="modal-panel modal-sm fade-in">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">تغيير كلمة السر</h2>
+        <p class="modal-subtitle" id="changePasswordSubtitle"></p>
+      </div>
+      <button onclick="closeChangePasswordModal()" class="icon-btn icon-btn-ghost"><i data-lucide="x" class="w-4 h-4"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="cpUserId" />
+      <input type="hidden" id="cpUsername" />
+      <input type="hidden" id="cpEmail" />
+
+      <div class="form-group">
+        <label class="form-label">كلمة السر الجديدة</label>
+        <div class="input-wrapper">
+          <i data-lucide="lock" class="input-icon"></i>
+          <input id="cpNewPass" type="text" placeholder="6+ حروف" class="form-input" />
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">تأكيد كلمة السر</label>
+        <div class="input-wrapper">
+          <i data-lucide="lock" class="input-icon"></i>
+          <input id="cpConfirmPass" type="text" placeholder="أعد كتابتها" class="form-input" />
+        </div>
+      </div>
+
+      <p id="cpStatus" class="alert hidden"></p>
+    </div>
+    <div class="modal-footer">
+      <button onclick="closeChangePasswordModal()" class="btn btn-ghost">إلغاء</button>
+      <button onclick="saveUserPassword()" class="btn btn-primary">
+        <i data-lucide="key-round" class="w-4 h-4"></i>
+        <span>تغيير كلمة السر</span>
+      </button>
+    </div>
   </div>
 </div>
 
