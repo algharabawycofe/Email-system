@@ -3331,7 +3331,12 @@ body.dark ::-webkit-scrollbar-thumb {
 .schedule-btn:hover {
   background: #FAF0E5 !important;
 }
-
+/* ⭐ Fix Z-Index for dynamically created modals */
+#scheduleModal,
+#groupMembersModal,
+#deptEditModal {
+  z-index: 10000 !important;
+}
 /* END v9.9.6 */
 /* END v9.9.1 */
 /* END v9.9 */
