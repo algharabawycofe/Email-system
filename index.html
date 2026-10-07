@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
 <title>Mail System</title>
-<meta name="description" content="نظام الرسائل الداخلي الاحترافي" />
+<meta name="description" content="نظام الرسائل" />
 <meta name="theme-color" content="#0078D4" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Mail System" />
@@ -87,7 +87,7 @@
     <div class="modal-header">
       <div>
         <h2 class="modal-title">استعادة كلمة السر</h2>
-        <p class="modal-subtitle">هيتم إرسال رابط استعادة لإيميلك الرسمي</p>
+        <p class="modal-subtitle">هيتم إرسال طلبك لمسئول السيستم</p>
       </div>
       <button onclick="closeForgotModal()" class="icon-btn icon-btn-ghost"><i data-lucide="x" class="w-4 h-4"></i></button>
     </div>
@@ -108,7 +108,7 @@
       <button onclick="closeForgotModal()" class="btn btn-ghost">إلغاء</button>
       <button onclick="sendPasswordReset()" class="btn btn-primary">
         <i data-lucide="send" class="w-4 h-4"></i>
-        <span>إرسال رابط الاستعادة</span>
+        <span>إرسال الطلب</span>
       </button>
     </div>
   </div>
@@ -682,12 +682,12 @@
   </div>
 </div>
 
-<!-- Change Password / Reset Password Modal -->
+<!-- Change Password Modal -->
 <div id="changePasswordModal" class="modal-backdrop hidden">
   <div class="modal-panel modal-sm fade-in">
     <div class="modal-header">
       <div>
-        <h2 class="modal-title">استعادة كلمة السر</h2>
+        <h2 class="modal-title">تغيير كلمة السر</h2>
         <p class="modal-subtitle" id="changePasswordSubtitle"></p>
       </div>
       <button onclick="closeChangePasswordModal()" class="icon-btn icon-btn-ghost"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -697,27 +697,41 @@
       <input type="hidden" id="cpUsername" />
       <input type="hidden" id="cpEmail" />
 
-      <div style="padding:14px;background:var(--brand-primary-subtle);border:1px solid var(--brand-primary-light);border-radius:8px;font-size:12.5px;color:var(--text-secondary);display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;">
+      <div style="padding:12px;background:var(--brand-primary-subtle);border:1px solid var(--brand-primary-light);border-radius:8px;font-size:12.5px;color:var(--text-secondary);display:flex;gap:8px;align-items:flex-start;margin-bottom:14px;">
         <i data-lucide="info" class="w-4 h-4" style="color:var(--brand-primary);flex-shrink:0;margin-top:2px;"></i>
         <div>
-          النظام هيبعت <strong>رابط استعادة كلمة السر</strong> لإيميل المستخدم الرسمي، وهو اللي هيختار كلمة سر جديدة بنفسه.
-          <br>
-          ده أكثر أماناً من إن الأدمن يشوف كلمة السر.
+          اكتب كلمة السر الجديدة، والنظام هيغيّرها فوراً من غير ما تحتاج تعرف القديمة.
         </div>
       </div>
 
-      <div class="form-group" id="cpEmailDisplayGroup">
-        <label class="form-label">سيتم الإرسال إلى:</label>
+      <div class="form-group">
+        <label class="form-label">سيتم التغيير لـ:</label>
         <input id="cpEmailDisplay" class="form-input form-input-disabled" disabled />
       </div>
 
-      <p id="cpStatus" class="alert hidden"></p>
+      <div class="form-group" style="margin-top:14px;">
+        <label class="form-label">كلمة السر الجديدة</label>
+        <div class="input-wrapper">
+          <i data-lucide="key-round" class="input-icon"></i>
+          <input id="cpNewPass" type="text" placeholder="6 حروف على الأقل" class="form-input" />
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:14px;">
+        <label class="form-label">تأكيد كلمة السر</label>
+        <div class="input-wrapper">
+          <i data-lucide="key-round" class="input-icon"></i>
+          <input id="cpConfirmPass" type="text" placeholder="أعد كتابتها" class="form-input" />
+        </div>
+      </div>
+
+      <p id="cpStatus" class="alert hidden" style="margin-top:14px;"></p>
     </div>
     <div class="modal-footer">
       <button onclick="closeChangePasswordModal()" class="btn btn-ghost">إلغاء</button>
       <button onclick="saveUserPassword()" class="btn btn-primary">
-        <i data-lucide="send" class="w-4 h-4"></i>
-        <span>إرسال رابط الاستعادة</span>
+        <i data-lucide="key-round" class="w-4 h-4"></i>
+        <span>تغيير كلمة السر</span>
       </button>
     </div>
   </div>
