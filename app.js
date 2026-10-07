@@ -1,8 +1,4 @@
-/* ═══════════════════════════════════════════════════════════
-   Mail System v9.9.8 - Enterprise Application
-   Features: Password Reset (Secure) + CC/BCC + Rate Limit 
-            + Auto-Save + Forward + Auto-Reply + Groups + Schedule
-   ═══════════════════════════════════════════════════════════ */
+/* Mail System — Internal Messaging Platform */
 
 import {
   auth, db, messaging,
@@ -35,6 +31,37 @@ import {
   getAvatarColor, unlockAudioOnFirstClick
 } from './utils.js';
 
+/* ═══════ PASSWORD ENCRYPTION ═══════ */
+const SECRET_KEY = 'MSG_SYS_v996_2026_xK9mPq#Z!nB';
+
+function encryptPassword(text) {
+  if (!text) return '';
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    result += String.fromCharCode(text.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length));
+  }
+  try {
+    return btoa(unescape(encodeURIComponent(result)));
+  } catch (e) {
+    return '';
+  }
+}
+
+function decryptPassword(encoded) {
+  if (!encoded) return '';
+  try {
+    const decoded = decodeURIComponent(escape(atob(encoded)));
+    let result = '';
+    for (let i = 0; i < decoded.length; i++) {
+      result += String.fromCharCode(decoded.charCodeAt(i) ^ SECRET_KEY.charCodeAt(i % SECRET_KEY.length));
+    }
+    return result;
+  } catch (e) {
+    console.error('Decrypt error:', e);
+    return '';
+  }
+}
+
 /* ═══════ STATE ═══════ */
 let deferredPrompt = null;
 let pendingSendTimeout = null;
@@ -49,12 +76,11 @@ let activeChipField = 'to';
 let activeSuggestionIdx = -1;
 let currentSuggestions = [];
 
-// ⭐ v9.9.8
 let autoSaveInterval = null;
 let lastAutoSavedHash = '';
 let scheduledCheckInterval = null;
 let userGroupsCache = [];
-let autoReplyChecked = new Set();  // لتجنب إرسال auto-reply أكثر من مرة لنفس المرسل
+let autoReplyChecked = new Set();
 
 /* ═══════ ADMIN TEMPLATES ═══════ */
 const ADMIN_MESSAGE_TEMPLATES = [
@@ -386,7 +412,7 @@ window.closeForgotModal = () => {
   const st = $('#forgotStatus'); if (st) { st.classList.add('hidden'); st.textContent = ''; }
 };
 
-/* ✅ PASSWORD RESET via Firebase Auth (آمن) */
+/* ✅ إرسال طلب استعادة كلمة السر للأدمن */
 window.sendPasswordReset = async () => {
   const username = ($('#forgotEmail')?.value || '').trim().toLowerCase().replace(/[^a-z0-9_.]/g, '');
   const status = $('#forgotStatus');
@@ -399,27 +425,57 @@ window.sendPasswordReset = async () => {
   }
 
   status.className = 'alert alert-info';
-  status.textContent = 'جاري الإرسال...';
+  status.textContent = 'جاري التحقق من اسم المستخدم...';
   show(status);
 
   try {
-    const email = `${username}@${EMAIL_DOMAIN}`;
-    await sendPasswordResetEmail(auth, email);
+    const usersSnap = await getDocs(collection(db, 'users'));
+    const userDoc = usersSnap.docs.find(d =>
+      (d.data().username || '').toLowerCase() === username
+    );
+
+    if (!userDoc) {
+      status.className = 'alert alert-error';
+      status.textContent = 'اسم المستخدم غير مسجل في النظام';
+      show(status);
+      return;
+    }
+
+    const u = userDoc.data();
+
+    const existingRequests = await getDocs(collection(db, 'passwordResetRequests'));
+    const alreadyPending = existingRequests.docs.find(d => {
+      const data = d.data();
+      return (data.username || '').toLowerCase() === username && data.status === 'pending';
+    });
+
+    if (alreadyPending) {
+      status.className = 'alert alert-warning';
+      status.textContent = 'طلبك السابق لا يزال قيد المراجعة. سيتم التواصل معك قريباً.';
+      show(status);
+      return;
+    }
+
+    await addDoc(collection(db, 'passwordResetRequests'), {
+      username: u.username || username,
+      userName: u.name || '',
+      userEmail: u.email || '',
+      userId: userDoc.id,
+      departmentId: u.departmentId || null,
+      status: 'pending',
+      createdAt: serverTimestamp()
+    });
 
     status.className = 'alert alert-success';
-    status.textContent = '✅ تم إرسال رابط استعادة كلمة السر لإيميلك الرسمي — افتح الإيميل واتبع الرابط';
+    status.textContent = '✅ تم إرسال طلبك لمسئول السيستم. هيتم التواصل معاك قريباً.';
     show(status);
+
     setTimeout(() => closeForgotModal(), 5000);
 
   } catch (e) {
-    console.error('Password reset error:', e);
-    const msgs = {
-      'auth/user-not-found': 'اسم المستخدم غير مسجل في النظام',
-      'auth/invalid-email': 'صيغة الإيميل غير صحيحة',
-      'auth/too-many-requests': 'محاولات كثيرة، استنى شوية'
-    };
+    console.error('Password reset request error:', e);
     status.className = 'alert alert-error';
-    status.textContent = msgs[e.code] || `خطأ: ${e.message}`;
+    status.textContent = 'خطأ: ' + e.message;
     show(status);
   }
 };
@@ -466,7 +522,7 @@ async function checkAuthState() {
     try {
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (!snap.exists()) {
-        alert('لا يوجد ملف مستخدم في Firestore');
+        alert('لا يوجد ملف مستخدم في قاعدة البيانات');
         await signOut(auth);
         return;
       }
@@ -608,7 +664,7 @@ window.createTag = async () => {
     $('#newTagColor').value = '#0078D4';
     renderTagsManager();
     renderSidebarTags();
-    showToastAdvanced('تم الإضافة ✅', `"${name}" اتعمل`, { type: 'success', icon: 'tag', duration: 2500 });
+    showToastAdvanced('تم الإضافة', `"${name}" اتعمل`, { type: 'success', icon: 'tag', duration: 2500 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -698,8 +754,7 @@ window.createGroup = async () => {
     userGroupsCache.push({ id: r.id, name, members: [] });
     $('#newGroupName').value = '';
     renderGroupsManager();
-    showToastAdvanced('تم الإضافة ✅', `مجموعة "${name}" اتعملت`, { type: 'success', icon: 'users', duration: 2500 });
-    // افتح نافذة إضافة الأعضاء
+    showToastAdvanced('تم الإضافة', `مجموعة "${name}" اتعملت`, { type: 'success', icon: 'users', duration: 2500 });
     window.editGroupMembers(r.id);
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
@@ -713,6 +768,7 @@ window.editGroupMembers = async (groupId) => {
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.id = 'groupMembersModal';
+  modal.style.zIndex = '10000';
   const allowed = getAllowedRecipients();
   const currentMembers = g.members || [];
 
@@ -750,7 +806,7 @@ window.saveGroupMembers = async (groupId) => {
     if (g) g.members = members;
     document.getElementById('groupMembersModal')?.remove();
     renderGroupsManager();
-    showToastAdvanced('تم الحفظ ✅', `${members.length} عضو`, { type: 'success', icon: 'users', duration: 2000 });
+    showToastAdvanced('تم الحفظ', `${members.length} عضو`, { type: 'success', icon: 'users', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -765,7 +821,7 @@ window.deleteGroup = async (groupId) => {
     await deleteDoc(doc(db, 'users', state.currentUser.uid, 'groups', groupId));
     userGroupsCache = userGroupsCache.filter(x => x.id !== groupId);
     renderGroupsManager();
-    showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2000 });
+    showToastAdvanced('تم الحذف', '', { type: 'success', icon: 'trash-2', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -785,7 +841,7 @@ window.useGroupInCompose = async (groupId) => {
     const fullUser = state.allUsersCache.find(x => x.id === m.id);
     if (fullUser) window.addRecipient('to', fullUser);
   });
-  showToastAdvanced('تم الإضافة ✅', `${g.members.length} عضو من "${g.name}"`, { type: 'success', icon: 'users', duration: 2000 });
+  showToastAdvanced('تم الإضافة', `${g.members.length} عضو من "${g.name}"`, { type: 'success', icon: 'users', duration: 2000 });
 };
 
 /* ═══════ SIDEBAR ═══════ */
@@ -1117,7 +1173,6 @@ async function autoSaveDraft() {
       $('#cDraftId').value = r.id;
     }
     lastAutoSavedHash = hash;
-    console.log('💾 Auto-saved at', new Date().toLocaleTimeString());
     updateDraftsBadge();
   } catch (e) {
     console.warn('Auto-save failed:', e);
@@ -1127,8 +1182,8 @@ async function autoSaveDraft() {
 /* ═══════ SCHEDULED MESSAGES ═══════ */
 function startScheduledMessagesChecker() {
   if (scheduledCheckInterval) clearInterval(scheduledCheckInterval);
-  checkScheduledMessages();  // فحص فوري
-  scheduledCheckInterval = setInterval(checkScheduledMessages, 60000);  // كل دقيقة
+  checkScheduledMessages();
+  scheduledCheckInterval = setInterval(checkScheduledMessages, 60000);
 }
 
 async function checkScheduledMessages() {
@@ -1143,7 +1198,7 @@ async function checkScheduledMessages() {
         try {
           await performSend(data.payload);
           await deleteDoc(doc(db, 'users', state.currentUser.uid, 'scheduledMessages', d.id));
-          showToastAdvanced('📤 تم إرسال رسالة مجدولة', data.payload.subject, {
+          showToastAdvanced('تم إرسال رسالة مجدولة', data.payload.subject, {
             type: 'success', icon: 'send', duration: 4000
           });
           updateScheduledBadge();
@@ -1216,7 +1271,7 @@ async function renderScheduled() {
         <div class="draft-item">
           <div class="draft-avatar" style="background:#FFF4E5;color:#C28A2E;"><i data-lucide="clock" class="w-5 h-5"></i></div>
           <div class="draft-info">
-            <div class="draft-to">🕐 ${when}</div>
+            <div class="draft-to">${when}</div>
             <div class="draft-subject">${esc(p.subject || '(بدون موضوع)')}</div>
             <div class="draft-preview">${esc((p.body || '').slice(0, 80))}</div>
           </div>
@@ -1249,7 +1304,7 @@ window.cancelScheduled = async (id) => {
   try {
     await deleteDoc(doc(db, 'users', state.currentUser.uid, 'scheduledMessages', id));
     renderScheduled();
-    showToastAdvanced('تم الإلغاء ⏹️', '', { type: 'info', icon: 'x-circle', duration: 2000 });
+    showToastAdvanced('تم الإلغاء', '', { type: 'info', icon: 'x-circle', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -1307,7 +1362,7 @@ async function renderDrafts() {
         <div class="draft-item" onclick="openDraft('${d.id}')">
           <div class="draft-avatar"><i data-lucide="file-text" class="w-5 h-5"></i></div>
           <div class="draft-info">
-            <div class="draft-to">إلى: ${esc(toName)} ${d.autoSaved ? '<span style="color:var(--text-tertiary);font-size:10px;">(محفوظة تلقائياً)</span>' : ''}</div>
+            <div class="draft-to">إلى: ${esc(toName)}</div>
             <div class="draft-subject">${esc(d.subject || '(بدون موضوع)')}</div>
             <div class="draft-preview">${esc((d.body || '').slice(0, 80))}</div>
           </div>
@@ -1384,7 +1439,7 @@ window.openDraft = async (draftId) => {
     $('#cBody').value = d.body || '';
     $('#cDraftId').value = draftId;
     $('#composeTitle').textContent = 'تعديل مسودة';
-    showToastAdvanced('تم فتح المسودة ✅', 'تعديل وحفظ', { type: 'info', icon: 'file-text', duration: 2000 });
+    showToastAdvanced('تم فتح المسودة', 'تعديل وحفظ', { type: 'info', icon: 'file-text', duration: 2000 });
   } catch (e) {
     showToastAdvanced('خطأ', e.message, { type: 'error', icon: 'alert-circle' });
   }
@@ -1395,7 +1450,7 @@ window.deleteDraft = async (draftId) => {
   if (!ok) return;
   try {
     await deleteDoc(doc(db, 'users', state.currentUser.uid, 'drafts', draftId));
-    showToastAdvanced('تم الحذف 🗑️', '', { type: 'success', icon: 'trash-2', duration: 2000 });
+    showToastAdvanced('تم الحذف', '', { type: 'success', icon: 'trash-2', duration: 2000 });
     renderDrafts();
     updateDraftsBadge();
   } catch (e) {
@@ -1605,13 +1660,13 @@ async function renderUsers() {
           <label class="check-inline" style="cursor:pointer;">
             <input type="checkbox" id="nuIsManager" class="check-input" onchange="onIsManagerChange('nu')" />
             <span class="check-box"></span>
-            <span class="check-label" style="font-weight:700;color:var(--text-primary);">👔 مدير قسم</span>
+            <span class="check-label" style="font-weight:700;color:var(--text-primary);">مدير قسم</span>
           </label>
         </div>
 
         <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
+            <span style="font-weight:700;font-size:13px;">صلاحيات الإرسال</span>
             <span style="font-size:11px;color:var(--text-tertiary);">هيتم تعبئتها تلقائياً حسب الدور</span>
           </div>
           <div id="nuPermissionsList" class="permissions-list"></div>
@@ -1643,13 +1698,13 @@ async function renderUsers() {
           <label class="check-inline" style="cursor:pointer;">
             <input type="checkbox" id="euIsManager" class="check-input" onchange="onIsManagerChange('eu')" />
             <span class="check-box"></span>
-            <span class="check-label" style="font-weight:700;color:var(--text-primary);">👔 مدير قسم</span>
+            <span class="check-label" style="font-weight:700;color:var(--text-primary);">مدير قسم</span>
           </label>
         </div>
 
         <div style="margin-top:16px;padding:14px;background:var(--bg-subtle);border-radius:8px;border:1px solid var(--border-default);">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-            <span style="font-weight:700;font-size:13px;">🔐 صلاحيات الإرسال</span>
+            <span style="font-weight:700;font-size:13px;">صلاحيات الإرسال</span>
           </div>
           <div id="euPermissionsList" class="permissions-list"></div>
         </div>
@@ -1796,12 +1851,22 @@ window.createNewUser = async () => {
       createdAt: serverTimestamp()
     });
 
+    /* ✅ حفظ كلمة السر المشفرة في userSecrets */
+    try {
+      await setDoc(doc(db, 'userSecrets', uid), {
+        encPass: encryptPassword(pass),
+        updatedAt: serverTimestamp()
+      });
+    } catch (err2) {
+      console.warn('Failed to save encrypted password:', err2);
+    }
+
     if (role === 'manager' && deptId) {
       await updateDoc(doc(db, 'departments', deptId), { managerId: uid });
     }
 
-    err.className = 'alert alert-success'; err.textContent = `✅ تم إنشاء ${user}`;
-    showToastAdvanced('تم الإنشاء ✅', `${user} أضيف`, { type: 'success', icon: 'user-check', duration: 2500 });
+    err.className = 'alert alert-success'; err.textContent = `تم إنشاء ${user}`;
+    showToastAdvanced('تم الإنشاء', `${user} أضيف`, { type: 'success', icon: 'user-check', duration: 2500 });
     $('#nuName').value = ''; $('#nuUser').value = ''; $('#nuPass').value = '';
     setTimeout(() => { hide($('#addUserForm')); renderUsers(); }, 1200);
   } catch (e) {
@@ -1885,7 +1950,7 @@ window.saveEditUser = async () => {
     }
 
     hide($('#editUserForm'));
-    showToastAdvanced('تم الحفظ ✅', '', { type: 'success', icon: 'check', duration: 2000 });
+    showToastAdvanced('تم الحفظ', '', { type: 'success', icon: 'check', duration: 2000 });
     renderUsers();
   } catch (e) {
     err.className = 'alert alert-error'; err.textContent = e.message; show(err);
@@ -1898,9 +1963,10 @@ window.toggleUser = async (uid, activate) => {
 };
 
 window.deleteUserDoc = async (uid) => {
-  const ok = await confirmDialog('حذف المستخدم', 'هيتحذف من Firestore فقط. متأكد؟');
+  const ok = await confirmDialog('حذف المستخدم', 'هيتحذف من قاعدة البيانات. متأكد؟');
   if (!ok) return;
   await deleteDoc(doc(db, 'users', uid));
+  try { await deleteDoc(doc(db, 'userSecrets', uid)); } catch (x) {}
   renderUsers();
 };
 
@@ -1925,7 +1991,7 @@ async function renderDepartments() {
         <div class="dept-card-desc">${esc(d.description || 'بدون وصف')}</div>
         <div class="dept-card-footer">
           <div style="display:flex;align-items:center;gap:6px;"><i data-lucide="users" class="w-3.5 h-3.5"></i><span>${members.length} عضو</span></div>
-          ${manager ? `<div style="display:flex;align-items:center;gap:6px;"><div style="width:22px;height:22px;border-radius:50%;background:#8764B8;color:white;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;">${initials(manager.name)}</div><span style="font-size:11.5px;color:#8764B8;font-weight:600;">${esc(manager.name)}</span></div>` : `<button onclick="editDept('${d.id}')" style="background:none;border:none;color:#E8A100;font-size:11.5px;cursor:pointer;font-weight:600;">⚠ بدون مدير</button>`}
+          ${manager ? `<div style="display:flex;align-items:center;gap:6px;"><div style="width:22px;height:22px;border-radius:50%;background:#8764B8;color:white;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;">${initials(manager.name)}</div><span style="font-size:11.5px;color:#8764B8;font-weight:600;">${esc(manager.name)}</span></div>` : `<button onclick="editDept('${d.id}')" style="background:none;border:none;color:#E8A100;font-size:11.5px;cursor:pointer;font-weight:600;">بدون مدير</button>`}
         </div>
       </div>
     `;
@@ -1964,7 +2030,7 @@ window.addDept = async () => {
   const managerId = $('#dManager').value;
   if (!name) return alert('اكتب اسم القسم');
   await addDoc(collection(db, 'departments'), { name, description, managerId: managerId || null, createdAt: serverTimestamp() });
-  showToastAdvanced('تم الإضافة ✅', `قسم ${name}`, { type: 'success', icon: 'building-2', duration: 2500 });
+  showToastAdvanced('تم الإضافة', `قسم ${name}`, { type: 'success', icon: 'building-2', duration: 2500 });
   renderDepartments();
 };
 
@@ -1979,6 +2045,7 @@ window.editDept = async (id) => {
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.id = 'deptEditModal';
+  modal.style.zIndex = '10000';
   modal.innerHTML = `
     <div class="modal-panel modal-md fade-in">
       <div class="modal-header">
@@ -2061,7 +2128,7 @@ async function renderInbox() {
   ];
 
   const results = await Promise.all(queries.map(q => getDocs(q).catch(err => {
-    console.warn('Query failed (need index?):', err.message);
+    console.warn('Query failed:', err.message);
     return { docs: [] };
   })));
 
@@ -2083,7 +2150,6 @@ async function renderInbox() {
       return !!deletedBy[myUID];
     }
 
-    // ⭐ فصل رسائل الأدمن: في صندوق الوارد نشيل الرسائل اللي هو بعتها
     if (state.currentFilter === 'inbox') {
       if (m.fromUserId === myUID) return false;
     }
@@ -2558,8 +2624,8 @@ window.sendInlineReply = async (toUserId, threadId, subject) => {
       createdAt: serverTimestamp()
     });
 
-    if (status) { status.style.color = 'var(--success)'; status.textContent = '✅ تم الإرسال!'; }
-    showToastAdvanced('تم الإرسال ✅', '', { type: 'success', icon: 'send', duration: 2000 });
+    if (status) { status.style.color = 'var(--success)'; status.textContent = 'تم الإرسال'; }
+    showToastAdvanced('تم الإرسال', '', { type: 'success', icon: 'send', duration: 2000 });
     document.getElementById('inlineReplyText').value = '';
     setTimeout(() => { toggleInlineReply(); renderInbox(); }, 800);
   } catch (e) {
@@ -2567,7 +2633,6 @@ window.sendInlineReply = async (toUserId, threadId, subject) => {
   }
 };
 
-/* ═══════ FORWARD ═══════ */
 window.forwardThread = async (threadId) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
@@ -2686,7 +2751,6 @@ window.toggleStar = async (threadId) => {
   renderThreadReading();
 };
 
-/* ═══════ TRASH ═══════ */
 window.trashThread = async (threadId, isTrash, permanent = false) => {
   const t = state.threadsCache.find(x => x.threadId === threadId);
   if (!t) return;
@@ -2817,7 +2881,6 @@ window.openCompose = async () => {
   hide($('#templateRow'));
   $('#extraFieldsIcon')?.setAttribute('data-lucide', 'plus');
 
-  // إظهار زر المجموعات
   renderGroupsButtonInCompose();
 
   const deptSel = $('#deptSelect');
@@ -2862,7 +2925,6 @@ window.openCompose = async () => {
   setupChipInput('cc');
   setupChipInput('bcc');
 
-  // ✅ بدء Auto-Save
   if (autoSaveInterval) clearInterval(autoSaveInterval);
   lastAutoSavedHash = '';
   autoSaveInterval = setInterval(autoSaveDraft, 30000);
@@ -2886,7 +2948,6 @@ window.closeCompose = () => {
   $('#composeTitle').textContent = 'رسالة جديدة';
   attachedFiles = [];
   selectedTags = [];
-  // ✅ إيقاف Auto-Save
   if (autoSaveInterval) { clearInterval(autoSaveInterval); autoSaveInterval = null; }
   lastAutoSavedHash = '';
 };
@@ -3158,7 +3219,6 @@ window.toggleDeptSend = () => {
   }
 };
 
-/* ═══════ FILE UPLOAD ═══════ */
 window.handleFiles = async (event) => {
   const files = Array.from(event.target.files || []);
   if (files.length === 0) return;
@@ -3220,7 +3280,7 @@ async function uploadFile(fileObj) {
 
     showToastAdvanced('تم الرفع ✅', fileObj.name, { type: 'success', icon: 'check-circle', duration: 2000 });
   } catch (e) {
-    console.error('GoFile upload error:', e);
+    console.error('Upload error:', e);
     fileObj.status = 'error';
     renderAttachments();
     showToastAdvanced('فشل الرفع', e.message, { type: 'error', icon: 'alert-circle' });
@@ -3275,7 +3335,7 @@ window.clearAttachments = () => {
   renderAttachments();
 };
 
-/* ═══════ SEND with RATE LIMIT + SCHEDULE OPTION ═══════ */
+/* ═══════ SEND MESSAGE ═══════ */
 window.sendMessage = async (options = {}) => {
   const broadcast = $('#cBroadcast').checked && (isOwner() || (state.currentUser?.permissions || []).includes('can_broadcast'));
   const deptSend = $('#cDept').checked;
@@ -3310,7 +3370,6 @@ window.sendMessage = async (options = {}) => {
     return;
   }
 
-  // ✅ Rate Limit
   if (!options.skipRateLimit) {
     const rl = await checkRateLimit();
     if (!rl.allowed) {
@@ -3358,7 +3417,6 @@ window.sendMessage = async (options = {}) => {
     tags: selectedTags.slice()
   };
 
-  // ✅ Scheduled Send
   if (options.scheduledFor) {
     try {
       await addDoc(collection(db, 'users', state.currentUser.uid, 'scheduledMessages'), {
@@ -3378,7 +3436,6 @@ window.sendMessage = async (options = {}) => {
     return;
   }
 
-  // الإرسال الفوري
   closeCompose();
 
   const undoToast = document.createElement('div');
@@ -3532,7 +3589,6 @@ window.saveDraft = async () => {
   }
 };
 
-/* ═══════ SCHEDULED SEND UI ═══════ */
 window.openScheduleModal = () => {
   const now = new Date();
   const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
@@ -3544,6 +3600,7 @@ window.openScheduleModal = () => {
   const modal = document.createElement('div');
   modal.className = 'modal-backdrop';
   modal.id = 'scheduleModal';
+  modal.style.zIndex = '10000';
   modal.innerHTML = `
     <div class="modal-panel modal-md fade-in">
       <div class="modal-header">
@@ -3611,7 +3668,6 @@ window.confirmSchedule = async () => {
   await window.sendMessage({ scheduledFor: dt, skipRateLimit: true });
 };
 
-/* ═══════ AUTO-REPLY ═══════ */
 window.openAutoReplySettings = () => {
   hideStyle($('#userMenu'));
   const u = state.currentUser;
@@ -3652,12 +3708,10 @@ async function trySendAutoReply(originalMsg) {
   const u = state.currentUser;
   if (!u.autoReplyEnabled || !u.autoReplyMessage) return;
 
-  // تجنب الرد على نفس المرسل مرتين خلال 24 ساعة
   const key = `autoreply_${originalMsg.fromUserId}_${new Date().toDateString()}`;
   if (autoReplyChecked.has(key)) return;
   autoReplyChecked.add(key);
 
-  // متبعتش رد تلقائي لنفسك أو لرسائل الرد التلقائي
   if (originalMsg.fromUserId === u.uid) return;
   if (originalMsg.autoReply) return;
 
@@ -3687,13 +3741,11 @@ async function trySendAutoReply(originalMsg) {
       autoReply: true,
       createdAt: serverTimestamp()
     });
-    console.log('✅ Auto-reply sent to', fromUser.name);
   } catch (e) {
     console.warn('Auto-reply failed:', e);
   }
 }
 
-/* ═══════ MESSAGES LISTENER ═══════ */
 function startMessagesListener() {
   if (state.unsubMessages) state.unsubMessages();
   const myUID = state.currentUser.uid;
@@ -3727,7 +3779,6 @@ function startMessagesListener() {
           const data = { id: change.doc.id, ...change.doc.data() };
           merged.set(change.doc.id, data);
 
-          // ✅ Trigger Auto-Reply للرسائل الجديدة فقط
           if (change.type === 'added' && !seenMsgIds.has(change.doc.id)) {
             seenMsgIds.add(change.doc.id);
             if (data.fromUserId !== myUID && !data.autoReply) {
@@ -3738,7 +3789,7 @@ function startMessagesListener() {
       });
       rebuildUI();
     }, (err) => {
-      console.warn('Listener error (need index?):', err.message);
+      console.warn('Listener error:', err.message);
     });
     unsubs.push(unsub);
   });
@@ -3989,7 +4040,7 @@ async function updateDeletedLogBadge(count) {
   });
 }
 
-/* ═══════ CHANGE PASSWORD UI (NEW - Firebase Auth) ═══════ */
+/* ═══════ CHANGE PASSWORD UI ═══════ */
 window.openChangePasswordModal = (userId, username, email, displayName) => {
   if (!isAdmin()) {
     showToastAdvanced('غير مسموح', 'مسئول السيستم بس', { type: 'error', icon: 'shield-x' });
@@ -3998,12 +4049,17 @@ window.openChangePasswordModal = (userId, username, email, displayName) => {
   $('#cpUserId').value = userId;
   $('#cpUsername').value = username || '';
   $('#cpEmail').value = email || '';
+  $('#cpNewPass').value = '';
+  $('#cpConfirmPass').value = '';
   $('#changePasswordSubtitle').textContent = displayName || username || '';
+  const emailDisplay = document.getElementById('cpEmailDisplay');
+  if (emailDisplay) emailDisplay.value = email || 'غير متوفر';
   const status = $('#cpStatus');
   status.className = 'alert hidden';
   status.textContent = '';
   show($('#changePasswordModal'));
   icons();
+  setTimeout(() => $('#cpNewPass')?.focus(), 200);
 };
 
 window.closeChangePasswordModal = () => {
@@ -4011,12 +4067,38 @@ window.closeChangePasswordModal = () => {
   window._currentResetReqId = null;
 };
 
+/* ✅ تغيير كلمة السر — يقرأ القديمة من userSecrets ويغيرها للجديدة */
 window.saveUserPassword = async () => {
+  const userId = $('#cpUserId').value;
   const username = $('#cpUsername').value;
   const email = $('#cpEmail').value;
+  const newPass = $('#cpNewPass').value;
+  const confirmPass = $('#cpConfirmPass').value;
   const status = $('#cpStatus');
+
   status.className = 'alert hidden';
   status.textContent = '';
+
+  if (!newPass || !confirmPass) {
+    status.className = 'alert alert-error';
+    status.textContent = 'املأ كل الحقول';
+    show(status);
+    return;
+  }
+
+  if (newPass.length < 6) {
+    status.className = 'alert alert-error';
+    status.textContent = 'كلمة السر 6 حروف على الأقل';
+    show(status);
+    return;
+  }
+
+  if (newPass !== confirmPass) {
+    status.className = 'alert alert-error';
+    status.textContent = 'كلمتا السر مش متطابقتين';
+    show(status);
+    return;
+  }
 
   if (!email) {
     status.className = 'alert alert-error';
@@ -4026,37 +4108,101 @@ window.saveUserPassword = async () => {
   }
 
   status.className = 'alert alert-info';
-  status.textContent = 'جاري إرسال رابط استعادة كلمة السر...';
+  status.textContent = 'جاري تغيير كلمة السر...';
   show(status);
 
   try {
-    const appName = 'PwdReset-' + Date.now();
+    /* 1. نقرأ كلمة السر القديمة من userSecrets */
+    const secretSnap = await getDoc(doc(db, 'userSecrets', userId));
+    
+    if (!secretSnap.exists()) {
+      status.className = 'alert alert-error';
+      status.textContent = 'مش قادر أوصل لكلمة السر القديمة. المستخدم ده مش محفوظ في userSecrets.';
+      show(status);
+      return;
+    }
+
+    const encPass = secretSnap.data().encPass;
+    const oldPass = decryptPassword(encPass);
+
+    if (!oldPass) {
+      status.className = 'alert alert-error';
+      status.textContent = 'فشل فك تشفير كلمة السر القديمة';
+      show(status);
+      return;
+    }
+
+    /* 2. نستخدم Secondary App لتغيير كلمة السر */
+    const appName = 'PwdChange-' + Date.now();
     const secondaryApp = initializeApp(firebaseConfig, appName);
     const secondaryAuth = getAuth(secondaryApp);
-    await sendPasswordResetEmail(secondaryAuth, email);
+
+    const cred = await signInWithEmailAndPassword(secondaryAuth, email, oldPass);
+    await updatePassword(cred.user, newPass);
+
+    try { await signOut(secondaryAuth); } catch (x) {}
     try { await deleteApp(secondaryApp); } catch (x) {}
 
-    status.className = 'alert alert-success';
-    status.textContent = '✅ تم إرسال رابط استعادة كلمة السر لإيميل المستخدم';
-    showToastAdvanced('تم الإرسال ✅', `رابط الإرسال لـ ${email}`, { type: 'success', icon: 'mail', duration: 5000 });
+    /* 3. نحفظ كلمة السر الجديدة */
+    await setDoc(doc(db, 'userSecrets', userId), {
+      encPass: encryptPassword(newPass),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
 
+    /* 4. نعلّم الطلب كمحلول */
     if (window._currentResetReqId) {
       try {
         await updateDoc(doc(db, 'passwordResetRequests', window._currentResetReqId), {
-          status: 'resolved', resolvedAt: serverTimestamp(), resolvedBy: state.currentUser.uid
+          status: 'resolved',
+          resolvedAt: serverTimestamp(),
+          resolvedBy: state.currentUser.uid
         });
-      } catch (err) {}
+      } catch (err) {
+        console.warn('Failed to resolve request:', err);
+      }
       window._currentResetReqId = null;
     }
+
+    status.className = 'alert alert-success';
+    status.textContent = '✅ تم تغيير كلمة السر بنجاح!';
+
+    showToastAdvanced('تم التغيير ✅',
+      `كلمة السر الجديدة لـ ${username}: "${newPass}"`,
+      {
+        type: 'success',
+        icon: 'key-round',
+        duration: 15000,
+        actionLabel: 'نسخ',
+        onAction: () => {
+          navigator.clipboard.writeText(newPass);
+          showToastAdvanced('تم النسخ ✅', newPass, { type: 'success', icon: 'check', duration: 2000 });
+        }
+      }
+    );
 
     setTimeout(() => {
       closeChangePasswordModal();
       if (state.currentFilter === 'passwordreset') renderPasswordResetRequests();
-    }, 2500);
+    }, 3000);
+
   } catch (e) {
-    console.error(e);
+    console.error('Change password error:', e);
+
+    let errMsg = 'فشل تغيير كلمة السر';
+    if (e.code === 'auth/wrong-password' || e.code === 'auth/invalid-credential') {
+      errMsg = 'كلمة السر المخزنة غير صحيحة. المستخدم ده محفوظ غلط في userSecrets.';
+    } else if (e.code === 'auth/too-many-requests') {
+      errMsg = 'محاولات كثيرة. استنى شوية.';
+    } else if (e.code === 'auth/user-not-found') {
+      errMsg = 'الإيميل مش مسجل في Firebase';
+    } else if (e.code === 'auth/weak-password') {
+      errMsg = 'كلمة السر الجديدة ضعيفة';
+    } else {
+      errMsg = e.message || errMsg;
+    }
+
     status.className = 'alert alert-error';
-    status.textContent = 'خطأ: ' + e.message;
+    status.textContent = errMsg;
     show(status);
   }
 };
@@ -4116,7 +4262,7 @@ async function renderPasswordResetRequests() {
             <div class="deleted-log-row-3">
               <div class="deleted-log-info"></div>
               <div class="deleted-log-actions">
-                <button onclick="changePasswordFromRequest('${safeId}', '${safeUserId}', '${safeUsername}', '${safeUserEmail}', '${safeUserName}')" class="deleted-log-btn restore"><i data-lucide="key-round" class="w-3.5 h-3.5"></i>إرسال رابط الاستعادة</button>
+                <button onclick="changePasswordFromRequest('${safeId}', '${safeUserId}', '${safeUsername}', '${safeUserEmail}', '${safeUserName}')" class="deleted-log-btn restore"><i data-lucide="key-round" class="w-3.5 h-3.5"></i>معالجة الطلب</button>
                 <button onclick="deletePasswordResetRequest('${safeId}')" class="deleted-log-btn delete"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i>حذف</button>
               </div>
             </div>
@@ -4285,7 +4431,6 @@ async function registerFCMToken() {
     const token = await getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
     if (!token) return;
     await setDoc(doc(db, 'users', state.currentUser.uid, 'fcmTokens', token), { token, createdAt: serverTimestamp(), userAgent: navigator.userAgent });
-    console.log('✅ FCM Token saved');
   } catch (e) { console.error('FCM error:', e); }
 }
 
@@ -4313,10 +4458,9 @@ function setupServiceWorkerMessages() {
     sessionStorage.removeItem('app_updating');
     window.location.reload();
   });
-  navigator.serviceWorker.register(SW_PATH).then(() => console.log('✅ SW registered')).catch(() => {});
+  navigator.serviceWorker.register(SW_PATH).catch(() => {});
 }
 
-/* ═══════ IMAGE VIEWER ═══════ */
 window.openImageViewer = (url) => {
   const viewer = document.getElementById('imageViewer');
   const img = document.getElementById('imageViewerImg');
@@ -4342,5 +4486,3 @@ window.replyToThread = async (userId, userName, threadId, subject) => {
   $('#composeTitle').textContent = `رد على ${userName}`;
   setTimeout(() => $('#cBody').focus(), 200);
 };
-
-console.log('🚀 Mail System v9.9.8 loaded — Password + CC/BCC + Rate Limit + Auto-Save + Forward + Auto-Reply + Groups + Schedule');
