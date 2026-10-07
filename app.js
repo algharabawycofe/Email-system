@@ -436,7 +436,6 @@ window.sendPasswordReset = async () => {
   show(status);
 
   try {
-    // ✅ بنبعت الطلب مباشرة بدون ما نقرأ users (الزائر مش مصرح له)
     await addDoc(collection(db, 'passwordResetRequests'), {
       username: username,
       userName: '',
@@ -459,7 +458,6 @@ window.sendPasswordReset = async () => {
     show(status);
   }
 };
-
 /* ═══════ AUTH STATE ═══════ */
 async function checkAuthState() {
   try {
@@ -4092,9 +4090,9 @@ window.saveUserPassword = async () => {
   show(status);
 
   try {
-    /* 1. نقرأ كلمة السر القديمة من userSecrets */
+    // 1. اقرأ كلمة السر القديمة
     const secretSnap = await getDoc(doc(db, 'userSecrets', userId));
-    
+
     if (!secretSnap.exists()) {
       status.className = 'alert alert-error';
       status.textContent = 'مش قادر أوصل لكلمة السر القديمة. المستخدم ده مش محفوظ في userSecrets.';
@@ -4112,7 +4110,7 @@ window.saveUserPassword = async () => {
       return;
     }
 
-    /* 2. نستخدم Secondary App لتغيير كلمة السر */
+    // 2. غيّر كلمة السر
     const appName = 'PwdChange-' + Date.now();
     const secondaryApp = initializeApp(firebaseConfig, appName);
     const secondaryAuth = getAuth(secondaryApp);
@@ -4123,13 +4121,13 @@ window.saveUserPassword = async () => {
     try { await signOut(secondaryAuth); } catch (x) {}
     try { await deleteApp(secondaryApp); } catch (x) {}
 
-    /* 3. نحفظ كلمة السر الجديدة */
+    // 3. احفظ كلمة السر الجديدة
     await setDoc(doc(db, 'userSecrets', userId), {
       encPass: encryptPassword(newPass),
       updatedAt: serverTimestamp()
     }, { merge: true });
 
-    /* 4. نعلّم الطلب كمحلول */
+    // 4. علّم الطلب كمحلول
     if (window._currentResetReqId) {
       try {
         await updateDoc(doc(db, 'passwordResetRequests', window._currentResetReqId), {
@@ -4186,7 +4184,6 @@ window.saveUserPassword = async () => {
     show(status);
   }
 };
-
 /* ═══════ PASSWORD RESET REQUESTS PAGE ═══════ */
 async function renderPasswordResetRequests() {
   if (!isAdmin()) {
