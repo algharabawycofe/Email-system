@@ -424,44 +424,24 @@ window.sendPasswordReset = async () => {
     return;
   }
 
+  if (username.length < 3) {
+    status.className = 'alert alert-error';
+    status.textContent = 'اسم المستخدم قصير جداً';
+    show(status);
+    return;
+  }
+
   status.className = 'alert alert-info';
-  status.textContent = 'جاري التحقق من اسم المستخدم...';
+  status.textContent = 'جاري إرسال الطلب...';
   show(status);
 
   try {
-    const usersSnap = await getDocs(collection(db, 'users'));
-    const userDoc = usersSnap.docs.find(d =>
-      (d.data().username || '').toLowerCase() === username
-    );
-
-    if (!userDoc) {
-      status.className = 'alert alert-error';
-      status.textContent = 'اسم المستخدم غير مسجل في النظام';
-      show(status);
-      return;
-    }
-
-    const u = userDoc.data();
-
-    const existingRequests = await getDocs(collection(db, 'passwordResetRequests'));
-    const alreadyPending = existingRequests.docs.find(d => {
-      const data = d.data();
-      return (data.username || '').toLowerCase() === username && data.status === 'pending';
-    });
-
-    if (alreadyPending) {
-      status.className = 'alert alert-warning';
-      status.textContent = 'طلبك السابق لا يزال قيد المراجعة. سيتم التواصل معك قريباً.';
-      show(status);
-      return;
-    }
-
+    // ✅ بنبعت الطلب مباشرة بدون ما نقرأ users (الزائر مش مصرح له)
     await addDoc(collection(db, 'passwordResetRequests'), {
-      username: u.username || username,
-      userName: u.name || '',
-      userEmail: u.email || '',
-      userId: userDoc.id,
-      departmentId: u.departmentId || null,
+      username: username,
+      userName: '',
+      userEmail: '',
+      userId: '',
       status: 'pending',
       createdAt: serverTimestamp()
     });
